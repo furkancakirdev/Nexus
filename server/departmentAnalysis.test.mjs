@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildDepartmentAnalysis } from "./departmentAnalysis.mjs";
+import { buildDepartmentAnalysis, departmentAnalysisSql } from "./departmentAnalysis.mjs";
 
 function economic(overrides = {}) {
   return {
@@ -259,6 +259,56 @@ test("test order and every descendant are excluded", () => {
   });
   assert.equal(result.detailRows.length, 0);
   assert.equal(result.quality.excludedTestLines, 1);
+});
+
+test("active standalone pilot keeps explicit service owner while test order stays excluded", () => {
+  const result = buildDepartmentAnalysis({
+    year: 2026,
+    pilotOrders: [
+      {
+        documentType: 14,
+        documentNo: "SSP-PILOT-LIVE",
+        documentDate: "2026-07-21T10:00:00+03:00",
+        customerCode: "C-PILOT",
+        commercialOwner: "FURKAN",
+        departmentCode: "SERVIS",
+        depotCode: "MRK",
+        lineCount: 2,
+        active: true,
+        isTest: false,
+      },
+      {
+        documentType: 14,
+        documentNo: "SSP-00979",
+        documentDate: "2026-07-21T10:00:00+03:00",
+        customerCode: "C-TEST",
+        commercialOwner: "FURKAN",
+        departmentCode: "SERVIS",
+        depotCode: "YTM",
+        lineCount: 1,
+        active: true,
+        isTest: true,
+      },
+    ],
+  });
+
+  assert.equal(result.pilotOrders.length, 1);
+  assert.equal(result.pilotOrders[0].documentNo, "SSP-PILOT-LIVE");
+  assert.equal(result.pilotOrders[0].ownerCode, "FURKAN");
+  assert.equal(result.pilotOrders[0].ownerName, "Furkan Çakır");
+  assert.equal(result.pilotOrders[0].department, "service");
+  assert.equal(result.pilotOrders[0].depot.code, "MRK");
+  assert.equal(result.pilotOrders[0].status, "ready");
+});
+
+test("pilot SQL emits only active type 14 rows with an explicit active flag", () => {
+  const pilotQuery = departmentAnalysisSql.match(
+    /SELECT TOP \(100\)[\s\S]*?ORDER BY b\.EVRAKTARIH DESC, b\.EVRAKNO DESC;/i,
+  )?.[0] || "";
+
+  assert.match(pilotQuery, /CAST\(1 AS bit\) active/i);
+  assert.match(pilotQuery, /b\.KAYITDURUM\s*=\s*1/i);
+  assert.match(pilotQuery, /b\.EVRAKTIP\s*=\s*14/i);
 });
 
 test("approved manual cost resolves uncovered profit without changing net sales", () => {

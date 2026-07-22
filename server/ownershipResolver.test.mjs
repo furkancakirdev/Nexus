@@ -96,6 +96,58 @@ test("macro source order beats central-depot invoice user", () => {
   assert.equal(result.crossDepot, true);
 });
 
+test("active standalone type 14 pilot is its own confirmed macro source", () => {
+  const pilot = document({
+    documentType: 14,
+    documentNo: "SSP-PILOT-READY",
+    documentDate: "2026-07-21T10:00:00+03:00",
+    depth: 0,
+    commercialOwner: "FURKAN",
+    departmentCode: "SERVIS",
+    depotCode: "MRK",
+    active: true,
+    isTest: false,
+  });
+  const result = resolveCommercialOwnership({ economic: pilot, lineage: [pilot] });
+
+  assert.equal(result.ownerCode, "FURKAN");
+  assert.equal(result.department, "service");
+  assert.equal(result.method, "macro-source-order");
+  assert.equal(result.confidence, "confirmed");
+  assert.equal(result.sourceOrderNo, "SSP-PILOT-READY");
+  assert.equal(result.fulfillmentDepotCode, "MRK");
+  assert.equal(result.crossDepot, true);
+});
+
+test("standalone type 14 requires active non-excluded valid source evidence", () => {
+  const cases = [
+    { active: false },
+    { active: true, isTest: true },
+    { active: true, documentDate: null },
+    { active: true, documentDate: "invalid-date" },
+    { active: true, commercialOwner: "BIRCAN" },
+    { active: true, departmentCode: null },
+  ];
+
+  for (const overrides of cases) {
+    const pilot = document({
+      documentType: 14,
+      documentNo: "SSP-PILOT-REJECT",
+      depth: 0,
+      commercialOwner: "FURKAN",
+      departmentCode: "SERVIS",
+      depotCode: null,
+      ...overrides,
+    });
+    const result = resolveCommercialOwnership({ economic: pilot, lineage: [pilot] });
+
+    assert.equal(result.ownerCode, null);
+    assert.equal(result.department, "review");
+    assert.equal(result.method, "review-required");
+    assert.equal(result.sourceOrderNo, null);
+  }
+});
+
 test("ignores Bircan and terminal invoice modifiers", () => {
   const invoice = document({ modifierUser: "BIRCAN" });
   const source = document({

@@ -240,9 +240,26 @@ function sourceTimestampStatus(row, economic) {
   return { valid: true, reason: null };
 }
 
+function enabledFlag(value) {
+  return value === true || value === 1 || text(value) === "1";
+}
+
+function isSameEconomicDocument(row, economic) {
+  const rowStableKey = stableEvidenceKey(row);
+  const economicStableKey = stableEvidenceKey(economic);
+  if (rowStableKey && economicStableKey) return rowStableKey === economicStableKey;
+  return documentKey(row) === documentKey(economic);
+}
+
 function isPlausibleSourceDocument(row, economic) {
-  const sameDocument = documentKey(row) === documentKey(economic);
-  if (sameDocument && Number(economic?.documentType) !== 14) return false;
+  const sameDocument = isSameEconomicDocument(row, economic);
+  if (sameDocument) {
+    return Number(economic?.documentType) === 14
+      && enabledFlag(row?.active)
+      && !enabledFlag(row?.isTest)
+      && !enabledFlag(row?.excluded)
+      && sourceTimestampStatus(row, economic).valid;
+  }
   if (number(row?.depth) <= 0) return false;
   return sourceTimestampStatus(row, economic).valid;
 }
@@ -350,7 +367,8 @@ export function resolveCommercialOwnership({
   const sourceOrders = evidenceDocuments.filter((row) => (
     Number(row.documentType) === 14 && isPlausibleSourceDocument(row, economic)
   ));
-  const traceSourceOrderNo = sourceOrders[0]?.documentNo || null;
+  const traceSourceOrderNo = sourceOrders
+    .find((row) => !isSameEconomicDocument(row, economic))?.documentNo || null;
   const fulfillmentDepot = normalizeDepot(
     economic.depotCode || evidenceDocuments.find((row) => number(row.depth) === 0)?.depotCode,
   );

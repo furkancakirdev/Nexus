@@ -1768,6 +1768,7 @@ test("lineage ownership headers require an active company EVRBAS record", () => 
 });
 
 test("pilot orders require an active type 14 header", () => {
+  assert.match(finalInvoiceLedgerSql, /CAST\(1 AS bit\) active/i);
   assert.match(
     finalInvoiceLedgerSql,
     /WHERE\s+b\.SIRKETNO\s*=\s*@company\s+AND\s+b\.KAYITDURUM\s*=\s*1\s+AND\s+b\.EVRAKTIP\s*=\s*14/i,
