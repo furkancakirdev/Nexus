@@ -1,0 +1,19 @@
+services:
+  marlin-profit-sharing:
+    build: .
+    container_name: marlin-profit-sharing
+    restart: unless-stopped
+    ports:
+      - "4318:4318"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 4318
+      CPM_SQL_SERVER: 192.168.12.17
+      CPM_SQL_INSTANCE: MARLINSQL
+      CPM_SQL_DATABASE: Marlin_Uyg
+      CPM_SQL_COMPANY: "01"
+      CPM_CREDENTIAL_FILE: /run/secrets/cpm-credentials.txt
+      APP_STATE_FILE: /app/data/app-state.json
+    volumes:
+      - ./data:/app/data
+      - ./secrets/cpm-credentials.txt:/run/secrets/cpm-credentials.txt:ro

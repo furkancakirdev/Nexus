@@ -1,0 +1,27 @@
+{
+  "name": "marlin-nexus",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k \"npm:server\" \"npm:client\"",
+    "client": "vite --host 127.0.0.1",
+    "server": "node server/index.mjs",
+    "test": "node --test server/*.test.mjs",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "dependencies": {
+    "@tabler/icons-react": "^3.44.0",
+    "@vitejs/plugin-react": "5.0.4",
+    "express": "^5.2.1",
+    "mssql": "^12.7.0",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "recharts": "^3.9.1",
+    "vite": "6.4.2"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.3"
+  }
+}
