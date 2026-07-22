@@ -45,6 +45,7 @@ test("keeps converted retail as trace and counts final invoice only", () => {
   const invoice = sale(85, "F-1", {
     sourceDocumentType: 91,
     sourceDocumentNo: "P-1",
+    sourceLineNo: null,
   });
 
   const result = buildFinalInvoiceLedger({ economics: [retail, invoice] });
@@ -52,6 +53,40 @@ test("keeps converted retail as trace and counts final invoice only", () => {
   assert.deepEqual(result.rows.map((row) => row.documentNo), ["F-1"]);
   assert.equal(result.totals.netSales, 100);
   assert.equal(result.quality.convertedRetailRowsExcluded, 1);
+  assert.equal(result.quality.ambiguousRetailDocuments, 1);
+  assert.equal(result.quality.ambiguousRetailRowsExcluded, 1);
+  assert.deepEqual(result.quality.retailLineageAmbiguities, [{
+    documentNo: "P-1",
+    customerCode: "C-1",
+    retailLineCount: 1,
+    finalDescendantLineCount: 1,
+    exactLinkedRetailRows: 0,
+    fallbackExcludedRows: 1,
+    retainedRetailRows: 0,
+    method: "document-descendant-fallback",
+  }]);
+});
+
+test("missing direct source line keeps a deterministic unconverted line in a multi-line retail document", () => {
+  const result = buildFinalInvoiceLedger({
+    economics: [
+      sale(91, "P-1", { rootId: "91-P-1-1", lineNo: 1, productCode: "P-A" }),
+      sale(91, "P-1", { rootId: "91-P-1-2", lineNo: 2, productCode: "P-B" }),
+      sale(85, "F-1", {
+        sourceDocumentType: 91,
+        sourceDocumentNo: "P-1",
+        sourceCustomerCode: "C-1",
+        sourceLineNo: "",
+      }),
+    ],
+  });
+
+  assert.deepEqual(result.rows.map((row) => `${row.documentNo}:${row.lineNo}`), ["P-1:2", "F-1:1"]);
+  assert.equal(result.totals.netSales, 200);
+  assert.equal(result.quality.convertedRetailRowsExcluded, 1);
+  assert.equal(result.quality.ambiguousRetailDocuments, 1);
+  assert.equal(result.quality.ambiguousRetailRowsExcluded, 1);
+  assert.equal(result.quality.retailLineageAmbiguities[0].retainedRetailRows, 1);
 });
 
 test("keeps an unconverted retail line when another line is partially invoiced", () => {
@@ -69,6 +104,7 @@ test("keeps an unconverted retail line when another line is partially invoiced",
   assert.deepEqual(result.rows.map((row) => `${row.documentNo}:${row.lineNo}`), ["P-1:2", "F-1:1"]);
   assert.equal(result.totals.netSales, 200);
   assert.equal(result.quality.convertedRetailRowsExcluded, 1);
+  assert.equal(result.quality.ambiguousRetailDocuments, 0);
 });
 
 test("does not deduplicate the same retail number across different customers", () => {
@@ -130,6 +166,70 @@ test("excludes retail converted through intermediate order and dispatch lineage"
   assert.equal(result.totals.netSales, 100);
 });
 
+test("missing intermediate source line deduplicates a single-line retail document and reports ambiguity", () => {
+  const result = buildFinalInvoiceLedger({
+    economics: [sale(91, "P-1"), sale(85, "F-1")],
+    lineage: [
+      {
+        rootId: "85-F-1", documentType: 85, documentNo: "F-1", customerCode: "C-1", lineNo: 1,
+        sourceDocumentType: 15, sourceDocumentNo: "I-1", sourceCustomerCode: "C-1", sourceLineNo: 1,
+      },
+      {
+        rootId: "85-F-1", documentType: 15, documentNo: "I-1", customerCode: "C-1", lineNo: 1,
+        sourceDocumentType: 64, sourceDocumentNo: "O-1", sourceCustomerCode: "C-1", sourceLineNo: 1,
+      },
+      {
+        rootId: "85-F-1", documentType: 64, documentNo: "O-1", customerCode: "C-1", lineNo: 1,
+        sourceDocumentType: 91, sourceDocumentNo: "P-1", sourceCustomerCode: "C-1", sourceLineNo: null,
+      },
+    ],
+  });
+
+  assert.deepEqual(result.rows.map((row) => row.documentNo), ["F-1"]);
+  assert.equal(result.totals.netSales, 100);
+  assert.equal(result.quality.ambiguousRetailDocuments, 1);
+  assert.equal(result.quality.ambiguousRetailRowsExcluded, 1);
+});
+
+test("missing intermediate source line keeps deterministic residual retail economics for multiple lines", () => {
+  const result = buildFinalInvoiceLedger({
+    economics: [
+      sale(91, "P-1", { rootId: "91-P-1-1", lineNo: 1, productCode: "P-A" }),
+      sale(91, "P-1", { rootId: "91-P-1-2", lineNo: 2, productCode: "P-B" }),
+      sale(85, "F-1", { rootId: "85-F-1-1", lineNo: 1, productCode: "P-A" }),
+    ],
+    lineage: [
+      {
+        rootId: "85-F-1-1", documentType: 85, documentNo: "F-1", customerCode: "C-1", lineNo: 1,
+        sourceDocumentType: 15, sourceDocumentNo: "I-1", sourceCustomerCode: "C-1", sourceLineNo: 1,
+      },
+      {
+        rootId: "85-F-1-1", documentType: 15, documentNo: "I-1", customerCode: "C-1", lineNo: 1,
+        sourceDocumentType: 64, sourceDocumentNo: "O-1", sourceCustomerCode: "C-1", sourceLineNo: 1,
+      },
+      {
+        rootId: "85-F-1-1", documentType: 64, documentNo: "O-1", customerCode: "C-1", lineNo: 1,
+        sourceDocumentType: 91, sourceDocumentNo: "P-1", sourceCustomerCode: "C-1", sourceLineNo: "",
+      },
+    ],
+  });
+
+  assert.deepEqual(result.rows.map((row) => `${row.documentNo}:${row.lineNo}`), ["P-1:2", "F-1:1"]);
+  assert.equal(result.totals.netSales, 200);
+  assert.equal(result.quality.ambiguousRetailDocuments, 1);
+  assert.equal(result.quality.ambiguousRetailRowsExcluded, 1);
+  assert.deepEqual(result.quality.retailLineageAmbiguities[0], {
+    documentNo: "P-1",
+    customerCode: "C-1",
+    retailLineCount: 2,
+    finalDescendantLineCount: 1,
+    exactLinkedRetailRows: 0,
+    fallbackExcludedRows: 1,
+    retainedRetailRows: 1,
+    method: "document-descendant-fallback",
+  });
+});
+
 test("recursive lineage does not cross into another line of the same retail document", () => {
   const result = buildFinalInvoiceLedger({
     economics: [
@@ -155,6 +255,7 @@ test("recursive lineage does not cross into another line of the same retail docu
 
   assert.deepEqual(result.rows.map((row) => `${row.documentNo}:${row.lineNo}`), ["P-1:2", "F-1:1"]);
   assert.equal(result.totals.netSales, 200);
+  assert.equal(result.quality.ambiguousRetailDocuments, 0);
 });
 
 test("linked return reduces sales and references original invoice", () => {
@@ -207,6 +308,18 @@ test("terminal row predicate accepts only final sales, standalone retail, and re
   assert.equal(isTerminalEconomicRow(sale(91, "P-1"), [
     sale(85, "F-1", { sourceDocumentType: 91, sourceDocumentNo: "P-1" }),
   ]), false);
+});
+
+test("terminal row predicate preserves a retail line that does not match a valid direct source line", () => {
+  const unconvertedLine = sale(91, "P-1", { lineNo: 2 });
+  const convertedLineInvoice = sale(85, "F-1", {
+    sourceDocumentType: 91,
+    sourceDocumentNo: "P-1",
+    sourceCustomerCode: "C-1",
+    sourceLineNo: 1,
+  });
+
+  assert.equal(isTerminalEconomicRow(unconvertedLine, [convertedLineInvoice]), true);
 });
 
 test("does not mutate CPM source rows and preserves pilot order input", () => {
@@ -322,6 +435,15 @@ test("actor history is scoped through the selected active company header id", ()
   assert.match(finalInvoiceLedgerSql, /historyHeader\.KAYITDURUM\s*=\s*1/i);
   assert.match(finalInvoiceLedgerSql, /JOIN\s+MIREVRBAS\s+history\s+ON\s+history\.RECID\s*=\s*historyHeader\.ID/i);
   assert.doesNotMatch(finalInvoiceLedgerSql, /JOIN\s+MIREVRBAS\s+history\s+ON\s+history\.EVRAKTIP/i);
+});
+
+test("lineage ownership headers require an active company EVRBAS record", () => {
+  const ownerHeaderApply = finalInvoiceLedgerSql.match(
+    /OUTER APPLY\s*\(\s*SELECT TOP \(1\) header\.\*[\s\S]*?\) b\s*ORDER BY l\.rootId/i,
+  )?.[0] || "";
+
+  assert.match(ownerHeaderApply, /header\.SIRKETNO\s*=\s*@company/i);
+  assert.match(ownerHeaderApply, /header\.KAYITDURUM\s*=\s*1/i);
 });
 
 test("pilot orders require an active type 14 header", () => {

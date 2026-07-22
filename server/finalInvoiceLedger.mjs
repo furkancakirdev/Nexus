@@ -36,6 +36,10 @@ function documentKey(documentType, documentNo, customerCode = "", lineNo = "") {
   return `${Number(documentType)}|${text(documentNo)}|${text(customerCode)}|${text(lineNo)}`;
 }
 
+function documentScopeKey(documentType, documentNo, customerCode = "") {
+  return `${Number(documentType)}|${text(documentNo)}|${text(customerCode)}`;
+}
+
 function rowKey(row) {
   return documentKey(row.documentType, row.documentNo, row.customerCode, row.lineNo);
 }
@@ -49,6 +53,21 @@ function sourceKey(row) {
     sourceNo,
     row.sourceCustomerCode || row.customerCode,
     row.sourceLineNo,
+  );
+}
+
+function rowDocumentScopeKey(row) {
+  return documentScopeKey(row.documentType, row.documentNo, row.customerCode);
+}
+
+function sourceDocumentScopeKey(row) {
+  const sourceType = Number(row.sourceDocumentType);
+  const sourceNo = text(row.sourceDocumentNo);
+  if (!LINEAGE_DOCUMENT_TYPES.has(sourceType) || !sourceNo) return null;
+  return documentScopeKey(
+    sourceType,
+    sourceNo,
+    text(row.sourceCustomerCode) || text(row.customerCode),
   );
 }
 
@@ -111,7 +130,7 @@ function validateFinancialRow(row) {
   };
 }
 
-function buildDocumentGraph(economics, lineage) {
+function buildLineageGraph(economics, lineage) {
   const descendants = new Map();
   const ancestors = new Map();
   const types = new Map();
@@ -138,6 +157,26 @@ function buildDocumentGraph(economics, lineage) {
   return { descendants, ancestors, types };
 }
 
+function buildEconomicDocumentGraph(economics, lineage) {
+  const descendants = new Map();
+  const types = new Map();
+
+  const connect = (row) => {
+    if (!row || !Number.isInteger(Number(row.documentType)) || !text(row.documentNo)) return;
+    const child = rowDocumentScopeKey(row);
+    types.set(child, Number(row.documentType));
+    const parent = sourceDocumentScopeKey(row);
+    if (!parent) return;
+    types.set(parent, Number(row.sourceDocumentType));
+    if (!descendants.has(parent)) descendants.set(parent, new Set());
+    descendants.get(parent).add(child);
+  };
+
+  for (const row of economics) connect(row);
+  for (const row of lineage) connect(row);
+  return { descendants, types };
+}
+
 function findConnectedDocument(startKey, adjacency, types, acceptedTypes) {
   const queue = [...(adjacency.get(startKey) || [])];
   const visited = new Set([startKey]);
@@ -149,6 +188,124 @@ function findConnectedDocument(startKey, adjacency, types, acceptedTypes) {
     queue.push(...(adjacency.get(current) || []));
   }
   return null;
+}
+
+function findConnectedDocuments(startKey, adjacency, types, acceptedTypes) {
+  const matches = new Set();
+  const queue = [...(adjacency.get(startKey) || [])];
+  const visited = new Set([startKey]);
+  while (queue.length) {
+    const current = queue.shift();
+    if (visited.has(current)) continue;
+    visited.add(current);
+    if (acceptedTypes.has(types.get(current))) matches.add(current);
+    queue.push(...(adjacency.get(current) || []));
+  }
+  return matches;
+}
+
+function compareRetailRows(left, right) {
+  const leftLine = text(left.lineNo);
+  const rightLine = text(right.lineNo);
+  const leftNumber = leftLine === "" ? Number.POSITIVE_INFINITY : Number(leftLine);
+  const rightNumber = rightLine === "" ? Number.POSITIVE_INFINITY : Number(rightLine);
+  const leftIsNumber = Number.isFinite(leftNumber);
+  const rightIsNumber = Number.isFinite(rightNumber);
+  if (leftIsNumber && rightIsNumber && leftNumber !== rightNumber) return leftNumber - rightNumber;
+  if (leftIsNumber !== rightIsNumber) return leftIsNumber ? -1 : 1;
+  if (leftLine !== rightLine) return leftLine < rightLine ? -1 : 1;
+  const leftRoot = text(left.rootId);
+  const rightRoot = text(right.rootId);
+  if (leftRoot === rightRoot) return 0;
+  return leftRoot < rightRoot ? -1 : 1;
+}
+
+function indexDocumentLineEvidence(rows) {
+  const evidence = new Map();
+  for (const row of rows) {
+    if (!row || !Number.isInteger(Number(row.documentType)) || !text(row.documentNo)) continue;
+    const scopeKey = rowDocumentScopeKey(row);
+    if (!evidence.has(scopeKey)) evidence.set(scopeKey, new Set());
+    evidence.get(scopeKey).add(rowKey(row));
+  }
+  return evidence;
+}
+
+function resolveRetailEconomicExclusions(retailRows, evidenceRows, lineageRows = []) {
+  const lineGraph = buildLineageGraph(evidenceRows, lineageRows);
+  const documentGraph = buildEconomicDocumentGraph(evidenceRows, lineageRows);
+  const lineEvidence = indexDocumentLineEvidence([...evidenceRows, ...lineageRows]);
+  const retailGroups = new Map();
+
+  for (const row of retailRows) {
+    if (Number(row.documentType) !== 91) continue;
+    const key = rowDocumentScopeKey(row);
+    if (!retailGroups.has(key)) retailGroups.set(key, []);
+    retailGroups.get(key).push(row);
+  }
+
+  const excludedRows = new Set();
+  const ambiguities = [];
+  const finalTypes = new Set([17, 85]);
+
+  for (const [retailDocumentKey, groupRows] of retailGroups) {
+    const finalDocuments = findConnectedDocuments(
+      retailDocumentKey,
+      documentGraph.descendants,
+      documentGraph.types,
+      finalTypes,
+    );
+    if (finalDocuments.size === 0) continue;
+
+    const finalLineKeys = new Set();
+    for (const finalDocument of finalDocuments) {
+      const documentLines = lineEvidence.get(finalDocument);
+      if (documentLines?.size) {
+        for (const lineKey of documentLines) finalLineKeys.add(lineKey);
+      } else {
+        finalLineKeys.add(`${finalDocument}|`);
+      }
+    }
+
+    const exactFinalLineKeys = new Set();
+    let exactLinkedRetailRows = 0;
+    for (const retailRow of groupRows) {
+      const exactFinals = findConnectedDocuments(
+        rowKey(retailRow),
+        lineGraph.descendants,
+        lineGraph.types,
+        finalTypes,
+      );
+      if (exactFinals.size === 0) continue;
+      excludedRows.add(retailRow);
+      exactLinkedRetailRows += 1;
+      for (const finalLineKey of exactFinals) exactFinalLineKeys.add(finalLineKey);
+    }
+
+    const unmatchedFinalLines = [...finalLineKeys].filter((key) => !exactFinalLineKeys.has(key));
+    if (unmatchedFinalLines.length === 0) continue;
+
+    // Satir kaniti eksikse her final satiri icin en dusuk 91 satirini deterministik olarak temsilci seceriz.
+    const fallbackCandidates = groupRows
+      .filter((row) => !excludedRows.has(row))
+      .sort(compareRetailRows);
+    const fallbackExcludedRows = Math.min(unmatchedFinalLines.length, fallbackCandidates.length);
+    for (const row of fallbackCandidates.slice(0, fallbackExcludedRows)) excludedRows.add(row);
+
+    const firstRetail = groupRows[0];
+    ambiguities.push({
+      documentNo: text(firstRetail.documentNo),
+      customerCode: text(firstRetail.customerCode),
+      retailLineCount: groupRows.length,
+      finalDescendantLineCount: finalLineKeys.size,
+      exactLinkedRetailRows,
+      fallbackExcludedRows,
+      retainedRetailRows: groupRows.length - exactLinkedRetailRows - fallbackExcludedRows,
+      method: "document-descendant-fallback",
+    });
+  }
+
+  return { excludedRows, ambiguities };
 }
 
 function documentNoFromKey(key) {
@@ -200,19 +357,27 @@ export function isTerminalEconomicRow(row, downstreamRows = []) {
   const type = Number(row?.documentType);
   if (FINAL_RETURN_TYPES.has(type) || type === 17 || type === 85) return true;
   if (type !== 91) return false;
-  return !downstreamRows.some((candidate) => {
-    const sourceCustomer = text(candidate?.sourceCustomerCode || candidate?.customerCode);
-    const retailCustomer = text(row?.customerCode);
+  const retailCustomer = text(row.customerCode);
+  const retailLine = text(row.lineNo);
+  const directDescendants = downstreamRows.filter((candidate) => {
+    const sourceCustomer = text(candidate?.sourceCustomerCode) || text(candidate?.customerCode);
     const sameCustomer = !sourceCustomer || !retailCustomer || sourceCustomer === retailCustomer;
-    const sourceLine = text(candidate?.sourceLineNo);
-    const retailLine = text(row?.lineNo);
-    const sameLine = !sourceLine || !retailLine || sourceLine === retailLine;
     return [17, 85].includes(Number(candidate?.documentType))
       && Number(candidate?.sourceDocumentType) === 91
-      && text(candidate?.sourceDocumentNo) === text(row?.documentNo)
-      && sameCustomer
-      && sameLine;
+      && text(candidate?.sourceDocumentNo) === text(row.documentNo)
+      && sameCustomer;
   });
+  if (retailLine && directDescendants.some((candidate) => {
+    const sourceLine = text(candidate.sourceLineNo);
+    return sourceLine && sourceLine === retailLine;
+  })) return false;
+  if (retailLine && directDescendants.length > 0
+    && directDescendants.every((candidate) => text(candidate.sourceLineNo) !== "")) return true;
+
+  const evidenceRows = [row, ...downstreamRows];
+  const retailRows = evidenceRows.filter((candidate) => Number(candidate?.documentType) === 91);
+  const { excludedRows } = resolveRetailEconomicExclusions(retailRows, evidenceRows);
+  return !excludedRows.has(row);
 }
 
 /**
@@ -243,26 +408,15 @@ export function buildFinalInvoiceLedger({
     .filter((validation) => validation.valid)
     .map((validation) => validation.row);
   const invalidFinancialRows = financialValidations.filter((validation) => !validation.valid);
-  const graph = buildDocumentGraph(structurallyValidRows, lineageRows);
+  const graph = buildLineageGraph(structurallyValidRows, lineageRows);
   const provisionalRowsExcluded = structurallyValidRows.length - economicCandidateRows.length;
-  let convertedRetailRowsExcluded = 0;
-
-  const terminalRows = financiallyValidRows.filter((row) => {
-    const type = Number(row.documentType);
-    if (!isTerminalEconomicRow(row, economicCandidateRows)) {
-      if (type === 91) convertedRetailRowsExcluded += 1;
-      return false;
-    }
-    if (type !== 91) return true;
-    const converted = Boolean(findConnectedDocument(
-      rowKey(row),
-      graph.descendants,
-      graph.types,
-      new Set([17, 85]),
-    ));
-    if (converted) convertedRetailRowsExcluded += 1;
-    return !converted;
-  });
+  const retailResolution = resolveRetailEconomicExclusions(
+    financiallyValidRows.filter((row) => Number(row.documentType) === 91),
+    structurallyValidRows,
+    lineageRows,
+  );
+  const terminalRows = financiallyValidRows.filter((row) => !retailResolution.excludedRows.has(row));
+  const convertedRetailRowsExcluded = retailResolution.excludedRows.size;
 
   const rows = terminalRows.map((row) => normalizeEconomicRow(row, graph));
   const salesRows = rows.filter((row) => row.isSale);
@@ -301,6 +455,12 @@ export function buildFinalInvoiceLedger({
       invalidFinancialFieldCounts,
       provisionalRowsExcluded,
       convertedRetailRowsExcluded,
+      ambiguousRetailDocuments: retailResolution.ambiguities.length,
+      ambiguousRetailRowsExcluded: retailResolution.ambiguities.reduce(
+        (total, ambiguity) => total + ambiguity.fallbackExcludedRows,
+        0,
+      ),
+      retailLineageAmbiguities: retailResolution.ambiguities.map((ambiguity) => ({ ...ambiguity })),
       linkedReturnRows: returnRows.filter((row) => row.originalInvoiceNo).length,
       unlinkedReturnRows: returnRows.filter((row) => !row.originalInvoiceNo).length,
       lineageRows: lineageRows.length,
@@ -505,10 +665,11 @@ OUTER APPLY (
   SELECT TOP (1) header.*
   FROM EVRBAS header
   WHERE header.SIRKETNO = @company
+    AND header.KAYITDURUM = 1
     AND header.EVRAKTIP = l.documentType
     AND header.EVRAKNO = l.documentNo
     AND header.HESAPKOD = l.customerCode
-  ORDER BY header.KAYITDURUM DESC, header.ID DESC
+  ORDER BY header.ID DESC
 ) b
 ORDER BY l.rootId, l.depth DESC, l.lineageId;
 
