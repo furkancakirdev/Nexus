@@ -150,6 +150,30 @@ test("malformed supplied purchase totals remain audit evidence and are quarantin
   assert.equal(result.rejectedPurchases[0].reportedDiscountPct, "not-a-percentage");
 });
 
+test("malformed purchase fields produce explicit quarantine reasons", () => {
+  const result = selectPurchaseEvidence({
+    sale: sale(17, "F-1", { productCode: "P-1", quantity: 2 }),
+    purchases: [
+      purchase(9, "BAD-DATE", { documentDate: null }),
+      purchase(9, "BAD-QUANTITY", { quantity: 0 }),
+      purchase(9, "BAD-GROSS", { grossAmount: Number.POSITIVE_INFINITY, netAmount: undefined }),
+      purchase(9, "BAD-DISCOUNT", { discountAmount: Number.NaN, netAmount: undefined }),
+    ],
+  });
+
+  assert.equal(result.costMethod, "missingPurchase");
+  assert.match(result.costValidationReason, /karantinaya/i);
+  assert.deepEqual(
+    result.rejectedPurchases.map(({ purchaseNo, reason }) => [purchaseNo, reason]),
+    [
+      ["BAD-DATE", "invalid-purchase-date"],
+      ["BAD-QUANTITY", "invalid-purchase-quantity"],
+      ["BAD-GROSS", "invalid-purchase-gross"],
+      ["BAD-DISCOUNT", "invalid-purchase-discount"],
+    ],
+  );
+});
+
 test("rejects a final purchase invoice marked as an incoming return", () => {
   const result = selectPurchaseEvidence({
     sale: sale(17, "F-1", { productCode: "P-1" }),
@@ -300,6 +324,59 @@ test("leap-day bulk window matches SQL Server DATEADD year semantics", () => {
   assert.equal(result.purchaseNo, "SUBAT-28");
 });
 
+test("same-date purchase ties use numeric IDs for bulk prior and next paths", () => {
+  const numericPair = (documentDate, documentLineCount = 2, discountAmount = 100) => [
+    purchase(9, "ID-9", { rootId: 9, documentDate, documentLineCount, discountAmount, netAmount: 1000 - discountAmount }),
+    purchase(9, "ID-10", { rootId: 10, documentDate, documentLineCount, discountAmount, netAmount: 1000 - discountAmount }),
+  ];
+  const bulk = selectPurchaseEvidence({
+    sale: sale(17, "F-BULK", { documentDate: "2026-07-01T00:00:00.000Z" }),
+    purchases: numericPair("2026-06-01T00:00:00.000Z", 10, 200),
+  });
+  const prior = selectPurchaseEvidence({
+    sale: sale(17, "F-PRIOR", { documentDate: "2026-07-01T00:00:00.000Z" }),
+    purchases: numericPair("2026-06-01T00:00:00.000Z"),
+  });
+  const next = selectPurchaseEvidence({
+    sale: sale(17, "F-NEXT", { documentDate: "2026-05-01T00:00:00.000Z" }),
+    purchases: numericPair("2026-06-01T00:00:00.000Z"),
+  });
+
+  assert.equal(bulk.purchaseNo, "ID-10");
+  assert.equal(prior.purchaseNo, "ID-10");
+  assert.equal(next.purchaseNo, "ID-9");
+});
+
+test("nonnumeric same-date purchase IDs use deterministic ordinal fallback", () => {
+  const candidates = [
+    purchase(9, "TEXT-A", { rootId: "A-2" }),
+    purchase(9, "TEXT-B", { rootId: "A-10" }),
+  ];
+  const prior = selectPurchaseEvidence({ sale: sale(17, "F-1"), purchases: candidates });
+  const next = selectPurchaseEvidence({
+    sale: sale(17, "F-2", { documentDate: "2026-05-01T00:00:00.000Z" }),
+    purchases: candidates,
+  });
+
+  assert.equal(prior.purchaseNo, "TEXT-A");
+  assert.equal(next.purchaseNo, "TEXT-B");
+});
+
+test("equal numeric purchase IDs use ordinal text as the final tie breaker", () => {
+  const candidates = [
+    purchase(9, "ID-9", { rootId: "9" }),
+    purchase(9, "ID-09", { rootId: "09" }),
+  ];
+  const prior = selectPurchaseEvidence({ sale: sale(17, "F-1"), purchases: candidates });
+  const next = selectPurchaseEvidence({
+    sale: sale(17, "F-2", { documentDate: "2026-05-01T00:00:00.000Z" }),
+    purchases: candidates,
+  });
+
+  assert.equal(prior.purchaseNo, "ID-9");
+  assert.equal(next.purchaseNo, "ID-09");
+});
+
 test("duplicate final sales consumption is counted once for remaining bulk stock", () => {
   const movement = sale(17, "ESKI", {
     rootId: "tek-satir",
@@ -404,6 +481,128 @@ test("multi-step converted retail consumes bulk stock once", () => {
 
   assert.equal(result.costMethod, "bulkPurchase");
   assert.equal(result.purchaseRemainingQuantity, 6);
+});
+
+test("direct missing source line reconciles one retail line for consumption", () => {
+  const result = selectPurchaseEvidence({
+    sale: sale(17, "F-2", { productCode: "P-1", quantity: 6 }),
+    purchases: [purchase(9, "TOPLU", {
+      documentDate: "2025-08-01T00:00:00.000Z", quantity: 10,
+      documentLineCount: 10, discountAmount: 200, netAmount: 800,
+    })],
+    salesConsumption: [
+      sale(91, "P-1", { rootId: "retail-1", documentDate: "2026-01-10T00:00:00.000Z", quantity: 4 }),
+      sale(85, "F-1", {
+        rootId: "invoice-1", documentDate: "2026-01-20T00:00:00.000Z", quantity: 4,
+        sourceDocumentType: 91, sourceDocumentNo: "P-1", sourceCustomerCode: "C-1", sourceLineNo: null,
+      }),
+    ],
+  });
+
+  assert.equal(result.costMethod, "bulkPurchase");
+  assert.equal(result.purchaseRemainingQuantity, 6);
+});
+
+test("multi-step missing source line reconciles one retail line for consumption", () => {
+  const result = selectPurchaseEvidence({
+    sale: sale(17, "F-2", { productCode: "P-1", quantity: 6 }),
+    purchases: [purchase(9, "TOPLU", {
+      documentDate: "2025-08-01T00:00:00.000Z", quantity: 10,
+      documentLineCount: 10, discountAmount: 200, netAmount: 800,
+    })],
+    salesConsumption: [
+      sale(91, "P-1", { rootId: "retail-1", documentDate: "2026-01-10T00:00:00.000Z", quantity: 4 }),
+      {
+        rootId: "dispatch-1", documentType: 64, documentNo: "S-1",
+        documentDate: "2026-01-15T00:00:00.000Z", customerCode: "C-1", lineNo: 1,
+        productCode: "P-1", quantity: 4, grossAmount: 120, discountAmount: 20, netAmount: 100,
+        active: 1, sourceDocumentType: 91, sourceDocumentNo: "P-1",
+        sourceCustomerCode: "C-1", sourceLineNo: null,
+      },
+      sale(85, "F-1", {
+        rootId: "invoice-1", documentDate: "2026-01-20T00:00:00.000Z", quantity: 4,
+        sourceDocumentType: 64, sourceDocumentNo: "S-1", sourceCustomerCode: "C-1", sourceLineNo: 1,
+      }),
+    ],
+  });
+
+  assert.equal(result.costMethod, "bulkPurchase");
+  assert.equal(result.purchaseRemainingQuantity, 6);
+});
+
+test("missing-line reconciliation compares retail with final rather than intermediate economics", () => {
+  const result = selectPurchaseEvidence({
+    sale: sale(17, "F-2", { productCode: "P-1", quantity: 6 }),
+    purchases: [purchase(9, "TOPLU", {
+      documentDate: "2025-08-01T00:00:00.000Z", quantity: 10,
+      documentLineCount: 10, discountAmount: 200, netAmount: 800,
+    })],
+    salesConsumption: [
+      sale(91, "P-1", { rootId: "retail-1", documentDate: "2026-01-10T00:00:00.000Z", quantity: 4 }),
+      {
+        rootId: "dispatch-1", documentType: 64, documentNo: "S-1",
+        documentDate: "2026-01-15T00:00:00.000Z", customerCode: "C-1", lineNo: 1,
+        productCode: "TRANSIT", quantity: 1, grossAmount: 0, discountAmount: 0, netAmount: 0,
+        active: 1, sourceDocumentType: 91, sourceDocumentNo: "P-1",
+        sourceCustomerCode: "C-1", sourceLineNo: null,
+      },
+      sale(85, "F-1", {
+        rootId: "invoice-1", documentDate: "2026-01-20T00:00:00.000Z", quantity: 4,
+        sourceDocumentType: 64, sourceDocumentNo: "S-1", sourceCustomerCode: "C-1", sourceLineNo: 1,
+      }),
+    ],
+  });
+
+  assert.equal(result.costMethod, "bulkPurchase");
+  assert.equal(result.purchaseRemainingQuantity, 6);
+  assert.match(finalInvoiceLedgerSql, /missingLineReconciliationCandidates/i);
+  assert.match(finalInvoiceLedgerSql, /sourceCandidateCount\s*=\s*1/i);
+  assert.match(finalInvoiceLedgerSql, /finalCandidateCount\s*=\s*1/i);
+  assert.match(
+    finalInvoiceLedgerSql,
+    /PARTITION BY\s+candidate\.retailDocumentNo,\s*candidate\.retailCustomerCode,\s*candidate\.finalMovementId/i,
+  );
+});
+
+test("ambiguous missing source line quarantines source retail consumption", () => {
+  const result = selectPurchaseEvidence({
+    sale: sale(17, "F-2", { productCode: "P-1", quantity: 6 }),
+    purchases: [purchase(9, "TOPLU", {
+      documentDate: "2025-08-01T00:00:00.000Z", quantity: 10,
+      documentLineCount: 10, discountAmount: 200, netAmount: 800,
+    })],
+    salesConsumption: [
+      sale(91, "P-1", { rootId: "retail-1", lineNo: 1, documentDate: "2026-01-10T00:00:00.000Z", quantity: 4 }),
+      sale(91, "P-1", { rootId: "retail-2", lineNo: 2, documentDate: "2026-01-10T00:00:00.000Z", quantity: 4 }),
+      sale(85, "F-1", {
+        rootId: "invoice-1", documentDate: "2026-01-20T00:00:00.000Z", quantity: 4,
+        sourceDocumentType: 91, sourceDocumentNo: "P-1", sourceCustomerCode: "C-1", sourceLineNo: null,
+      }),
+    ],
+  });
+
+  assert.equal(result.costMethod, "bulkPurchase");
+  assert.equal(result.purchaseRemainingQuantity, 6);
+});
+
+test("reused document number and line still consume stock when stable identity differs", () => {
+  const result = selectPurchaseEvidence({
+    sale: sale(17, "SHARED", {
+      rootId: "current-sale", customerCode: "CURRENT", documentDate: "2026-07-01T00:00:00.000Z",
+      productCode: "P-1", quantity: 6,
+    }),
+    purchases: [purchase(9, "TOPLU", {
+      documentDate: "2025-08-01T00:00:00.000Z", quantity: 10,
+      documentLineCount: 10, discountAmount: 200, netAmount: 800,
+    })],
+    salesConsumption: [sale(85, "SHARED", {
+      rootId: "prior-sale", customerCode: "OTHER", lineNo: 1,
+      documentDate: "2026-01-10T00:00:00.000Z", productCode: "P-1", quantity: 8,
+    })],
+  });
+
+  assert.equal(result.costMethod, "priorPurchase");
+  assert.equal(result.purchaseRemainingQuantity, 2);
 });
 
 test("numeric inactive sales do not consume bulk stock", () => {
@@ -639,6 +838,69 @@ test("same-number cross-type return uses the exact original document type", () =
   assert.equal(returnRow.originalLineNo, 1);
   assert.equal(returnRow.unitCost, 80);
   assert.equal(returnRow.purchaseNo, "A-80");
+});
+
+test("return with corrected account matches preserved original customer and root", () => {
+  const original = sale(17, "F-1", {
+    rootId: "sale-17", customerCode: "C-ORIG", productCode: "P-1",
+    purchaseType: 9, purchaseNo: "A-80", purchaseDate: "2026-06-01T00:00:00.000Z",
+    purchaseQuantity: 10, purchaseGrossAmount: 800, purchaseDiscountAmount: 0,
+    purchaseNetAmount: 800, unitCost: 80, costMethod: "priorPurchase",
+  });
+  const returned = sale(18, "I-1", {
+    rootId: "return-1", customerCode: "C-RETURN", productCode: "P-1",
+    originalDocumentType: 17, originalDocumentNo: "F-1", originalRootId: "sale-17",
+    originalCustomerCode: "C-ORIG", originalLineNo: 1, originalQuantity: 1,
+  });
+
+  const result = buildFinalInvoiceLedger({ economics: [original, returned] });
+  const returnRow = result.rows.find((row) => row.documentType === 18);
+
+  assert.equal(returnRow.costMethod, "originalSaleCost");
+  assert.equal(returnRow.originalCustomerCode, "C-ORIG");
+  assert.equal(returnRow.purchaseNo, "A-80");
+  assert.equal(returnRow.unitCost, 80);
+});
+
+test("return root conflicting with preserved original customer is quarantined", () => {
+  const original = sale(17, "F-1", {
+    rootId: "sale-17", customerCode: "C-ORIG", productCode: "P-1",
+    purchaseType: 9, purchaseNo: "A-80", purchaseDate: "2026-06-01T00:00:00.000Z",
+    purchaseQuantity: 10, purchaseGrossAmount: 800, purchaseDiscountAmount: 0,
+    purchaseNetAmount: 800, unitCost: 80, costMethod: "priorPurchase",
+  });
+  const returned = sale(18, "I-1", {
+    rootId: "return-1", customerCode: "C-RETURN", productCode: "P-1",
+    originalDocumentType: 17, originalDocumentNo: "F-1", originalRootId: "sale-17",
+    originalCustomerCode: "C-CONFLICT", originalLineNo: 1, originalQuantity: 1,
+  });
+
+  const result = buildFinalInvoiceLedger({ economics: [original, returned] });
+  const returnRow = result.rows.find((row) => row.documentType === 18);
+
+  assert.equal(returnRow.costMethod, "missingPurchase");
+  assert.equal(returnRow.costReviewStatus, "quarantined");
+  assert.equal(result.quality.ambiguousReturnCostRows, 1);
+});
+
+test("current return customer is validated only as missing-original-customer fallback", () => {
+  const original = sale(17, "F-1", {
+    rootId: "sale-17", customerCode: "C-ORIG", productCode: "P-1",
+    purchaseType: 9, purchaseNo: "A-80", purchaseDate: "2026-06-01T00:00:00.000Z",
+    purchaseQuantity: 10, purchaseGrossAmount: 800, purchaseDiscountAmount: 0,
+    purchaseNetAmount: 800, unitCost: 80, costMethod: "priorPurchase",
+  });
+  const returned = sale(18, "I-1", {
+    rootId: "return-1", customerCode: "C-CONFLICT", productCode: "P-1",
+    originalDocumentType: 17, originalDocumentNo: "F-1", originalRootId: "sale-17",
+    originalCustomerCode: null, originalLineNo: 1, originalQuantity: 1,
+  });
+
+  const result = buildFinalInvoiceLedger({ economics: [original, returned] });
+  const returnRow = result.rows.find((row) => row.documentType === 18);
+
+  assert.equal(returnRow.costReviewStatus, "quarantined");
+  assert.equal(returnRow.unitCost, null);
 });
 
 test("ambiguous original sale lines quarantine return cost instead of using array order", () => {
@@ -1332,9 +1594,22 @@ test("final invoice SQL exposes four read-only recordsets with separate invoice 
   assert.match(finalInvoiceLedgerSql, /INTO\s+#returnOriginalSales/i);
   assert.match(finalInvoiceLedgerSql, /originalSale\.originalSaleDate\s+ELSE\s+h\.EVRAKTARIH\s+END\s+costDate/i);
   assert.match(finalInvoiceLedgerSql, /#terminalSales/i);
+  assert.match(finalInvoiceLedgerSql, /WITH\s+activeConsumptionEvidence\s+AS/i);
+  assert.match(finalInvoiceLedgerSql, /documentLineCount/i);
+  assert.match(finalInvoiceLedgerSql, /hasMissingSourceLine/i);
+  assert.match(finalInvoiceLedgerSql, /missingLineReconciliationCandidates/i);
+  assert.match(finalInvoiceLedgerSql, /sourceCandidateCount/i);
+  assert.match(finalInvoiceLedgerSql, /finalCandidateCount/i);
+  assert.match(finalInvoiceLedgerSql, /ambiguousRetailConsumption/i);
+  assert.match(finalInvoiceLedgerSql, /excludedRetailConsumption/i);
+  assert.match(finalInvoiceLedgerSql, /sourceLineNo\s*=\s*lineage\.lineNo\s+OR\s+downstream\.sourceLineNo\s+IS\s+NULL/i);
   assert.match(finalInvoiceLedgerSql, /originalSale\.originalQuantity/i);
   assert.doesNotMatch(finalInvoiceLedgerSql, /purchaseQuantity\s*-\s*ISNULL\(consumption\.consumedQuantity,\s*0\)\s*>=\s*ABS\(h\.MIKTAR\)/i);
   assert.match(finalInvoiceLedgerSql, /PARTITION BY[\s\S]{0,240}p\.EVRAKTARIH/i);
+  assert.match(finalInvoiceLedgerSql, /purchaseNumericId/i);
+  assert.match(finalInvoiceLedgerSql, /purchaseTextId/i);
+  assert.match(finalInvoiceLedgerSql, /ORDER BY\s+p\.purchaseDate\s+DESC[\s\S]{0,180}purchaseNumericId\s+DESC[\s\S]{0,180}purchaseTextId\s+DESC/i);
+  assert.match(finalInvoiceLedgerSql, /ORDER BY\s+p\.purchaseDate\s+ASC[\s\S]{0,180}purchaseNumericId\s+ASC[\s\S]{0,180}purchaseTextId\s+ASC/i);
   assert.match(finalInvoiceLedgerSql, /purchaseRemainingQuantity/i);
   assert.match(finalInvoiceLedgerSql, /unitCost/i);
   assert.match(finalInvoiceLedgerSql, /costValidationReason/i);
