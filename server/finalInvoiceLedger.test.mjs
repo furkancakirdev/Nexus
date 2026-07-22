@@ -483,6 +483,78 @@ test("multi-step converted retail consumes bulk stock once", () => {
   assert.equal(result.purchaseRemainingQuantity, 6);
 });
 
+function assertTerminalConsumptionSqlContract() {
+  const activeConsumptionSql = finalInvoiceLedgerSql.match(
+    /;WITH activeConsumptionEvidence AS \([\s\S]*?\), retailConsumptionLineage AS \(/i,
+  )?.[0];
+
+  assert.ok(activeConsumptionSql, "activeConsumptionEvidence SQL bolumu bulunmali");
+  assert.match(activeConsumptionSql, /EVRAKTIP\s+IN\s*\(13,14,15,17,64,85,91\)/i);
+  assert.doesNotMatch(activeConsumptionSql, /EVRAKTIP\s+IN\s*\([^)]*\b18\b[^)]*\)/i);
+}
+
+test("return bridge does not collapse direct retail and replacement stock exits", () => {
+  const result = selectPurchaseEvidence({
+    sale: sale(17, "F-2", { productCode: "P-1", quantity: 3 }),
+    purchases: [purchase(9, "TOPLU", {
+      documentDate: "2025-08-01T00:00:00.000Z", quantity: 10,
+      documentLineCount: 10, discountAmount: 200, netAmount: 800,
+    })],
+    salesConsumption: [
+      sale(91, "P-1", {
+        rootId: "retail-1", documentDate: "2026-01-10T00:00:00.000Z", quantity: 4,
+      }),
+      sale(18, "I-1", {
+        rootId: "return-1", documentDate: "2026-01-15T00:00:00.000Z", quantity: 4,
+        sourceDocumentType: 91, sourceDocumentNo: "P-1", sourceCustomerCode: "C-1", sourceLineNo: 1,
+      }),
+      sale(85, "F-1", {
+        rootId: "invoice-1", documentDate: "2026-01-20T00:00:00.000Z", quantity: 4,
+        sourceDocumentType: 18, sourceDocumentNo: "I-1", sourceCustomerCode: "C-1", sourceLineNo: 1,
+      }),
+    ],
+  });
+
+  assertTerminalConsumptionSqlContract();
+  assert.equal(result.costMethod, "priorPurchase");
+  assert.equal(result.purchaseRemainingQuantity, 2);
+});
+
+test("return bridge does not collapse multi-step retail and replacement stock exits", () => {
+  const result = selectPurchaseEvidence({
+    sale: sale(17, "F-2", { productCode: "P-1", quantity: 3 }),
+    purchases: [purchase(9, "TOPLU", {
+      documentDate: "2025-08-01T00:00:00.000Z", quantity: 10,
+      documentLineCount: 10, discountAmount: 200, netAmount: 800,
+    })],
+    salesConsumption: [
+      sale(91, "P-1", {
+        rootId: "retail-1", documentDate: "2026-01-10T00:00:00.000Z", quantity: 4,
+      }),
+      sale(64, "S-1", {
+        rootId: "dispatch-1", documentDate: "2026-01-12T00:00:00.000Z", quantity: 4,
+        sourceDocumentType: 91, sourceDocumentNo: "P-1", sourceCustomerCode: "C-1", sourceLineNo: 1,
+      }),
+      sale(18, "I-1", {
+        rootId: "return-1", documentDate: "2026-01-15T00:00:00.000Z", quantity: 4,
+        sourceDocumentType: 64, sourceDocumentNo: "S-1", sourceCustomerCode: "C-1", sourceLineNo: 1,
+      }),
+      sale(15, "O-1", {
+        rootId: "order-1", documentDate: "2026-01-17T00:00:00.000Z", quantity: 4,
+        sourceDocumentType: 18, sourceDocumentNo: "I-1", sourceCustomerCode: "C-1", sourceLineNo: 1,
+      }),
+      sale(85, "F-1", {
+        rootId: "invoice-1", documentDate: "2026-01-20T00:00:00.000Z", quantity: 4,
+        sourceDocumentType: 15, sourceDocumentNo: "O-1", sourceCustomerCode: "C-1", sourceLineNo: 1,
+      }),
+    ],
+  });
+
+  assertTerminalConsumptionSqlContract();
+  assert.equal(result.costMethod, "priorPurchase");
+  assert.equal(result.purchaseRemainingQuantity, 2);
+});
+
 test("direct missing source line reconciles one retail line for consumption", () => {
   const result = selectPurchaseEvidence({
     sale: sale(17, "F-2", { productCode: "P-1", quantity: 6 }),

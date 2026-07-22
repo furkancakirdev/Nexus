@@ -2,6 +2,8 @@ export const FINAL_SALE_TYPES = new Set([17, 85, 91]);
 export const FINAL_RETURN_TYPES = new Set([18]);
 
 const LINEAGE_DOCUMENT_TYPES = new Set([13, 14, 15, 17, 18, 64, 85, 91]);
+const TERMINAL_CONSUMPTION_LINEAGE_TYPE_VALUES = Object.freeze([13, 14, 15, 17, 64, 85, 91]);
+const TERMINAL_CONSUMPTION_LINEAGE_TYPES = new Set(TERMINAL_CONSUMPTION_LINEAGE_TYPE_VALUES);
 const FINANCIAL_FIELDS = [
   "quantity",
   "grossAmount",
@@ -484,7 +486,7 @@ function terminalConsumptionRows(salesConsumption) {
   const identityRows = new Map();
   for (const movement of Array.isArray(salesConsumption) ? salesConsumption : []) {
     const type = Number(movement?.documentType);
-    if (!movement || !isActiveMovement(movement) || !LINEAGE_DOCUMENT_TYPES.has(type)
+    if (!movement || !isActiveMovement(movement) || !TERMINAL_CONSUMPTION_LINEAGE_TYPES.has(type)
       || dateValue(movement.documentDate) === null) continue;
     const identity = movementIdentity(movement);
     if (!identityRows.has(identity)) identityRows.set(identity, movement);
@@ -1232,7 +1234,7 @@ CREATE INDEX IX_nexus_purchase_candidates
   FROM STKHAR movement
   WHERE movement.SIRKETNO = @company
     AND movement.KAYITDURUM = 1
-    AND movement.EVRAKTIP IN (13,14,15,17,64,85,91)
+    AND movement.EVRAKTIP IN (${TERMINAL_CONSUMPTION_LINEAGE_TYPE_VALUES.join(",")})
     AND movement.MIKTAR > 0
 ), retailConsumptionLineage AS (
   SELECT
