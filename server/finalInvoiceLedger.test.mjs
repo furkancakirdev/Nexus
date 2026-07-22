@@ -53,21 +53,13 @@ test("keeps converted retail as trace and counts final invoice only", () => {
   assert.deepEqual(result.rows.map((row) => row.documentNo), ["F-1"]);
   assert.equal(result.totals.netSales, 100);
   assert.equal(result.quality.convertedRetailRowsExcluded, 1);
-  assert.equal(result.quality.ambiguousRetailDocuments, 1);
-  assert.equal(result.quality.ambiguousRetailRowsExcluded, 1);
-  assert.deepEqual(result.quality.retailLineageAmbiguities, [{
-    documentNo: "P-1",
-    customerCode: "C-1",
-    retailLineCount: 1,
-    finalDescendantLineCount: 1,
-    exactLinkedRetailRows: 0,
-    fallbackExcludedRows: 1,
-    retainedRetailRows: 0,
-    method: "document-descendant-fallback",
-  }]);
+  assert.equal(result.quality.reconciledRetailRowsExcluded, 1);
+  assert.equal(result.quality.ambiguousRetailDocuments, 0);
+  assert.equal(result.quality.ambiguousRetailNetAmount, 0);
+  assert.deepEqual(result.reviewRequiredRows, []);
 });
 
-test("missing direct source line keeps a deterministic unconverted line in a multi-line retail document", () => {
+test("missing direct source line quarantines every unproven line in a multi-line retail document", () => {
   const result = buildFinalInvoiceLedger({
     economics: [
       sale(91, "P-1", { rootId: "91-P-1-1", lineNo: 1, productCode: "P-A" }),
@@ -81,12 +73,13 @@ test("missing direct source line keeps a deterministic unconverted line in a mul
     ],
   });
 
-  assert.deepEqual(result.rows.map((row) => `${row.documentNo}:${row.lineNo}`), ["P-1:2", "F-1:1"]);
-  assert.equal(result.totals.netSales, 200);
-  assert.equal(result.quality.convertedRetailRowsExcluded, 1);
+  assert.deepEqual(result.rows.map((row) => `${row.documentNo}:${row.lineNo}`), ["F-1:1"]);
+  assert.equal(result.totals.netSales, 100);
+  assert.equal(result.quality.convertedRetailRowsExcluded, 0);
   assert.equal(result.quality.ambiguousRetailDocuments, 1);
-  assert.equal(result.quality.ambiguousRetailRowsExcluded, 1);
-  assert.equal(result.quality.retailLineageAmbiguities[0].retainedRetailRows, 1);
+  assert.equal(result.quality.ambiguousRetailRowsQuarantined, 2);
+  assert.equal(result.quality.ambiguousRetailNetAmount, 200);
+  assert.deepEqual(result.reviewRequiredRows.map((row) => row.rootId), ["91-P-1-1", "91-P-1-2"]);
 });
 
 test("keeps an unconverted retail line when another line is partially invoiced", () => {
@@ -166,7 +159,7 @@ test("excludes retail converted through intermediate order and dispatch lineage"
   assert.equal(result.totals.netSales, 100);
 });
 
-test("missing intermediate source line deduplicates a single-line retail document and reports ambiguity", () => {
+test("missing intermediate source line safely reconciles a unique single-line retail document", () => {
   const result = buildFinalInvoiceLedger({
     economics: [sale(91, "P-1"), sale(85, "F-1")],
     lineage: [
@@ -187,11 +180,12 @@ test("missing intermediate source line deduplicates a single-line retail documen
 
   assert.deepEqual(result.rows.map((row) => row.documentNo), ["F-1"]);
   assert.equal(result.totals.netSales, 100);
-  assert.equal(result.quality.ambiguousRetailDocuments, 1);
-  assert.equal(result.quality.ambiguousRetailRowsExcluded, 1);
+  assert.equal(result.quality.reconciledRetailRowsExcluded, 1);
+  assert.equal(result.quality.ambiguousRetailDocuments, 0);
+  assert.equal(result.quality.ambiguousRetailNetAmount, 0);
 });
 
-test("missing intermediate source line keeps deterministic residual retail economics for multiple lines", () => {
+test("missing intermediate source line preserves the unmatched line after unique reconciliation", () => {
   const result = buildFinalInvoiceLedger({
     economics: [
       sale(91, "P-1", { rootId: "91-P-1-1", lineNo: 1, productCode: "P-A" }),
@@ -216,18 +210,135 @@ test("missing intermediate source line keeps deterministic residual retail econo
 
   assert.deepEqual(result.rows.map((row) => `${row.documentNo}:${row.lineNo}`), ["P-1:2", "F-1:1"]);
   assert.equal(result.totals.netSales, 200);
-  assert.equal(result.quality.ambiguousRetailDocuments, 1);
-  assert.equal(result.quality.ambiguousRetailRowsExcluded, 1);
-  assert.deepEqual(result.quality.retailLineageAmbiguities[0], {
-    documentNo: "P-1",
-    customerCode: "C-1",
-    retailLineCount: 2,
-    finalDescendantLineCount: 1,
-    exactLinkedRetailRows: 0,
-    fallbackExcludedRows: 1,
-    retainedRetailRows: 1,
-    method: "document-descendant-fallback",
+  assert.equal(result.quality.reconciledRetailRowsExcluded, 1);
+  assert.equal(result.quality.ambiguousRetailDocuments, 0);
+  assert.equal(result.quality.ambiguousRetailNetAmount, 0);
+});
+
+test("many-to-one consolidation quarantines all unproven retail rows in direct and recursive flows", () => {
+  const retailRows = [
+    sale(91, "P-1", { rootId: "91-P-1-1", lineNo: 1, productCode: "P-A" }),
+    sale(91, "P-1", { rootId: "91-P-1-2", lineNo: 2, productCode: "P-B" }),
+  ];
+  const finalRow = sale(85, "F-1", {
+    rootId: "85-F-1-1",
+    lineNo: 1,
+    productCode: "BUNDLE",
+    quantity: 2,
+    grossAmount: 240,
+    discountAmount: 40,
+    netAmount: 200,
+    vatAmount: 40,
+    invoiceTotalInclVat: 240,
   });
+  const direct = buildFinalInvoiceLedger({
+    economics: [...retailRows, {
+      ...finalRow,
+      sourceDocumentType: 91,
+      sourceDocumentNo: "P-1",
+      sourceCustomerCode: "C-1",
+      sourceLineNo: null,
+    }],
+  });
+  const recursive = buildFinalInvoiceLedger({
+    economics: [...retailRows, finalRow],
+    lineage: [
+      {
+        rootId: "85-F-1-1", documentType: 85, documentNo: "F-1", customerCode: "C-1", lineNo: 1,
+        sourceDocumentType: 15, sourceDocumentNo: "I-1", sourceCustomerCode: "C-1", sourceLineNo: 1,
+      },
+      {
+        rootId: "85-F-1-1", documentType: 15, documentNo: "I-1", customerCode: "C-1", lineNo: 1,
+        sourceDocumentType: 64, sourceDocumentNo: "O-1", sourceCustomerCode: "C-1", sourceLineNo: 1,
+      },
+      {
+        rootId: "85-F-1-1", documentType: 64, documentNo: "O-1", customerCode: "C-1", lineNo: 1,
+        sourceDocumentType: 91, sourceDocumentNo: "P-1", sourceCustomerCode: "C-1", sourceLineNo: null,
+      },
+    ],
+  });
+
+  for (const result of [direct, recursive]) {
+    assert.deepEqual(result.rows.map((row) => `${row.documentNo}:${row.lineNo}`), ["F-1:1"]);
+    assert.equal(result.totals.netSales, 200);
+    assert.equal(result.quality.ambiguousRetailNetAmount, 200);
+    assert.equal(result.quality.ambiguousRetailRowsQuarantined, 2);
+    assert.equal(result.reviewRequiredRows.length, 2);
+    assert.equal(result.quality.retailLineageAmbiguities[0].confirmedFinalAmount, 200);
+    assert.equal(result.quality.retailLineageAmbiguities[0].quarantinedSourceAmount, 200);
+  }
+});
+
+test("one-to-many split keeps final lines confirmed and source economics quarantined", () => {
+  const result = buildFinalInvoiceLedger({
+    economics: [
+      sale(91, "P-1", {
+        rootId: "91-P-1-1", lineNo: 1, productCode: "P-A", quantity: 2,
+        grossAmount: 240, discountAmount: 40, netAmount: 200, vatAmount: 40, invoiceTotalInclVat: 240,
+      }),
+      sale(85, "F-1", {
+        rootId: "85-F-1-1", lineNo: 1, productCode: "P-A",
+        sourceDocumentType: 91, sourceDocumentNo: "P-1", sourceCustomerCode: "C-1", sourceLineNo: null,
+      }),
+      sale(85, "F-1", {
+        rootId: "85-F-1-2", lineNo: 2, productCode: "P-A",
+        sourceDocumentType: 91, sourceDocumentNo: "P-1", sourceCustomerCode: "C-1", sourceLineNo: "",
+      }),
+    ],
+  });
+
+  assert.deepEqual(result.rows.map((row) => `${row.documentNo}:${row.lineNo}`), ["F-1:1", "F-1:2"]);
+  assert.equal(result.totals.netSales, 200);
+  assert.equal(result.quality.ambiguousRetailNetAmount, 200);
+  assert.equal(result.reviewRequiredRows[0].netAmount, 200);
+  assert.deepEqual(
+    result.quality.retailLineageAmbiguities[0].connectedFinalRows.map((row) => row.lineNo),
+    [1, 2],
+  );
+});
+
+test("mixed-source final invoice audits only the connected ambiguous branch", () => {
+  const result = buildFinalInvoiceLedger({
+    economics: [
+      sale(91, "P-1", { rootId: "91-P-1-1", lineNo: 1, productCode: "P-A" }),
+      sale(91, "P-1", { rootId: "91-P-1-2", lineNo: 2, productCode: "P-A" }),
+      sale(85, "F-1", {
+        rootId: "85-F-1-1", lineNo: 1, productCode: "P-A",
+        sourceDocumentType: 91, sourceDocumentNo: "P-1", sourceCustomerCode: "C-1", sourceLineNo: null,
+      }),
+      sale(85, "F-1", {
+        rootId: "85-F-1-2", lineNo: 2, productCode: "P-X",
+        sourceDocumentType: 64, sourceDocumentNo: "OTHER", sourceCustomerCode: "C-1", sourceLineNo: 1,
+      }),
+    ],
+  });
+
+  assert.deepEqual(result.rows.map((row) => `${row.documentNo}:${row.lineNo}`), ["F-1:1", "F-1:2"]);
+  assert.equal(result.totals.netSales, 200);
+  assert.equal(result.quality.ambiguousRetailNetAmount, 200);
+  const ambiguity = result.quality.retailLineageAmbiguities[0];
+  assert.deepEqual(ambiguity.sourceRows.map((row) => row.rootId), ["91-P-1-1", "91-P-1-2"]);
+  assert.deepEqual(ambiguity.connectedFinalRows.map((row) => `${row.documentNo}:${row.lineNo}`), ["F-1:1"]);
+  assert.deepEqual(ambiguity.sourceRows[0], {
+    rootId: "91-P-1-1",
+    documentNo: "P-1",
+    lineNo: 1,
+    productCode: "P-A",
+    quantity: 1,
+    netAmount: 100,
+  });
+  assert.deepEqual(ambiguity.connectedFinalRows[0], {
+    rootId: "85-F-1-1",
+    documentNo: "F-1",
+    lineNo: 1,
+    productCode: "P-A",
+    quantity: 1,
+    netAmount: 100,
+  });
+  assert.equal(ambiguity.matchReason, "document-descendant-without-safe-line-mapping");
+  assert.equal(ambiguity.reconciliationReason, "no-unique-product-quantity-net-match");
+  assert.equal(ambiguity.confirmedFinalAmount, 100);
+  assert.equal(ambiguity.quarantinedSourceAmount, 200);
 });
 
 test("recursive lineage does not cross into another line of the same retail document", () => {
@@ -428,6 +539,14 @@ test("final invoice SQL exposes four read-only recordsets with separate invoice 
   assert.match(finalInvoiceLedgerSql, /downstream\.SONKAYNAKEVRAKTIP\s*=\s*l\.documentType/i);
   assert.match(finalInvoiceLedgerSql, /source\.SIRANO\s*=\s*l\.sourceLineNo/i);
   assert.match(finalInvoiceLedgerSql, /downstream\.SONKAYNAKSIRANO\s*=\s*l\.lineNo/i);
+  assert.doesNotMatch(
+    finalInvoiceLedgerSql,
+    /(?:source\.SIRANO\s*=\s*l\.sourceLineNo|downstream\.SONKAYNAKSIRANO\s*=\s*l\.lineNo)\s+OR\b/i,
+  );
+  assert.match(
+    finalInvoiceLedgerSql,
+    /CASE\s+WHEN\s+l\.sourceLineNo\s+IS\s+NULL\s+THEN\s+'document'\s+ELSE\s+'line'\s+END\s+lineageMatchScope/i,
+  );
 });
 
 test("actor history is scoped through the selected active company header id", () => {

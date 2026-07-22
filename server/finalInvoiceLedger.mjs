@@ -14,12 +14,20 @@ const FINANCIAL_FIELDS = [
  * @typedef {Object} CpmEconomicRow
  * @property {number|string} documentType
  * @property {string} documentNo
+ * @property {string|number} [rootId]
  * @property {string} [customerCode]
+ * @property {number|string} [lineNo]
+ * @property {string} [productCode]
+ * @property {number|string} [quantity]
  * @property {number|string} [grossAmount]
  * @property {number|string} [discountAmount]
  * @property {number|string} [netAmount]
  * @property {number|string} [vatAmount]
  * @property {number|string} [invoiceTotalInclVat]
+ * @property {number|string} [sourceDocumentType]
+ * @property {string} [sourceDocumentNo]
+ * @property {string} [sourceCustomerCode]
+ * @property {number|string} [sourceLineNo]
  */
 
 function text(value) {
@@ -157,26 +165,6 @@ function buildLineageGraph(economics, lineage) {
   return { descendants, ancestors, types };
 }
 
-function buildEconomicDocumentGraph(economics, lineage) {
-  const descendants = new Map();
-  const types = new Map();
-
-  const connect = (row) => {
-    if (!row || !Number.isInteger(Number(row.documentType)) || !text(row.documentNo)) return;
-    const child = rowDocumentScopeKey(row);
-    types.set(child, Number(row.documentType));
-    const parent = sourceDocumentScopeKey(row);
-    if (!parent) return;
-    types.set(parent, Number(row.sourceDocumentType));
-    if (!descendants.has(parent)) descendants.set(parent, new Set());
-    descendants.get(parent).add(child);
-  };
-
-  for (const row of economics) connect(row);
-  for (const row of lineage) connect(row);
-  return { descendants, types };
-}
-
 function findConnectedDocument(startKey, adjacency, types, acceptedTypes) {
   const queue = [...(adjacency.get(startKey) || [])];
   const visited = new Set([startKey]);
@@ -204,37 +192,113 @@ function findConnectedDocuments(startKey, adjacency, types, acceptedTypes) {
   return matches;
 }
 
-function compareRetailRows(left, right) {
-  const leftLine = text(left.lineNo);
-  const rightLine = text(right.lineNo);
-  const leftNumber = leftLine === "" ? Number.POSITIVE_INFINITY : Number(leftLine);
-  const rightNumber = rightLine === "" ? Number.POSITIVE_INFINITY : Number(rightLine);
-  const leftIsNumber = Number.isFinite(leftNumber);
-  const rightIsNumber = Number.isFinite(rightNumber);
-  if (leftIsNumber && rightIsNumber && leftNumber !== rightNumber) return leftNumber - rightNumber;
-  if (leftIsNumber !== rightIsNumber) return leftIsNumber ? -1 : 1;
-  if (leftLine !== rightLine) return leftLine < rightLine ? -1 : 1;
-  const leftRoot = text(left.rootId);
-  const rightRoot = text(right.rootId);
-  if (leftRoot === rightRoot) return 0;
-  return leftRoot < rightRoot ? -1 : 1;
+function addMapSet(map, key, value) {
+  if (!map.has(key)) map.set(key, new Set());
+  map.get(key).add(value);
 }
 
-function indexDocumentLineEvidence(rows) {
-  const evidence = new Map();
-  for (const row of rows) {
+function buildDocumentScopeEvidence(evidenceRows, lineageRows) {
+  const allRows = [...evidenceRows, ...lineageRows];
+  const actualLineKeys = new Set();
+  const rowsByLineKey = new Map();
+  const documentChildren = new Map();
+  const ambiguousChildren = new Map();
+
+  for (const row of allRows) {
     if (!row || !Number.isInteger(Number(row.documentType)) || !text(row.documentNo)) continue;
-    const scopeKey = rowDocumentScopeKey(row);
-    if (!evidence.has(scopeKey)) evidence.set(scopeKey, new Set());
-    evidence.get(scopeKey).add(rowKey(row));
+    const key = rowKey(row);
+    actualLineKeys.add(key);
+    if (!rowsByLineKey.has(key)) rowsByLineKey.set(key, row);
   }
-  return evidence;
+
+  for (const row of allRows) {
+    const sourceDocument = sourceDocumentScopeKey(row);
+    if (!sourceDocument) continue;
+    const childKey = rowKey(row);
+    addMapSet(documentChildren, sourceDocument, childKey);
+    const parentKey = sourceKey(row);
+    const hasSafeLineEdge = text(row.sourceLineNo) !== ""
+      && text(row.lineNo) !== ""
+      && parentKey
+      && actualLineKeys.has(parentKey);
+    if (!hasSafeLineEdge) addMapSet(ambiguousChildren, sourceDocument, childKey);
+  }
+
+  return { rowsByLineKey, documentChildren, ambiguousChildren };
 }
 
-function resolveRetailEconomicExclusions(retailRows, evidenceRows, lineageRows = []) {
+function findFinalEvidence(groupRows, lineGraph, documentEvidence) {
+  const exactFinalKeys = new Set();
+  const ambiguousFinalKeys = new Set();
+  const queue = groupRows.map((row) => ({ key: rowKey(row), ambiguous: false }));
+  const visited = new Set();
+
+  while (queue.length) {
+    const state = queue.shift();
+    const visitKey = `${state.key}|${state.ambiguous ? 1 : 0}`;
+    if (visited.has(visitKey)) continue;
+    visited.add(visitKey);
+
+    if ([17, 85].includes(lineGraph.types.get(state.key))) {
+      (state.ambiguous ? ambiguousFinalKeys : exactFinalKeys).add(state.key);
+      continue;
+    }
+
+    for (const child of lineGraph.descendants.get(state.key) || []) {
+      queue.push({ key: child, ambiguous: state.ambiguous });
+    }
+
+    const currentDocument = state.key.split("|").slice(0, 3).join("|");
+    for (const child of documentEvidence.ambiguousChildren.get(currentDocument) || []) {
+      queue.push({ key: child, ambiguous: true });
+    }
+
+    const currentRow = documentEvidence.rowsByLineKey.get(state.key);
+    if (state.ambiguous && !text(currentRow?.lineNo)) {
+      for (const child of documentEvidence.documentChildren.get(currentDocument) || []) {
+        queue.push({ key: child, ambiguous: true });
+      }
+    }
+  }
+
+  return { exactFinalKeys, ambiguousFinalKeys };
+}
+
+function auditLine(row) {
+  return {
+    rootId: row?.rootId ?? row?.lineageId ?? null,
+    documentNo: text(row?.documentNo),
+    lineNo: row?.lineNo ?? null,
+    productCode: text(row?.productCode),
+    quantity: finiteNumber(row?.quantity),
+    netAmount: finiteNumber(row?.netAmount),
+  };
+}
+
+function reconciliationKey(row) {
+  const productCode = text(row?.productCode);
+  const quantity = finiteNumber(row?.quantity);
+  const netAmount = finiteNumber(row?.netAmount);
+  if (!productCode || quantity === null || netAmount === null) return null;
+  return `${productCode}|${quantity}|${netAmount}`;
+}
+
+function sumFinite(items, field) {
+  return items.reduce((total, item) => {
+    const value = finiteNumber(item?.[field]);
+    return value === null ? total : total + value;
+  }, 0);
+}
+
+function resolveRetailEconomicExclusions(
+  retailRows,
+  evidenceRows,
+  lineageRows = [],
+  financialRows = evidenceRows,
+) {
   const lineGraph = buildLineageGraph(evidenceRows, lineageRows);
-  const documentGraph = buildEconomicDocumentGraph(evidenceRows, lineageRows);
-  const lineEvidence = indexDocumentLineEvidence([...evidenceRows, ...lineageRows]);
+  const documentEvidence = buildDocumentScopeEvidence(evidenceRows, lineageRows);
+  const financialRowsByLineKey = new Map(financialRows.map((row) => [rowKey(row), row]));
   const retailGroups = new Map();
 
   for (const row of retailRows) {
@@ -244,30 +308,20 @@ function resolveRetailEconomicExclusions(retailRows, evidenceRows, lineageRows =
     retailGroups.get(key).push(row);
   }
 
-  const excludedRows = new Set();
+  const convertedRows = new Set();
+  const reconciledRows = new Set();
+  const quarantinedRows = new Set();
   const ambiguities = [];
+  const reviewRequiredRows = [];
   const finalTypes = new Set([17, 85]);
 
-  for (const [retailDocumentKey, groupRows] of retailGroups) {
-    const finalDocuments = findConnectedDocuments(
-      retailDocumentKey,
-      documentGraph.descendants,
-      documentGraph.types,
-      finalTypes,
-    );
-    if (finalDocuments.size === 0) continue;
-
-    const finalLineKeys = new Set();
-    for (const finalDocument of finalDocuments) {
-      const documentLines = lineEvidence.get(finalDocument);
-      if (documentLines?.size) {
-        for (const lineKey of documentLines) finalLineKeys.add(lineKey);
-      } else {
-        finalLineKeys.add(`${finalDocument}|`);
-      }
+  for (const groupRows of retailGroups.values()) {
+    const finalEvidence = findFinalEvidence(groupRows, lineGraph, documentEvidence);
+    if (finalEvidence.exactFinalKeys.size === 0 && finalEvidence.ambiguousFinalKeys.size === 0) continue;
+    for (const exactFinalKey of finalEvidence.exactFinalKeys) {
+      finalEvidence.ambiguousFinalKeys.delete(exactFinalKey);
     }
 
-    const exactFinalLineKeys = new Set();
     let exactLinkedRetailRows = 0;
     for (const retailRow of groupRows) {
       const exactFinals = findConnectedDocuments(
@@ -277,35 +331,79 @@ function resolveRetailEconomicExclusions(retailRows, evidenceRows, lineageRows =
         finalTypes,
       );
       if (exactFinals.size === 0) continue;
-      excludedRows.add(retailRow);
+      convertedRows.add(retailRow);
       exactLinkedRetailRows += 1;
-      for (const finalLineKey of exactFinals) exactFinalLineKeys.add(finalLineKey);
     }
 
-    const unmatchedFinalLines = [...finalLineKeys].filter((key) => !exactFinalLineKeys.has(key));
-    if (unmatchedFinalLines.length === 0) continue;
+    const unprovenRows = groupRows.filter((row) => !convertedRows.has(row));
+    const ambiguousFinalRows = [...finalEvidence.ambiguousFinalKeys]
+      .map((key) => financialRowsByLineKey.get(key) || documentEvidence.rowsByLineKey.get(key))
+      .filter(Boolean);
+    const sourceMatches = new Map();
+    const finalMatches = new Map();
 
-    // Satir kaniti eksikse her final satiri icin en dusuk 91 satirini deterministik olarak temsilci seceriz.
-    const fallbackCandidates = groupRows
-      .filter((row) => !excludedRows.has(row))
-      .sort(compareRetailRows);
-    const fallbackExcludedRows = Math.min(unmatchedFinalLines.length, fallbackCandidates.length);
-    for (const row of fallbackCandidates.slice(0, fallbackExcludedRows)) excludedRows.add(row);
+    // Eksik satir bagi yalniz karsilikli tekil urun, miktar ve net tutar eslesmesinde kanit sayilir.
+    for (const sourceRow of unprovenRows) {
+      const sourceMatchKey = reconciliationKey(sourceRow);
+      if (!sourceMatchKey) continue;
+      for (const finalRow of ambiguousFinalRows) {
+        if (sourceMatchKey !== reconciliationKey(finalRow)) continue;
+        addMapSet(sourceMatches, sourceRow, finalRow);
+        addMapSet(finalMatches, finalRow, sourceRow);
+      }
+    }
+
+    const reconciledFinalRows = new Set();
+    for (const sourceRow of unprovenRows) {
+      const candidates = sourceMatches.get(sourceRow);
+      if (candidates?.size !== 1) continue;
+      const [finalRow] = candidates;
+      if (finalMatches.get(finalRow)?.size !== 1) continue;
+      convertedRows.add(sourceRow);
+      reconciledRows.add(sourceRow);
+      reconciledFinalRows.add(finalRow);
+    }
+
+    const unresolvedFinalRows = ambiguousFinalRows.filter((row) => !reconciledFinalRows.has(row));
+    if (unresolvedFinalRows.length === 0) continue;
+
+    const affectedSourceRows = groupRows.filter((row) => !convertedRows.has(row));
+    for (const sourceRow of affectedSourceRows) quarantinedRows.add(sourceRow);
+    if (affectedSourceRows.length === 0) continue;
 
     const firstRetail = groupRows[0];
-    ambiguities.push({
+    const sourceDetails = affectedSourceRows.map(auditLine);
+    const finalDetails = unresolvedFinalRows.map(auditLine);
+    const ambiguity = {
       documentNo: text(firstRetail.documentNo),
       customerCode: text(firstRetail.customerCode),
       retailLineCount: groupRows.length,
-      finalDescendantLineCount: finalLineKeys.size,
       exactLinkedRetailRows,
-      fallbackExcludedRows,
-      retainedRetailRows: groupRows.length - exactLinkedRetailRows - fallbackExcludedRows,
-      method: "document-descendant-fallback",
-    });
+      safelyReconciledRetailRows: [...reconciledRows].filter((row) => groupRows.includes(row)).length,
+      quarantinedRetailRows: affectedSourceRows.length,
+      retainedRetailRows: 0,
+      method: "review-required-quarantine",
+      matchReason: "document-descendant-without-safe-line-mapping",
+      reconciliationReason: "no-unique-product-quantity-net-match",
+      confirmedFinalAmount: sumFinite(finalDetails, "netAmount"),
+      quarantinedSourceAmount: sumFinite(sourceDetails, "netAmount"),
+      sourceRows: sourceDetails,
+      connectedFinalRows: finalDetails,
+    };
+    ambiguities.push(ambiguity);
+    for (const sourceRow of sourceDetails) {
+      reviewRequiredRows.push({
+        ...sourceRow,
+        reviewStatus: "required",
+        quarantineReason: "ambiguous-retail-lineage",
+        matchReason: ambiguity.matchReason,
+        reconciliationReason: ambiguity.reconciliationReason,
+        connectedFinalRows: finalDetails.map((row) => ({ ...row })),
+      });
+    }
   }
 
-  return { excludedRows, ambiguities };
+  return { convertedRows, reconciledRows, quarantinedRows, ambiguities, reviewRequiredRows };
 }
 
 function documentNoFromKey(key) {
@@ -376,8 +474,8 @@ export function isTerminalEconomicRow(row, downstreamRows = []) {
 
   const evidenceRows = [row, ...downstreamRows];
   const retailRows = evidenceRows.filter((candidate) => Number(candidate?.documentType) === 91);
-  const { excludedRows } = resolveRetailEconomicExclusions(retailRows, evidenceRows);
-  return !excludedRows.has(row);
+  const resolution = resolveRetailEconomicExclusions(retailRows, evidenceRows);
+  return !resolution.convertedRows.has(row) && !resolution.quarantinedRows.has(row);
 }
 
 /**
@@ -414,9 +512,11 @@ export function buildFinalInvoiceLedger({
     financiallyValidRows.filter((row) => Number(row.documentType) === 91),
     structurallyValidRows,
     lineageRows,
+    financiallyValidRows,
   );
-  const terminalRows = financiallyValidRows.filter((row) => !retailResolution.excludedRows.has(row));
-  const convertedRetailRowsExcluded = retailResolution.excludedRows.size;
+  const terminalRows = financiallyValidRows.filter((row) =>
+    !retailResolution.convertedRows.has(row) && !retailResolution.quarantinedRows.has(row));
+  const convertedRetailRowsExcluded = retailResolution.convertedRows.size;
 
   const rows = terminalRows.map((row) => normalizeEconomicRow(row, graph));
   const salesRows = rows.filter((row) => row.isSale);
@@ -455,11 +555,11 @@ export function buildFinalInvoiceLedger({
       invalidFinancialFieldCounts,
       provisionalRowsExcluded,
       convertedRetailRowsExcluded,
+      reconciledRetailRowsExcluded: retailResolution.reconciledRows.size,
       ambiguousRetailDocuments: retailResolution.ambiguities.length,
-      ambiguousRetailRowsExcluded: retailResolution.ambiguities.reduce(
-        (total, ambiguity) => total + ambiguity.fallbackExcludedRows,
-        0,
-      ),
+      ambiguousRetailRowsExcluded: retailResolution.quarantinedRows.size,
+      ambiguousRetailRowsQuarantined: retailResolution.quarantinedRows.size,
+      ambiguousRetailNetAmount: sumFinite(retailResolution.reviewRequiredRows, "netAmount"),
       retailLineageAmbiguities: retailResolution.ambiguities.map((ambiguity) => ({ ...ambiguity })),
       linkedReturnRows: returnRows.filter((row) => row.originalInvoiceNo).length,
       unlinkedReturnRows: returnRows.filter((row) => !row.originalInvoiceNo).length,
@@ -467,6 +567,7 @@ export function buildFinalInvoiceLedger({
       actorEvents: eventRows.length,
     },
     quarantinedRows,
+    reviewRequiredRows: retailResolution.reviewRequiredRows.map((row) => ({ ...row })),
     pilotOrders: pilotRows.map((row) => ({ ...row })),
   };
 }
@@ -653,6 +754,8 @@ SELECT
   l.sourceCustomerCode,
   l.sourceLineNo,
   l.depth,
+  CASE WHEN l.sourceLineNo IS NULL THEN 'document' ELSE 'line' END lineageMatchScope,
+  CASE WHEN l.sourceLineNo IS NULL THEN 'missing-source-line' ELSE 'exact-source-line' END lineageEvidenceReason,
   CONCAT(l.documentType, '|', l.documentNo, '|', l.customerCode) documentKey,
   b.SATICINO commercialOwner,
   b.EVRAKHAZIRLAYAN preparerUser,
