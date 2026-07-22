@@ -1748,19 +1748,23 @@ test("SQL and JavaScript expose the same auditable purchase evidence fields", ()
 });
 
 test("actor history is scoped through the selected active company header id", () => {
-  assert.match(finalInvoiceLedgerSql, /JOIN\s+EVRBAS\s+historyHeader\s+ON\s+historyHeader\.SIRKETNO\s*=\s*@company/i);
-  assert.match(finalInvoiceLedgerSql, /historyHeader\.KAYITDURUM\s*=\s*1/i);
-  assert.match(finalInvoiceLedgerSql, /JOIN\s+MIREVRBAS\s+history\s+ON\s+history\.RECID\s*=\s*historyHeader\.ID/i);
-  assert.doesNotMatch(finalInvoiceLedgerSql, /JOIN\s+MIREVRBAS\s+history\s+ON\s+history\.EVRAKTIP/i);
+  assert.match(finalInvoiceLedgerSql, /header\.ID\s+headerId/i);
+  assert.match(finalInvoiceLedgerSql, /event\.rootId/i);
+  assert.match(finalInvoiceLedgerSql, /event\.lineageId/i);
+  assert.match(finalInvoiceLedgerSql, /event\.headerId/i);
+  assert.match(finalInvoiceLedgerSql, /JOIN\s+MIREVRBAS\s+history\s+ON\s+history\.RECID\s*=\s*l\.headerId/i);
+  assert.doesNotMatch(finalInvoiceLedgerSql, /JOIN\s+EVRBAS\s+historyHeader/i);
+  assert.match(finalInvoiceLedgerSql, /INTO\s+#lineageHeaders/i);
 });
 
 test("lineage ownership headers require an active company EVRBAS record", () => {
   const ownerHeaderApply = finalInvoiceLedgerSql.match(
-    /OUTER APPLY\s*\(\s*SELECT TOP \(1\) header\.\*[\s\S]*?\) b\s*ORDER BY l\.rootId/i,
+    /OUTER APPLY\s*\(\s*SELECT TOP \(1\) candidate\.\*[\s\S]*?\) header;/i,
   )?.[0] || "";
 
-  assert.match(ownerHeaderApply, /header\.SIRKETNO\s*=\s*@company/i);
-  assert.match(ownerHeaderApply, /header\.KAYITDURUM\s*=\s*1/i);
+  assert.match(ownerHeaderApply, /candidate\.SIRKETNO\s*=\s*@company/i);
+  assert.match(ownerHeaderApply, /candidate\.KAYITDURUM\s*=\s*1/i);
+  assert.match(ownerHeaderApply, /candidate\.EVRAKTARIH\s*=\s*l\.documentDate/i);
 });
 
 test("pilot orders require an active type 14 header", () => {
@@ -1772,9 +1776,16 @@ test("pilot orders require an active type 14 header", () => {
 
 test("final ledger rows expose full-chain commercial ownership audit fields", () => {
   const invoice = sale(85, "F-OWN", { rootId: "ROOT-OWN", depotCode: "MRK" });
+  const invoiceLineage = {
+    ...invoice,
+    lineageId: "ROOT-OWN",
+    headerId: "HEADER-F-OWN",
+    depth: 0,
+  };
   const order = {
     rootId: "ROOT-OWN",
     lineageId: "ORDER-OWN",
+    headerId: "HEADER-ORDER-OWN",
     documentType: 14,
     documentNo: "SSP-OWN",
     customerCode: "C-1",
@@ -1788,8 +1799,11 @@ test("final ledger rows expose full-chain commercial ownership audit fields", ()
 
   const result = buildFinalInvoiceLedger({
     economics: [invoice],
-    lineage: [order],
+    lineage: [invoiceLineage, order],
     actorEvents: [{
+      rootId: "ROOT-OWN",
+      lineageId: "ROOT-OWN",
+      headerId: "HEADER-F-OWN",
       documentKey: "85|F-OWN|C-1",
       documentType: 85,
       documentNo: "F-OWN",
@@ -1851,4 +1865,57 @@ test("linked returns inherit the original final sale ownership evidence", () => 
   assert.equal(returnRow.attributionMethod, "original-sale-owner");
   assert.equal(returnRow.sourceOrderNo, "SSP-RETURN");
   assert.equal(returnRow.ownershipEvidence.inheritedFromRootId, "SALE-ROOT");
+});
+
+test("current return inherits a prior-period standalone retail owner by stable original identity", () => {
+  const returned = sale(18, "R-PRIOR-RETAIL", {
+    rootId: "RETURN-PRIOR-RETAIL",
+    depotCode: "MRK",
+    documentDate: "2026-07-01T10:00:00+03:00",
+    originalDocumentType: 91,
+    originalDocumentNo: "PS-2025-91",
+    originalCustomerCode: "C-1",
+    originalLineNo: 1,
+    originalRootId: "PRIOR-RETAIL-91",
+  });
+  const priorRetail = {
+    rootId: "RETURN-PRIOR-RETAIL",
+    lineageId: "PRIOR-RETAIL-91",
+    headerId: "HEADER-PRIOR-RETAIL-91",
+    documentType: 91,
+    documentNo: "PS-2025-91",
+    customerCode: "C-1",
+    lineNo: 1,
+    documentDate: "2025-06-15T11:00:00+03:00",
+    depth: 1,
+    depotCode: "YTM",
+  };
+
+  const result = buildFinalInvoiceLedger({
+    economics: [returned],
+    lineage: [priorRetail],
+    actorEvents: [{
+      rootId: "RETURN-PRIOR-RETAIL",
+      lineageId: "PRIOR-RETAIL-91",
+      headerId: "HEADER-PRIOR-RETAIL-91",
+      documentType: 91,
+      documentNo: "PS-2025-91",
+      customerCode: "C-1",
+      actorCode: "BCETINEL",
+      actorRole: "history-entry",
+      sourceType: "MIREVRBAS",
+      firstSeen: "2025-06-15T11:05:00+03:00",
+    }],
+  });
+  const returnRow = result.rows[0];
+
+  assert.equal(returnRow.originalRootId, "PRIOR-RETAIL-91");
+  assert.equal(returnRow.commercialOwner, "BCETINEL");
+  assert.equal(returnRow.commercialOwnerName, "Burak Çetinel");
+  assert.equal(returnRow.department, "service");
+  assert.equal(returnRow.attributionMethod, "original-sale-owner");
+  assert.equal(returnRow.fulfillmentDepotCode, "MRK");
+  assert.equal(returnRow.crossDepot, true);
+  assert.equal(returnRow.ownershipEvidence.inheritedFromRootId, "PRIOR-RETAIL-91");
+  assert.equal(returnRow.ownershipEvidence.inheritedFromDocumentNo, "PS-2025-91");
 });

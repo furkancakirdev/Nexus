@@ -4,7 +4,15 @@ const NON_COMMERCIAL_CODES = new Set([
 
 const UPSTREAM_DOCUMENT_TYPES = new Set([13, 14, 15, 64]);
 const SOURCE_SELLER_DOCUMENT_TYPES = new Set([13, 14]);
-const REAL_HISTORY_ROLES = new Set(["history-entry", "history-change"]);
+const OWNER_EVIDENCE_ROLES = new Set([
+  "history-entry", "commercial-action", "sales-action", "owner-assignment",
+]);
+const ISTANBUL_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  timeZone: "Europe/Istanbul",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
 
 export const DEFAULT_IDENTITIES = Object.freeze({
   FURKAN: {
@@ -71,8 +79,27 @@ function number(value) {
 
 function dateOnly(value) {
   if (!value) return null;
-  const parsed = new Date(value);
-  return Number.isFinite(parsed.getTime()) ? parsed.toISOString().slice(0, 10) : null;
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    const match = normalized.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!match) return null;
+    const [, yearText, monthText, dayText] = match;
+    const calendarCheck = new Date(Date.UTC(
+      Number(yearText), Number(monthText) - 1, Number(dayText),
+    ));
+    if (calendarCheck.getUTCFullYear() !== Number(yearText)
+      || calendarCheck.getUTCMonth() !== Number(monthText) - 1
+      || calendarCheck.getUTCDate() !== Number(dayText)) return null;
+    const hasExplicitZone = /(?:Z|[+-]\d{2}:\d{2})$/i.test(normalized);
+    if (!hasExplicitZone) return `${yearText}-${monthText}-${dayText}`;
+  }
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return null;
+  const parts = Object.fromEntries(ISTANBUL_DATE_FORMATTER
+    .formatToParts(parsed)
+    .filter((part) => part.type !== "literal")
+    .map((part) => [part.type, part.value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
 function timestamp(value) {
@@ -149,6 +176,14 @@ function documentKey(row) {
   return `${Number(row?.documentType)}|${text(row?.documentNo)}|${text(row?.customerCode)}`;
 }
 
+function stableEvidenceKey(row) {
+  const rootId = text(row?.rootId);
+  const lineageId = text(row?.lineageId ?? row?.ancestorId);
+  const headerId = text(row?.headerId ?? row?.recId);
+  if (!rootId || !lineageId || !headerId) return null;
+  return `${rootId}|${lineageId}|${headerId}`;
+}
+
 function eventKey(row) {
   return text(row?.documentKey) || documentKey(row);
 }
@@ -159,7 +194,12 @@ function normalizeDocuments(economic, lineage) {
   const candidates = [...(Array.isArray(lineage) ? lineage : []), { ...economic, depth: 0 }];
   for (const row of candidates) {
     if (!row || !text(row.documentNo) || !Number.isInteger(Number(row.documentType))) continue;
-    const identity = `${documentKey(row)}|${text(row.lineNo)}|${text(row.lineageId ?? row.ancestorId ?? row.rootId)}`;
+    const matchingStableDocument = documents.find((candidate) => (
+      text(candidate.rootId) === text(row.rootId) && documentKey(candidate) === documentKey(row)
+    ));
+    if (!stableEvidenceKey(row) && matchingStableDocument) continue;
+    const identity = stableEvidenceKey(row)
+      || `${text(row.rootId)}|${documentKey(row)}|${text(row.lineNo)}`;
     if (seen.has(identity)) continue;
     seen.add(identity);
     documents.push({ ...row, depth: number(row.depth) });
@@ -172,9 +212,9 @@ function normalizeDocuments(economic, lineage) {
 }
 
 function relevantEvents(actorEvents, documents) {
-  const keys = new Set(documents.map(documentKey));
+  const keys = new Set(documents.map(stableEvidenceKey).filter(Boolean));
   return (Array.isArray(actorEvents) ? actorEvents : [])
-    .filter((event) => keys.has(eventKey(event)))
+    .filter((event) => keys.has(stableEvidenceKey(event)))
     .map((event) => ({ ...event }))
     .sort((left, right) => (
       timestamp(left.firstSeen) - timestamp(right.firstSeen)
@@ -183,29 +223,57 @@ function relevantEvents(actorEvents, documents) {
     ));
 }
 
-function isRealHistoryEvent(event) {
+function isOwnerEvidenceEvent(event) {
   return String(event?.sourceType || "").toLocaleUpperCase("tr-TR") === "MIREVRBAS"
-    && REAL_HISTORY_ROLES.has(String(event?.actorRole || "").toLocaleLowerCase("tr-TR"));
+    && OWNER_EVIDENCE_ROLES.has(String(event?.actorRole || "").toLocaleLowerCase("tr-TR"));
+}
+
+function sourceTimestampStatus(row, economic) {
+  const sourceTimestamp = timestamp(row?.documentDate);
+  const finalTimestamp = timestamp(economic?.documentDate);
+  if (!Number.isFinite(sourceTimestamp) || !Number.isFinite(finalTimestamp)) {
+    return { valid: false, reason: "unproven-source-timestamp" };
+  }
+  if (sourceTimestamp > finalTimestamp) {
+    return { valid: false, reason: "source-after-final" };
+  }
+  return { valid: true, reason: null };
 }
 
 function isPlausibleSourceDocument(row, economic) {
   const sameDocument = documentKey(row) === documentKey(economic);
-  if (sameDocument) return Number(economic?.documentType) === 14;
+  if (sameDocument && Number(economic?.documentType) !== 14) return false;
   if (number(row?.depth) <= 0) return false;
-  const rowDate = timestamp(row?.documentDate);
-  const economicDate = timestamp(economic?.documentDate);
-  return rowDate === Number.POSITIVE_INFINITY
-    || economicDate === Number.POSITIVE_INFINITY
-    || rowDate <= economicDate;
+  return sourceTimestampStatus(row, economic).valid;
+}
+
+function addExcludedActor(excludedActors, item) {
+  if (!excludedActors.some((candidate) => (
+    candidate.code === item.code
+    && candidate.reason === item.reason
+    && candidate.source === item.source
+  ))) excludedActors.push(item);
 }
 
 function actorEvidence(value, atDate, identities, excludedActors, source) {
   const resolved = resolveIdentity(value, atDate, identities);
   if (!resolved.valid) {
-    if (resolved.code) excludedActors.push({ code: resolved.code, reason: resolved.reason, source });
+    if (resolved.code) addExcludedActor(
+      excludedActors,
+      { code: resolved.code, reason: resolved.reason, source },
+    );
     return null;
   }
   return resolved;
+}
+
+function actorEventEvidence(event, identities, excludedActors, source) {
+  const code = normalizeActorCode(event?.actorCode);
+  if (!dateOnly(event?.firstSeen)) {
+    if (code) addExcludedActor(excludedActors, { code, reason: "invalid-event-date", source });
+    return null;
+  }
+  return actorEvidence(event.actorCode, event.firstSeen, identities, excludedActors, source);
 }
 
 function selectedResult({
@@ -262,12 +330,27 @@ export function resolveCommercialOwnership({
   const identities = identityRegistry(identityOverrides);
   const evidenceDocuments = normalizeDocuments(economic, lineage);
   const events = relevantEvents(actorEvents, evidenceDocuments);
-  const documentByKey = new Map(evidenceDocuments.map((row) => [documentKey(row), row]));
+  const documentByStableKey = new Map(evidenceDocuments
+    .map((row) => [stableEvidenceKey(row), row])
+    .filter(([stableKey]) => Boolean(stableKey)));
   const excludedActors = [];
+  const invalidSourceDocuments = evidenceDocuments
+    .filter((row) => number(row.depth) > 0 && UPSTREAM_DOCUMENT_TYPES.has(Number(row.documentType)))
+    .flatMap((row) => {
+      const status = sourceTimestampStatus(row, economic);
+      return status.valid ? [] : [{
+        documentType: Number(row.documentType),
+        documentNo: text(row.documentNo),
+        customerCode: text(row.customerCode),
+        lineageId: text(row.lineageId) || null,
+        headerId: text(row.headerId) || null,
+        reason: status.reason,
+      }];
+    });
   const sourceOrders = evidenceDocuments.filter((row) => (
     Number(row.documentType) === 14 && isPlausibleSourceDocument(row, economic)
   ));
-  const sourceOrderNo = sourceOrders[0]?.documentNo || null;
+  const traceSourceOrderNo = sourceOrders[0]?.documentNo || null;
   const fulfillmentDepot = normalizeDepot(
     economic.depotCode || evidenceDocuments.find((row) => number(row.depth) === 0)?.depotCode,
   );
@@ -276,22 +359,15 @@ export function resolveCommercialOwnership({
     excludedActors,
     conflictingActors: [],
     candidateOwnerCode: null,
+    invalidSourceDocuments,
   };
 
   for (const event of events) {
-    const eventDocument = documentByKey.get(eventKey(event));
-    const resolved = resolveIdentity(
-      event.actorCode,
-      eventDocument?.documentDate || event.firstSeen || economic.documentDate,
-      identities,
-    );
-    if (!resolved.valid && resolved.code) {
-      excludedActors.push({ code: resolved.code, reason: resolved.reason, source: eventKey(event) });
-    }
+    actorEventEvidence(event, identities, excludedActors, eventKey(event));
   }
 
-  // Makro siparişi, açık departman ve sahip birlikte taşındığında en güçlü kanıttır.
-  for (const row of sourceOrders) {
+  // Makro sahibi, departmanı ve sipariş kimliği aynı doğrulanmış adaydan atomik seçilir.
+  const macroCandidates = sourceOrders.flatMap((row) => {
     const department = departmentFromCode(row.departmentCode);
     const selected = actorEvidence(
       row.commercialOwner,
@@ -300,13 +376,52 @@ export function resolveCommercialOwnership({
       excludedActors,
       "macro-source-order",
     );
-    if (!department || !selected) continue;
+    if (!department || !selected) return [];
+    return [{ row, department, selected }];
+  });
+  const macroSignatures = new Set(macroCandidates.map((candidate) => (
+    `${candidate.selected.code}|${candidate.department}`
+  )));
+  if (macroSignatures.size > 1) {
+    return selectedResult({
+      department: "review",
+      method: "macro-conflict",
+      confidence: "review",
+      evidence: {
+        ...baseEvidence,
+        macroConflicts: macroCandidates.map(({ row, department, selected }) => ({
+          ownerCode: selected.code,
+          department,
+          documentNo: text(row.documentNo),
+          lineageId: text(row.lineageId) || null,
+          headerId: text(row.headerId) || null,
+        })),
+      },
+      evidenceDocuments,
+      actorEvents: events,
+      sourceOrderNo: null,
+      fulfillmentDepot,
+    });
+  }
+  if (macroCandidates.length > 0) {
+    const { row, department, selected } = macroCandidates[0];
+    const sourceOrderNo = text(row.documentNo) || null;
     return selectedResult({
       selected,
       department,
       method: "macro-source-order",
       confidence: "confirmed",
-      evidence: { ...baseEvidence, selected: { code: selected.code, documentKey: documentKey(row) } },
+      evidence: {
+        ...baseEvidence,
+        selected: {
+          code: selected.code,
+          department,
+          sourceOrderNo,
+          documentKey: documentKey(row),
+          lineageId: text(row.lineageId) || null,
+          headerId: text(row.headerId) || null,
+        },
+      },
       evidenceDocuments,
       actorEvents: events,
       sourceOrderNo,
@@ -314,12 +429,13 @@ export function resolveCommercialOwnership({
     });
   }
 
-  const realEvents = events.filter(isRealHistoryEvent);
-  const realEventsByDocument = new Map();
-  for (const event of realEvents) {
-    const key = eventKey(event);
-    if (!realEventsByDocument.has(key)) realEventsByDocument.set(key, []);
-    realEventsByDocument.get(key).push(event);
+  const ownerEvents = events.filter(isOwnerEvidenceEvent);
+  const ownerEventsByDocument = new Map();
+  for (const event of ownerEvents) {
+    const key = stableEvidenceKey(event);
+    if (!key) continue;
+    if (!ownerEventsByDocument.has(key)) ownerEventsByDocument.set(key, []);
+    ownerEventsByDocument.get(key).push(event);
   }
 
   // Kaynak SATICINO, yalnızca aynı belgede gerçek MIREVRBAS işlemi varsa kabul edilir.
@@ -329,15 +445,18 @@ export function resolveCommercialOwnership({
   ))) {
     const sellerCode = normalizeActorCode(row.commercialOwner);
     if (!sellerCode) continue;
-    const supportingEvent = (realEventsByDocument.get(documentKey(row)) || [])
+    const supportingEvent = (ownerEventsByDocument.get(stableEvidenceKey(row)) || [])
       .find((event) => normalizeActorCode(event.actorCode) === sellerCode);
     if (!supportingEvent) {
-      excludedActors.push({ code: sellerCode, reason: "seller-without-real-event", source: documentKey(row) });
+      excludedActors.push({
+        code: sellerCode,
+        reason: "seller-without-stable-entry-event",
+        source: stableEvidenceKey(row) || documentKey(row),
+      });
       continue;
     }
-    const selected = actorEvidence(
-      sellerCode,
-      row.documentDate || supportingEvent.firstSeen || economic.documentDate,
+    const selected = actorEventEvidence(
+      supportingEvent,
       identities,
       excludedActors,
       "supported-source-seller",
@@ -351,21 +470,20 @@ export function resolveCommercialOwnership({
       evidence: { ...baseEvidence, selected: { code: selected.code, documentKey: documentKey(row) } },
       evidenceDocuments,
       actorEvents: events,
-      sourceOrderNo,
+      sourceOrderNo: traceSourceOrderNo,
       fulfillmentDepot,
     });
   }
 
   const standaloneRetail = Number(economic.documentType) === 91;
-  const historyCandidates = realEvents.flatMap((event) => {
-    const sourceDocument = documentByKey.get(eventKey(event));
+  const historyCandidates = ownerEvents.flatMap((event) => {
+    const sourceDocument = documentByStableKey.get(stableEvidenceKey(event));
     const isUpstream = isPlausibleSourceDocument(sourceDocument, economic)
       && UPSTREAM_DOCUMENT_TYPES.has(Number(sourceDocument?.documentType));
     const isRetailHistory = standaloneRetail && Number(sourceDocument?.documentType) === 91;
     if (!isUpstream && !isRetailHistory) return [];
-    const selected = actorEvidence(
-      event.actorCode,
-      event.firstSeen || sourceDocument?.documentDate || economic.documentDate,
+    const selected = actorEventEvidence(
+      event,
       identities,
       excludedActors,
       eventKey(event),
@@ -395,7 +513,7 @@ export function resolveCommercialOwnership({
       },
       evidenceDocuments,
       actorEvents: events,
-      sourceOrderNo,
+      sourceOrderNo: traceSourceOrderNo,
       fulfillmentDepot,
     });
   }
@@ -426,7 +544,7 @@ export function resolveCommercialOwnership({
       },
       evidenceDocuments,
       actorEvents: events,
-      sourceOrderNo,
+      sourceOrderNo: traceSourceOrderNo,
       fulfillmentDepot,
     });
   }
@@ -453,7 +571,7 @@ export function resolveCommercialOwnership({
       },
       evidenceDocuments,
       actorEvents: events,
-      sourceOrderNo,
+      sourceOrderNo: traceSourceOrderNo,
       fulfillmentDepot,
     });
   }
@@ -469,7 +587,7 @@ export function resolveCommercialOwnership({
       evidence: baseEvidence,
       evidenceDocuments,
       actorEvents: events,
-      sourceOrderNo,
+      sourceOrderNo: traceSourceOrderNo,
       fulfillmentDepot,
     });
   }
@@ -481,7 +599,7 @@ export function resolveCommercialOwnership({
     evidence: baseEvidence,
     evidenceDocuments,
     actorEvents: events,
-    sourceOrderNo,
+    sourceOrderNo: traceSourceOrderNo,
     fulfillmentDepot,
   });
 }

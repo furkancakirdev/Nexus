@@ -13,15 +13,26 @@ function economic(overrides = {}) {
 }
 
 function evidence(overrides = {}) {
-  return {
-    rootId: 1, documentType: 85, documentNo: "SF-1", customerCode: "C-1", depth: 0,
+  const row = {
+    rootId: 1, documentType: 85, documentNo: "SF-1",
+    documentDate: "2026-07-01T00:00:00.000Z", customerCode: "C-1", depth: 0,
     commercialOwner: null, preparerUser: "CAN", entryUser: "CAN",
     departmentCode: null, depotCode: "MRK", ...overrides,
+  };
+  return {
+    ...row,
+    lineageId: overrides.lineageId
+      ?? `LINE|${row.rootId}|${row.documentType}|${row.documentNo}|${row.customerCode}`,
+    headerId: overrides.headerId
+      ?? `HEADER|${row.documentType}|${row.documentNo}|${row.customerCode}`,
   };
 }
 
 function actor(documentRow, actorCode, overrides = {}) {
   return {
+    rootId: documentRow.rootId,
+    lineageId: documentRow.lineageId,
+    headerId: documentRow.headerId,
     documentKey: `${documentRow.documentType}|${documentRow.documentNo}|C-1`,
     documentType: documentRow.documentType,
     documentNo: documentRow.documentNo,

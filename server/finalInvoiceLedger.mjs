@@ -1080,6 +1080,30 @@ function linkedReturnOwnership(row, original, directOwnership) {
   };
 }
 
+function priorPeriodOriginalOwnership(row, lineageRows, actorEvents, identities) {
+  const originalRootId = text(row.originalRootId);
+  if (!originalRootId) return null;
+  const original = lineageRows.find((candidate) => {
+    if (text(candidate?.lineageId ?? candidate?.ancestorId) !== originalRootId) return false;
+    if (Number(candidate?.documentType) !== Number(row.originalDocumentType)) return false;
+    if (text(candidate?.documentNo) !== text(row.originalDocumentNo)) return false;
+    if (text(row.originalCustomerCode)
+      && text(candidate?.customerCode) !== text(row.originalCustomerCode)) return false;
+    if (text(row.originalLineNo) && text(candidate?.lineNo) !== text(row.originalLineNo)) return false;
+    return true;
+  });
+  if (!original) return null;
+
+  const ownership = resolveCommercialOwnership({
+    economic: { ...original, rootId: row.rootId, depth: 0 },
+    lineage: lineageRows,
+    actorEvents,
+    identities,
+  });
+  if (!ownership.ownerCode) return null;
+  return { ...original, ...ownershipFields(ownership) };
+}
+
 /**
  * Bir CPM satirinin ekonomik olarak nihai olup olmadigini belirler.
  * Tip 91, yalnizca 17/85 alt belgesi yoksa ekonomik satirdir.
@@ -1180,11 +1204,13 @@ export function buildFinalInvoiceLedger({
     .map((row) => [text(row.rootId), row]));
   const rows = directlyOwnedRows.map((row) => {
     if (row.isSale || !text(row.originalRootId)) return row;
-    const original = salesByRoot.get(text(row.originalRootId));
+    const rowLineage = lineageByRoot.get(text(row.rootId)) || [];
+    const original = salesByRoot.get(text(row.originalRootId))
+      || priorPeriodOriginalOwnership(row, rowLineage, eventRows, identities);
     if (!original) return row;
     const directOwnership = resolveCommercialOwnership({
       economic: row,
-      lineage: lineageByRoot.get(text(row.rootId)) || [],
+      lineage: rowLineage,
       actorEvents: eventRows,
       identities,
     });
@@ -1816,10 +1842,34 @@ INTO #lineage
 FROM lineage
 OPTION (MAXRECURSION 100);
 
+SELECT
+  l.*,
+  header.ID headerId,
+  header.SATICINO commercialOwner,
+  header.EVRAKHAZIRLAYAN preparerUser,
+  header.GIRENKULLANICI entryUser,
+  header.GIRENTARIH entryDate,
+  header.DEGISTIRENKULLANICI modifierUser,
+  header.DEGISTIRENTARIH modifiedDate
+INTO #lineageHeaders
+FROM #lineage l
+OUTER APPLY (
+  SELECT TOP (1) candidate.*
+  FROM EVRBAS candidate
+  WHERE candidate.SIRKETNO = @company
+    AND candidate.KAYITDURUM = 1
+    AND candidate.EVRAKTIP = l.documentType
+    AND candidate.EVRAKNO = l.documentNo
+    AND candidate.HESAPKOD = l.customerCode
+    AND candidate.EVRAKTARIH = l.documentDate
+  ORDER BY candidate.ID DESC
+) header;
+
 /* recordset: 2 */
 SELECT
   l.rootId,
   l.lineageId,
+  l.headerId,
   l.documentType,
   l.documentNo,
   l.customerCode,
@@ -1835,27 +1885,20 @@ SELECT
   CASE WHEN l.sourceLineNo IS NULL THEN 'document' ELSE 'line' END lineageMatchScope,
   CASE WHEN l.sourceLineNo IS NULL THEN 'missing-source-line' ELSE 'exact-source-line' END lineageEvidenceReason,
   CONCAT(l.documentType, '|', l.documentNo, '|', l.customerCode) documentKey,
-  b.SATICINO commercialOwner,
-  b.EVRAKHAZIRLAYAN preparerUser,
-  b.GIRENKULLANICI entryUser,
-  b.GIRENTARIH entryDate,
-  b.DEGISTIRENKULLANICI modifierUser,
-  b.DEGISTIRENTARIH modifiedDate
-FROM #lineage l
-OUTER APPLY (
-  SELECT TOP (1) header.*
-  FROM EVRBAS header
-  WHERE header.SIRKETNO = @company
-    AND header.KAYITDURUM = 1
-    AND header.EVRAKTIP = l.documentType
-    AND header.EVRAKNO = l.documentNo
-    AND header.HESAPKOD = l.customerCode
-  ORDER BY header.ID DESC
-) b
+  l.commercialOwner,
+  l.preparerUser,
+  l.entryUser,
+  l.entryDate,
+  l.modifierUser,
+  l.modifiedDate
+FROM #lineageHeaders l
 ORDER BY l.rootId, l.depth DESC, l.lineageId;
 
 /* recordset: 3 */
 SELECT
+  event.rootId,
+  event.lineageId,
+  event.headerId,
   event.documentKey,
   event.documentType,
   event.documentNo,
@@ -1868,6 +1911,9 @@ SELECT
   MAX(event.eventDate) lastSeen
 FROM (
   SELECT DISTINCT
+    l.rootId,
+    l.lineageId,
+    l.headerId,
     CONCAT(l.documentType, '|', l.documentNo, '|', l.customerCode) documentKey,
     l.documentType,
     l.documentNo,
@@ -1876,16 +1922,14 @@ FROM (
     CAST('history-entry' AS varchar(32)) actorRole,
     CAST('MIREVRBAS' AS varchar(16)) sourceType,
     history.GIRENTARIH eventDate
-  FROM #lineage l
-  JOIN EVRBAS historyHeader ON historyHeader.SIRKETNO = @company
-    AND historyHeader.KAYITDURUM = 1
-    AND historyHeader.EVRAKTIP = l.documentType
-    AND historyHeader.EVRAKNO = l.documentNo
-    AND historyHeader.HESAPKOD = l.customerCode
-  JOIN MIREVRBAS history ON history.RECID = historyHeader.ID
+  FROM #lineageHeaders l
+  JOIN MIREVRBAS history ON history.RECID = l.headerId
   WHERE NULLIF(LTRIM(RTRIM(history.GIRENKULLANICI)), '') IS NOT NULL
   UNION ALL
   SELECT DISTINCT
+    l.rootId,
+    l.lineageId,
+    l.headerId,
     CONCAT(l.documentType, '|', l.documentNo, '|', l.customerCode),
     l.documentType,
     l.documentNo,
@@ -1894,16 +1938,14 @@ FROM (
     'history-change',
     'MIREVRBAS',
     history.DEGISTIRENTARIH
-  FROM #lineage l
-  JOIN EVRBAS historyHeader ON historyHeader.SIRKETNO = @company
-    AND historyHeader.KAYITDURUM = 1
-    AND historyHeader.EVRAKTIP = l.documentType
-    AND historyHeader.EVRAKNO = l.documentNo
-    AND historyHeader.HESAPKOD = l.customerCode
-  JOIN MIREVRBAS history ON history.RECID = historyHeader.ID
+  FROM #lineageHeaders l
+  JOIN MIREVRBAS history ON history.RECID = l.headerId
   WHERE NULLIF(LTRIM(RTRIM(history.DEGISTIRENKULLANICI)), '') IS NOT NULL
   UNION ALL
   SELECT DISTINCT
+    l.rootId,
+    l.lineageId,
+    l.headerId,
     CONCAT(l.documentType, '|', l.documentNo, '|', l.customerCode),
     l.documentType,
     l.documentNo,
@@ -1912,7 +1954,7 @@ FROM (
     CASE WHEN approval.SONLANDIR = 1 THEN 'terminal-approval' ELSE 'approval' END,
     'EVRONY',
     approval.ONAYTARIH
-  FROM #lineage l
+  FROM #lineageHeaders l
   JOIN EVRONY approval ON approval.SIRKETNO = @company
     AND approval.EVRAKTIP = l.documentType
     AND approval.EVRAKNO = l.documentNo
@@ -1920,7 +1962,8 @@ FROM (
   WHERE NULLIF(LTRIM(RTRIM(approval.ONAYLAYANKULLANICI)), '') IS NOT NULL
 ) event
 WHERE event.actorCode IS NOT NULL
-GROUP BY event.documentKey, event.documentType, event.documentNo, event.customerCode,
+GROUP BY event.rootId, event.lineageId, event.headerId,
+  event.documentKey, event.documentType, event.documentNo, event.customerCode,
   event.actorCode, event.actorRole, event.sourceType;
 
 /* recordset: 4 */
@@ -1951,6 +1994,7 @@ GROUP BY b.EVRAKTIP, b.EVRAKNO, b.HESAPKOD, b.EVRAKTARIH,
   b.SATICINO, b.EVRAKHAZIRLAYAN, b.GIRENKULLANICI, b.DEGISTIRENKULLANICI
 ORDER BY b.EVRAKTARIH DESC, b.EVRAKNO DESC;
 
+DROP TABLE #lineageHeaders;
 DROP TABLE #lineage;
 DROP TABLE #economics;
 `;

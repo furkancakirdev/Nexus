@@ -3,7 +3,7 @@ import test from "node:test";
 import { resolveCommercialOwnership } from "./ownershipResolver.mjs";
 
 function document(overrides = {}) {
-  return {
+  const row = {
     rootId: "ROOT-1",
     documentType: 85,
     documentNo: "F-1",
@@ -18,10 +18,22 @@ function document(overrides = {}) {
     modifierUser: null,
     ...overrides,
   };
+  return {
+    ...row,
+    lineageId: Object.hasOwn(overrides, "lineageId")
+      ? overrides.lineageId
+      : `LINE|${row.documentType}|${row.documentNo}|${row.customerCode}`,
+    headerId: Object.hasOwn(overrides, "headerId")
+      ? overrides.headerId
+      : `HEADER|${row.documentType}|${row.documentNo}|${row.customerCode}`,
+  };
 }
 
 function actor(documentRow, actorCode, overrides = {}) {
   return {
+    rootId: documentRow.rootId,
+    lineageId: documentRow.lineageId,
+    headerId: documentRow.headerId,
     documentKey: `${documentRow.documentType}|${documentRow.documentNo}|${documentRow.customerCode}`,
     documentType: documentRow.documentType,
     documentNo: documentRow.documentNo,
@@ -109,6 +121,33 @@ test("ignores Bircan and terminal invoice modifiers", () => {
   assert.equal(result.evidence.excludedActors.some((item) => item.code === "BIRCAN"), true);
 });
 
+test("history-change is audit-only and cannot support source SATICINO", () => {
+  const source = document({
+    documentType: 14,
+    documentNo: "SSP-MODIFIER",
+    documentDate: "2026-06-29T00:00:00",
+    depth: 2,
+    commercialOwner: "CBELIKIRIK",
+  });
+  const result = resolveCommercialOwnership(caseEvidence({
+    lineage: [document(), source],
+    actorEvents: [
+      actor(source, "MKARA", { firstSeen: "2026-06-29T08:00:00" }),
+      actor(source, "CBELIKIRIK", {
+        actorRole: "history-change",
+        firstSeen: "2026-06-29T09:00:00",
+      }),
+    ],
+  }));
+
+  assert.equal(result.ownerCode, "MKARA");
+  assert.equal(result.method, "upstream-history");
+  assert.equal(result.confidence, "inferred");
+  assert.equal(result.actorEvents.some((event) => (
+    event.actorCode === "CBELIKIRIK" && event.actorRole === "history-change"
+  )), true);
+});
+
 test("source SATICINO is used only when a real actor event supports it", () => {
   const source = document({
     documentType: 14,
@@ -126,6 +165,35 @@ test("source SATICINO is used only when a real actor event supports it", () => {
   assert.equal(result.ownerCode, "MKARA");
   assert.equal(result.method, "upstream-history");
   assert.equal(result.evidence.excludedActors.some((item) => item.code === "FURKAN"), true);
+});
+
+test("reused document text cannot support a seller through another header identity", () => {
+  const source = document({
+    lineageId: "LINE-SOURCE-A",
+    headerId: "HEADER-SOURCE-A",
+    documentType: 14,
+    documentNo: "SSP-REUSED",
+    documentDate: "2026-06-29T00:00:00",
+    depth: 2,
+    commercialOwner: "FURKAN",
+  });
+  const result = resolveCommercialOwnership(caseEvidence({
+    lineage: [document(), source],
+    actorEvents: [
+      actor(source, "FURKAN", {
+        lineageId: "LINE-OTHER-PERIOD",
+        headerId: "HEADER-OTHER-PERIOD",
+        firstSeen: "2026-01-02T08:00:00",
+      }),
+      actor(source, "MKARA", { firstSeen: "2026-06-29T08:00:00" }),
+    ],
+  }));
+
+  assert.equal(result.ownerCode, "MKARA");
+  assert.equal(result.method, "upstream-history");
+  assert.equal(result.evidence.excludedActors.some((item) => (
+    item.code === "FURKAN" && item.reason === "seller-without-stable-entry-event"
+  )), true);
 });
 
 test("a later document cannot masquerade as the source order", () => {
@@ -151,6 +219,97 @@ test("a later document cannot masquerade as the source order", () => {
   assert.equal(result.ownerCode, "MKARA");
   assert.equal(result.method, "upstream-history");
   assert.equal(result.sourceOrderNo, null);
+});
+
+test("undated or invalid-dated macro sources cannot become confirmed", () => {
+  for (const [sourceDate, finalDate] of [
+    [null, "2026-07-01T10:00:00"],
+    ["2026-06-29T10:00:00", "invalid-final-date"],
+  ]) {
+    const source = document({
+      documentType: 14,
+      documentNo: `SSP-UNDATED-${String(sourceDate)}`,
+      documentDate: sourceDate,
+      depth: 2,
+      commercialOwner: "FURKAN",
+      departmentCode: "SERVIS",
+      depotCode: null,
+    });
+    const result = resolveCommercialOwnership(caseEvidence({
+      economic: { documentDate: finalDate, depotCode: null },
+      lineage: [source],
+    }));
+
+    assert.equal(result.ownerCode, null);
+    assert.equal(result.department, "review");
+    assert.equal(result.method, "review-required");
+    assert.equal(result.confidence, "review");
+    assert.equal(result.sourceOrderNo, null);
+    assert.equal(result.evidence.invalidSourceDocuments.some((item) => (
+      item.documentNo === source.documentNo && item.reason === "unproven-source-timestamp"
+    )), true);
+  }
+});
+
+test("valid macro candidate atomically supplies owner department and order number", () => {
+  const invalid = document({
+    documentType: 14,
+    documentNo: "SSP-INVALID-OWNER",
+    documentDate: "2026-06-20T10:00:00",
+    depth: 4,
+    commercialOwner: "BIRCAN",
+    departmentCode: "SERVIS",
+  });
+  const valid = document({
+    documentType: 14,
+    documentNo: "SSP-VALID-OWNER",
+    documentDate: "2026-06-21T10:00:00",
+    depth: 3,
+    commercialOwner: "FURKAN",
+    departmentCode: "SERVIS",
+  });
+  const result = resolveCommercialOwnership(caseEvidence({
+    lineage: [document(), invalid, valid],
+  }));
+
+  assert.equal(result.ownerCode, "FURKAN");
+  assert.equal(result.department, "service");
+  assert.equal(result.sourceOrderNo, "SSP-VALID-OWNER");
+  assert.equal(result.evidence.selected.sourceOrderNo, "SSP-VALID-OWNER");
+  assert.equal(result.evidence.selected.headerId, valid.headerId);
+  assert.equal(result.evidence.selected.lineageId, valid.lineageId);
+});
+
+test("conflicting same-rank macro candidates are quarantined for review", () => {
+  const serviceOrder = document({
+    documentType: 14,
+    documentNo: "SSP-CONFLICT-SERVICE",
+    documentDate: "2026-06-20T10:00:00",
+    depth: 3,
+    commercialOwner: "FURKAN",
+    departmentCode: "SERVIS",
+  });
+  const partsOrder = document({
+    documentType: 14,
+    documentNo: "SSP-CONFLICT-PARTS",
+    documentDate: "2026-06-21T10:00:00",
+    depth: 3,
+    commercialOwner: "CBELIKIRIK",
+    departmentCode: "YEDEK PARCA SATIS",
+  });
+  const result = resolveCommercialOwnership(caseEvidence({
+    lineage: [document(), serviceOrder, partsOrder],
+  }));
+
+  assert.equal(result.ownerCode, null);
+  assert.equal(result.department, "review");
+  assert.equal(result.method, "macro-conflict");
+  assert.equal(result.confidence, "review");
+  assert.equal(result.sourceOrderNo, null);
+  assert.deepEqual(
+    result.evidence.macroConflicts.map((item) => [item.ownerCode, item.department]).sort(),
+    [["CBELIKIRIK", "parts"], ["FURKAN", "service"]],
+  );
 });
 
 test("rejects stale OGENCOGLU template evidence after June 2024", () => {
@@ -243,12 +402,91 @@ test("uses the real actor event date instead of a later document date", () => {
   const result = resolveCommercialOwnership(caseEvidence({
     economic: { documentDate: "2026-05-26T00:00:00.000Z" },
     lineage: [source],
-    actorEvents: [actor(source, "TSEMİZ", { firstSeen: "2026-05-25T23:55:00.000Z" })],
+    actorEvents: [actor(source, "TSEMİZ", { firstSeen: "2026-05-25T23:55:00+03:00" })],
   }));
 
   assert.equal(result.ownerCode, "TSEMIZ");
   assert.equal(result.department, "service");
   assert.equal(result.ownerLocation, "Yatmarin");
+});
+
+test("supported source seller uses the actual entry event date", () => {
+  const source = document({
+    documentType: 14,
+    documentNo: "SSP-TSEMIZ-EVENT",
+    documentDate: "2026-05-26T09:00:00",
+    depth: 2,
+    commercialOwner: "TSEMİZ",
+  });
+  const result = resolveCommercialOwnership(caseEvidence({
+    economic: { documentDate: "2026-05-26T10:00:00" },
+    lineage: [source],
+    actorEvents: [actor(source, "TSEMİZ", { firstSeen: "2026-05-25T23:55:00+03:00" })],
+  }));
+
+  assert.equal(result.ownerCode, "TSEMIZ");
+  assert.equal(result.department, "service");
+  assert.equal(result.method, "supported-source-seller");
+});
+
+test("undated actor event cannot borrow the document date for effective identity", () => {
+  const source = document({
+    documentType: 14,
+    documentNo: "SSP-TSEMIZ-NO-EVENT-DATE",
+    documentDate: "2026-05-26T09:00:00",
+    depth: 2,
+    commercialOwner: "TSEMİZ",
+    depotCode: null,
+  });
+  const result = resolveCommercialOwnership(caseEvidence({
+    economic: { documentDate: "2026-05-26T10:00:00", depotCode: null },
+    lineage: [source],
+    actorEvents: [actor(source, "TSEMİZ", { firstSeen: null })],
+  }));
+
+  assert.equal(result.ownerCode, null);
+  assert.equal(result.department, "review");
+  assert.equal(result.method, "review-required");
+  assert.equal(result.evidence.excludedActors.some((item) => (
+    item.code === "TSEMIZ" && item.reason === "invalid-event-date"
+  )), true);
+});
+
+test("Istanbul midnight keeps TSEMIZ on the May 26 assignment", () => {
+  const source = document({
+    documentType: 13,
+    documentNo: "TKL-TSEMIZ-MIDNIGHT",
+    documentDate: "2026-05-26T00:30:00+03:00",
+    depth: 2,
+  });
+  const result = resolveCommercialOwnership(caseEvidence({
+    economic: { documentDate: "2026-05-26T10:00:00+03:00" },
+    lineage: [source],
+    actorEvents: [actor(source, "TSEMİZ", { firstSeen: "2026-05-26T00:30:00+03:00" })],
+  }));
+
+  assert.equal(result.department, "parts");
+  assert.equal(result.ownerLocation, "Merkez Ofis");
+});
+
+test("Istanbul midnight rejects OGENCOGLU after the June cutoff", () => {
+  const source = document({
+    documentType: 13,
+    documentNo: "TKL-OGEN-MIDNIGHT",
+    documentDate: "2024-07-01T00:30:00+03:00",
+    depth: 2,
+  });
+  const result = resolveCommercialOwnership(caseEvidence({
+    economic: { documentDate: "2024-07-01T10:00:00+03:00" },
+    lineage: [source],
+    actorEvents: [
+      actor(source, "OGENCOGLU", { firstSeen: "2024-07-01T00:30:00+03:00" }),
+      actor(source, "FURKAN", { firstSeen: "2024-07-01T01:00:00+03:00" }),
+    ],
+  }));
+
+  assert.equal(result.ownerCode, "FURKAN");
+  assert.equal(result.evidence.excludedActors.some((item) => item.code === "OGENCOGLU"), true);
 });
 
 test("Mehmet remains service when central depot fulfills the sale", () => {
