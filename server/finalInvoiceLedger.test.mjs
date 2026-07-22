@@ -54,6 +54,23 @@ test("keeps converted retail as trace and counts final invoice only", () => {
   assert.equal(result.quality.convertedRetailRowsExcluded, 1);
 });
 
+test("keeps an unconverted retail line when another line is partially invoiced", () => {
+  const convertedRetailLine = sale(91, "P-1", { rootId: "91-P-1-1", lineNo: 1, productCode: "P-A" });
+  const standaloneRetailLine = sale(91, "P-1", { rootId: "91-P-1-2", lineNo: 2, productCode: "P-B" });
+  const invoice = sale(85, "F-1", {
+    sourceDocumentType: 91,
+    sourceDocumentNo: "P-1",
+    sourceCustomerCode: "C-1",
+    sourceLineNo: 1,
+  });
+
+  const result = buildFinalInvoiceLedger({ economics: [convertedRetailLine, standaloneRetailLine, invoice] });
+
+  assert.deepEqual(result.rows.map((row) => `${row.documentNo}:${row.lineNo}`), ["P-1:2", "F-1:1"]);
+  assert.equal(result.totals.netSales, 200);
+  assert.equal(result.quality.convertedRetailRowsExcluded, 1);
+});
+
 test("does not deduplicate the same retail number across different customers", () => {
   const retail = sale(91, "P-1", { customerCode: "C-1" });
   const invoice = sale(85, "F-1", {
@@ -78,33 +95,66 @@ test("excludes retail converted through intermediate order and dispatch lineage"
         documentType: 85,
         documentNo: "F-1",
         customerCode: "C-1",
+        lineNo: 1,
         sourceDocumentType: 15,
         sourceDocumentNo: "I-1",
         sourceCustomerCode: "C-1",
+        sourceLineNo: 1,
       },
       {
         rootId: "85-F-1",
         documentType: 15,
         documentNo: "I-1",
         customerCode: "C-1",
+        lineNo: 1,
         sourceDocumentType: 64,
         sourceDocumentNo: "O-1",
         sourceCustomerCode: "C-1",
+        sourceLineNo: 1,
       },
       {
         rootId: "85-F-1",
         documentType: 64,
         documentNo: "O-1",
         customerCode: "C-1",
+        lineNo: 1,
         sourceDocumentType: 91,
         sourceDocumentNo: "P-1",
         sourceCustomerCode: "C-1",
+        sourceLineNo: 1,
       },
     ],
   });
 
   assert.deepEqual(result.rows.map((row) => row.documentNo), ["F-1"]);
   assert.equal(result.totals.netSales, 100);
+});
+
+test("recursive lineage does not cross into another line of the same retail document", () => {
+  const result = buildFinalInvoiceLedger({
+    economics: [
+      sale(91, "P-1", { rootId: "91-P-1-1", lineNo: 1, productCode: "P-A" }),
+      sale(91, "P-1", { rootId: "91-P-1-2", lineNo: 2, productCode: "P-B" }),
+      sale(85, "F-1", { rootId: "85-F-1-1", lineNo: 1, productCode: "P-A" }),
+    ],
+    lineage: [
+      {
+        rootId: "85-F-1-1", documentType: 85, documentNo: "F-1", customerCode: "C-1", lineNo: 1,
+        sourceDocumentType: 15, sourceDocumentNo: "I-1", sourceCustomerCode: "C-1", sourceLineNo: 1,
+      },
+      {
+        rootId: "85-F-1-1", documentType: 15, documentNo: "I-1", customerCode: "C-1", lineNo: 1,
+        sourceDocumentType: 64, sourceDocumentNo: "O-1", sourceCustomerCode: "C-1", sourceLineNo: 1,
+      },
+      {
+        rootId: "85-F-1-1", documentType: 64, documentNo: "O-1", customerCode: "C-1", lineNo: 1,
+        sourceDocumentType: 91, sourceDocumentNo: "P-1", sourceCustomerCode: "C-1", sourceLineNo: 1,
+      },
+    ],
+  });
+
+  assert.deepEqual(result.rows.map((row) => `${row.documentNo}:${row.lineNo}`), ["P-1:2", "F-1:1"]);
+  assert.equal(result.totals.netSales, 200);
 });
 
 test("linked return reduces sales and references original invoice", () => {
@@ -120,6 +170,33 @@ test("linked return reduces sales and references original invoice", () => {
   assert.equal(result.totals.netSales, 0);
   assert.equal(result.rows[1].originalInvoiceNo, "F-1");
   assert.equal(result.quality.linkedReturnRows, 1);
+});
+
+test("return through an intermediate document reports the connected final invoice", () => {
+  const result = buildFinalInvoiceLedger({
+    economics: [
+      sale(17, "F-1"),
+      sale(18, "R-1", {
+        isSale: false,
+        sourceDocumentType: 64,
+        sourceDocumentNo: "O-1",
+        sourceCustomerCode: "C-1",
+        sourceLineNo: 1,
+      }),
+    ],
+    lineage: [{
+      documentType: 64,
+      documentNo: "O-1",
+      customerCode: "C-1",
+      lineNo: 1,
+      sourceDocumentType: 17,
+      sourceDocumentNo: "F-1",
+      sourceCustomerCode: "C-1",
+      sourceLineNo: 1,
+    }],
+  });
+
+  assert.equal(result.rows[1].originalInvoiceNo, "F-1");
 });
 
 test("terminal row predicate accepts only final sales, standalone retail, and returns", () => {
@@ -157,6 +234,70 @@ test("treats null ERP recordsets as empty validated inputs", () => {
   assert.deepEqual(result.pilotOrders, []);
 });
 
+test("quarantines malformed gross net and VAT values outside financial totals", () => {
+  const result = buildFinalInvoiceLedger({
+    economics: [
+      sale(17, "VALID"),
+      sale(17, "BAD-GROSS", { grossAmount: "not-a-number" }),
+      sale(17, "BAD-NET", { netAmount: "not-a-number" }),
+      sale(17, "BAD-VAT", { vatAmount: Number.POSITIVE_INFINITY }),
+    ],
+  });
+
+  assert.deepEqual(result.rows.map((row) => row.documentNo), ["VALID"]);
+  assert.equal(result.totals.netSales, 100);
+  assert.equal(result.totals.vatAmount, 20);
+  assert.equal(result.quality.invalidFinancialRows, 3);
+  assert.equal(result.quality.invalidRowsExcluded, 3);
+  assert.deepEqual(result.quality.invalidFinancialFieldCounts, {
+    grossAmount: 1,
+    discountAmount: 0,
+    netAmount: 1,
+    vatAmount: 1,
+    invoiceTotalInclVat: 0,
+  });
+  assert.deepEqual(
+    result.quarantinedRows.map((row) => ({ documentNo: row.documentNo, invalidFields: row.invalidFields })),
+    [
+      { documentNo: "BAD-GROSS", invalidFields: ["grossAmount"] },
+      { documentNo: "BAD-NET", invalidFields: ["netAmount"] },
+      { documentNo: "BAD-VAT", invalidFields: ["vatAmount"] },
+    ],
+  );
+});
+
+test("derives net and VAT-inclusive totals only when those values are absent", () => {
+  const result = buildFinalInvoiceLedger({
+    economics: [sale(17, "FALLBACK", { netAmount: null, invoiceTotalInclVat: null })],
+  });
+
+  assert.equal(result.rows[0].netAmount, 100);
+  assert.equal(result.rows[0].invoiceTotalInclVat, 120);
+  assert.equal(result.totals.netSales, 100);
+  assert.equal(result.quality.invalidFinancialRows, 0);
+});
+
+test("does not replace a present malformed derived total with a fallback", () => {
+  const result = buildFinalInvoiceLedger({
+    economics: [sale(17, "BAD-INVOICE-TOTAL", { invoiceTotalInclVat: "broken" })],
+  });
+
+  assert.equal(result.rows.length, 0);
+  assert.equal(result.totals.netSales, 0);
+  assert.equal(result.quality.invalidFinancialRows, 1);
+  assert.deepEqual(result.quarantinedRows[0].invalidFields, ["invoiceTotalInclVat"]);
+});
+
+test("quarantines values that throw during numeric conversion", () => {
+  const result = buildFinalInvoiceLedger({
+    economics: [sale(17, "BAD-CONVERSION", { grossAmount: Symbol("bad") })],
+  });
+
+  assert.equal(result.rows.length, 0);
+  assert.equal(result.quality.invalidFinancialRows, 1);
+  assert.deepEqual(result.quarantinedRows[0].invalidFields, ["grossAmount"]);
+});
+
 test("final invoice SQL exposes four read-only recordsets with separate invoice amounts", () => {
   const selectMarkers = finalInvoiceLedgerSql.match(/\/\*\s*recordset:\s*\d\s*\*\//gi) || [];
 
@@ -172,4 +313,20 @@ test("final invoice SQL exposes four read-only recordsets with separate invoice 
   assert.match(finalInvoiceLedgerSql, /EVRONY/i);
   assert.match(finalInvoiceLedgerSql, /EVRAKTIP\s*=\s*14/i);
   assert.match(finalInvoiceLedgerSql, /downstream\.SONKAYNAKEVRAKTIP\s*=\s*l\.documentType/i);
+  assert.match(finalInvoiceLedgerSql, /source\.SIRANO\s*=\s*l\.sourceLineNo/i);
+  assert.match(finalInvoiceLedgerSql, /downstream\.SONKAYNAKSIRANO\s*=\s*l\.lineNo/i);
+});
+
+test("actor history is scoped through the selected active company header id", () => {
+  assert.match(finalInvoiceLedgerSql, /JOIN\s+EVRBAS\s+historyHeader\s+ON\s+historyHeader\.SIRKETNO\s*=\s*@company/i);
+  assert.match(finalInvoiceLedgerSql, /historyHeader\.KAYITDURUM\s*=\s*1/i);
+  assert.match(finalInvoiceLedgerSql, /JOIN\s+MIREVRBAS\s+history\s+ON\s+history\.RECID\s*=\s*historyHeader\.ID/i);
+  assert.doesNotMatch(finalInvoiceLedgerSql, /JOIN\s+MIREVRBAS\s+history\s+ON\s+history\.EVRAKTIP/i);
+});
+
+test("pilot orders require an active type 14 header", () => {
+  assert.match(
+    finalInvoiceLedgerSql,
+    /WHERE\s+b\.SIRKETNO\s*=\s*@company\s+AND\s+b\.KAYITDURUM\s*=\s*1\s+AND\s+b\.EVRAKTIP\s*=\s*14/i,
+  );
 });

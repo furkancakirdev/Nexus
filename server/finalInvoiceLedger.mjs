@@ -2,6 +2,13 @@ export const FINAL_SALE_TYPES = new Set([17, 85, 91]);
 export const FINAL_RETURN_TYPES = new Set([18]);
 
 const LINEAGE_DOCUMENT_TYPES = new Set([13, 14, 15, 17, 18, 64, 85, 91]);
+const FINANCIAL_FIELDS = [
+  "grossAmount",
+  "discountAmount",
+  "netAmount",
+  "vatAmount",
+  "invoiceTotalInclVat",
+];
 
 /**
  * @typedef {Object} CpmEconomicRow
@@ -25,23 +32,83 @@ function number(value, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function documentKey(documentType, documentNo, customerCode = "") {
-  return `${Number(documentType)}|${text(documentNo)}|${text(customerCode)}`;
+function documentKey(documentType, documentNo, customerCode = "", lineNo = "") {
+  return `${Number(documentType)}|${text(documentNo)}|${text(customerCode)}|${text(lineNo)}`;
 }
 
 function rowKey(row) {
-  return documentKey(row.documentType, row.documentNo, row.customerCode);
+  return documentKey(row.documentType, row.documentNo, row.customerCode, row.lineNo);
 }
 
 function sourceKey(row) {
   const sourceType = Number(row.sourceDocumentType);
   const sourceNo = text(row.sourceDocumentNo);
   if (!LINEAGE_DOCUMENT_TYPES.has(sourceType) || !sourceNo) return null;
-  return documentKey(sourceType, sourceNo, row.sourceCustomerCode || row.customerCode);
+  return documentKey(
+    sourceType,
+    sourceNo,
+    row.sourceCustomerCode || row.customerCode,
+    row.sourceLineNo,
+  );
 }
 
 function isValidEconomicRow(row) {
   return row && Number.isInteger(Number(row.documentType)) && text(row.documentNo) !== "";
+}
+
+function isAbsent(value) {
+  return value === null || value === undefined;
+}
+
+function finiteNumber(value) {
+  if (isAbsent(value) || (typeof value === "string" && value.trim() === "")) return null;
+  try {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function validateFinancialRow(row) {
+  const invalidFields = [];
+  const values = {};
+
+  for (const field of ["grossAmount", "discountAmount", "vatAmount"]) {
+    const parsed = finiteNumber(row[field]);
+    if (parsed === null) invalidFields.push(field);
+    else values[field] = parsed;
+  }
+
+  if (isAbsent(row.netAmount)) {
+    if (values.grossAmount !== undefined && values.discountAmount !== undefined) {
+      values.netAmount = values.grossAmount - values.discountAmount;
+    } else {
+      invalidFields.push("netAmount");
+    }
+  } else {
+    const parsed = finiteNumber(row.netAmount);
+    if (parsed === null) invalidFields.push("netAmount");
+    else values.netAmount = parsed;
+  }
+
+  if (isAbsent(row.invoiceTotalInclVat)) {
+    if (values.netAmount !== undefined && values.vatAmount !== undefined) {
+      values.invoiceTotalInclVat = values.netAmount + values.vatAmount;
+    } else {
+      invalidFields.push("invoiceTotalInclVat");
+    }
+  } else {
+    const parsed = finiteNumber(row.invoiceTotalInclVat);
+    if (parsed === null) invalidFields.push("invoiceTotalInclVat");
+    else values.invoiceTotalInclVat = parsed;
+  }
+
+  return {
+    valid: invalidFields.length === 0,
+    invalidFields,
+    row: { ...row, ...values },
+  };
 }
 
 function buildDocumentGraph(economics, lineage) {
@@ -96,9 +163,13 @@ function normalizeEconomicRow(row, graph) {
   const vatAmount = number(row.vatAmount);
   const invoiceTotalInclVat = number(row.invoiceTotalInclVat, netAmount + vatAmount);
   const isSale = !FINAL_RETURN_TYPES.has(documentType);
-  const originalKey = isSale
+  const directOriginalType = Number(row.sourceDocumentType);
+  const originalKey = isSale || FINAL_SALE_TYPES.has(directOriginalType)
     ? null
     : findConnectedDocument(rowKey(row), graph.ancestors, graph.types, FINAL_SALE_TYPES);
+  const originalInvoiceNo = isSale
+    ? null
+    : (FINAL_SALE_TYPES.has(directOriginalType) ? text(row.sourceDocumentNo) : documentNoFromKey(originalKey));
 
   return {
     ...row,
@@ -114,7 +185,7 @@ function normalizeEconomicRow(row, graph) {
     signedNetSales: isSale ? netAmount : -netAmount,
     signedVatAmount: isSale ? vatAmount : -vatAmount,
     signedInvoiceTotalInclVat: isSale ? invoiceTotalInclVat : -invoiceTotalInclVat,
-    originalInvoiceNo: isSale ? null : documentNoFromKey(originalKey),
+    originalInvoiceNo,
   };
 }
 
@@ -133,10 +204,14 @@ export function isTerminalEconomicRow(row, downstreamRows = []) {
     const sourceCustomer = text(candidate?.sourceCustomerCode || candidate?.customerCode);
     const retailCustomer = text(row?.customerCode);
     const sameCustomer = !sourceCustomer || !retailCustomer || sourceCustomer === retailCustomer;
+    const sourceLine = text(candidate?.sourceLineNo);
+    const retailLine = text(row?.lineNo);
+    const sameLine = !sourceLine || !retailLine || sourceLine === retailLine;
     return [17, 85].includes(Number(candidate?.documentType))
       && Number(candidate?.sourceDocumentType) === 91
       && text(candidate?.sourceDocumentNo) === text(row?.documentNo)
-      && sameCustomer;
+      && sameCustomer
+      && sameLine;
   });
 }
 
@@ -160,16 +235,22 @@ export function buildFinalInvoiceLedger({
   const lineageRows = Array.isArray(lineage) ? lineage : [];
   const eventRows = Array.isArray(actorEvents) ? actorEvents : [];
   const pilotRows = Array.isArray(pilotOrders) ? pilotOrders : [];
-  const validEconomics = economicRows.filter(isValidEconomicRow);
-  const graph = buildDocumentGraph(validEconomics, lineageRows);
-  let provisionalRowsExcluded = 0;
+  const structurallyValidRows = economicRows.filter(isValidEconomicRow);
+  const economicCandidateRows = structurallyValidRows.filter((row) =>
+    FINAL_SALE_TYPES.has(Number(row.documentType)) || FINAL_RETURN_TYPES.has(Number(row.documentType)));
+  const financialValidations = economicCandidateRows.map(validateFinancialRow);
+  const financiallyValidRows = financialValidations
+    .filter((validation) => validation.valid)
+    .map((validation) => validation.row);
+  const invalidFinancialRows = financialValidations.filter((validation) => !validation.valid);
+  const graph = buildDocumentGraph(structurallyValidRows, lineageRows);
+  const provisionalRowsExcluded = structurallyValidRows.length - economicCandidateRows.length;
   let convertedRetailRowsExcluded = 0;
 
-  const terminalRows = validEconomics.filter((row) => {
+  const terminalRows = financiallyValidRows.filter((row) => {
     const type = Number(row.documentType);
-    if (!isTerminalEconomicRow(row, validEconomics)) {
+    if (!isTerminalEconomicRow(row, economicCandidateRows)) {
       if (type === 91) convertedRetailRowsExcluded += 1;
-      else provisionalRowsExcluded += 1;
       return false;
     }
     if (type !== 91) return true;
@@ -187,6 +268,18 @@ export function buildFinalInvoiceLedger({
   const salesRows = rows.filter((row) => row.isSale);
   const returnRows = rows.filter((row) => !row.isSale);
   const sum = (items, field) => items.reduce((total, row) => total + number(row[field]), 0);
+  const invalidFinancialFieldCounts = Object.fromEntries(FINANCIAL_FIELDS.map((field) => [field, 0]));
+  for (const validation of invalidFinancialRows) {
+    for (const field of validation.invalidFields) invalidFinancialFieldCounts[field] += 1;
+  }
+  const quarantinedRows = invalidFinancialRows.map(({ row, invalidFields }) => ({
+    rootId: row.rootId,
+    documentType: Number(row.documentType),
+    documentNo: text(row.documentNo),
+    customerCode: text(row.customerCode),
+    lineNo: row.lineNo,
+    invalidFields: [...invalidFields],
+  }));
 
   return {
     rows,
@@ -202,7 +295,10 @@ export function buildFinalInvoiceLedger({
     quality: {
       candidateRows: economicRows.length,
       terminalRows: rows.length,
-      invalidRowsExcluded: economicRows.length - validEconomics.length,
+      invalidRowsExcluded: economicRows.length - structurallyValidRows.length + invalidFinancialRows.length,
+      invalidStructuralRows: economicRows.length - structurallyValidRows.length,
+      invalidFinancialRows: invalidFinancialRows.length,
+      invalidFinancialFieldCounts,
       provisionalRowsExcluded,
       convertedRetailRowsExcluded,
       linkedReturnRows: returnRows.filter((row) => row.originalInvoiceNo).length,
@@ -210,6 +306,7 @@ export function buildFinalInvoiceLedger({
       lineageRows: lineageRows.length,
       actorEvents: eventRows.length,
     },
+    quarantinedRows,
     pilotOrders: pilotRows.map((row) => ({ ...row })),
   };
 }
@@ -343,6 +440,7 @@ SELECT * FROM #economics ORDER BY documentDate, rootId;
     AND source.EVRAKTIP = l.sourceDocumentType
     AND source.EVRAKNO = l.sourceDocumentNo
     AND source.HESAPKOD = COALESCE(NULLIF(l.sourceCustomerCode, ''), l.customerCode)
+    AND source.SIRANO = l.sourceLineNo
   WHERE l.depth < 8
     AND l.sourceDocumentType IN (13,14,15,17,18,64,85,91)
     AND CHARINDEX('|' + CAST(source.ID AS varchar(24)) + '|', l.visited) = 0
@@ -370,6 +468,7 @@ SELECT * FROM #economics ORDER BY documentDate, rootId;
     AND downstream.SONKAYNAKEVRAKTIP = l.documentType
     AND downstream.SONKAYNAKEVRAKNO = l.documentNo
     AND COALESCE(NULLIF(downstream.SONKAYNAKHESAPKOD, ''), downstream.HESAPKOD) = l.customerCode
+    AND downstream.SONKAYNAKSIRANO = l.lineNo
   WHERE l.depth < 8
     AND CHARINDEX('|' + CAST(downstream.ID AS varchar(24)) + '|', l.visited) = 0
 )
@@ -436,9 +535,12 @@ FROM (
     CAST('MIREVRBAS' AS varchar(16)) sourceType,
     history.GIRENTARIH eventDate
   FROM #lineage l
-  JOIN MIREVRBAS history ON history.EVRAKTIP = l.documentType
-    AND history.EVRAKNO = l.documentNo
-    AND history.HESAPKOD = l.customerCode
+  JOIN EVRBAS historyHeader ON historyHeader.SIRKETNO = @company
+    AND historyHeader.KAYITDURUM = 1
+    AND historyHeader.EVRAKTIP = l.documentType
+    AND historyHeader.EVRAKNO = l.documentNo
+    AND historyHeader.HESAPKOD = l.customerCode
+  JOIN MIREVRBAS history ON history.RECID = historyHeader.ID
   WHERE NULLIF(LTRIM(RTRIM(history.GIRENKULLANICI)), '') IS NOT NULL
   UNION ALL
   SELECT DISTINCT
@@ -451,9 +553,12 @@ FROM (
     'MIREVRBAS',
     history.DEGISTIRENTARIH
   FROM #lineage l
-  JOIN MIREVRBAS history ON history.EVRAKTIP = l.documentType
-    AND history.EVRAKNO = l.documentNo
-    AND history.HESAPKOD = l.customerCode
+  JOIN EVRBAS historyHeader ON historyHeader.SIRKETNO = @company
+    AND historyHeader.KAYITDURUM = 1
+    AND historyHeader.EVRAKTIP = l.documentType
+    AND historyHeader.EVRAKNO = l.documentNo
+    AND historyHeader.HESAPKOD = l.customerCode
+  JOIN MIREVRBAS history ON history.RECID = historyHeader.ID
   WHERE NULLIF(LTRIM(RTRIM(history.DEGISTIRENKULLANICI)), '') IS NOT NULL
   UNION ALL
   SELECT DISTINCT
@@ -497,6 +602,7 @@ JOIN STKHAR h ON h.SIRKETNO = b.SIRKETNO
   AND h.HESAPKOD = b.HESAPKOD
   AND h.KAYITDURUM = 1
 WHERE b.SIRKETNO = @company
+  AND b.KAYITDURUM = 1
   AND b.EVRAKTIP = 14
   AND YEAR(b.EVRAKTARIH) = @year
 GROUP BY b.EVRAKTIP, b.EVRAKNO, b.HESAPKOD, b.EVRAKTARIH,
