@@ -9,6 +9,23 @@ const FINANCIAL_FIELDS = [
   "vatAmount",
   "invoiceTotalInclVat",
 ];
+const FINAL_PURCHASE_TYPES = new Set([9, 609]);
+const PURCHASE_EVIDENCE_FIELDS = [
+  "purchaseType",
+  "purchaseNo",
+  "purchaseDate",
+  "purchaseAccountCode",
+  "purchasePartyName",
+  "purchaseQuantity",
+  "purchaseGrossAmount",
+  "purchaseDiscountAmount",
+  "purchaseNetAmount",
+  "purchaseVatAmount",
+  "purchaseEffectiveDiscountPct",
+  "purchaseDocumentLineCount",
+  "purchaseRemainingQuantity",
+  "unitCost",
+];
 
 /**
  * @typedef {Object} CpmEconomicRow
@@ -28,6 +45,21 @@ const FINANCIAL_FIELDS = [
  * @property {string} [sourceDocumentNo]
  * @property {string} [sourceCustomerCode]
  * @property {number|string} [sourceLineNo]
+ */
+
+/**
+ * @typedef {Object} CpmPurchaseRow
+ * @property {number|string} documentType
+ * @property {string} documentNo
+ * @property {string|Date} documentDate
+ * @property {string} productCode
+ * @property {number|string} quantity
+ * @property {number|string} grossAmount
+ * @property {number|string} discountAmount
+ * @property {number|string} [netAmount]
+ * @property {number|string} vatAmount
+ * @property {number|string} documentLineCount
+ * @property {boolean|number} active
  */
 
 function text(value) {
@@ -290,6 +322,239 @@ function sumFinite(items, field) {
   }, 0);
 }
 
+function dateValue(value) {
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function oneYearBefore(value) {
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return null;
+  const originalMonth = parsed.getUTCMonth();
+  parsed.setUTCFullYear(parsed.getUTCFullYear() - 1);
+  if (parsed.getUTCMonth() !== originalMonth) parsed.setUTCDate(0);
+  return parsed.getTime();
+}
+
+function purchaseValue(row, purchaseName, rowName, usesPurchaseSchema) {
+  return usesPurchaseSchema ? row?.[purchaseName] : row?.[rowName];
+}
+
+function normalizePurchaseCandidate(row) {
+  const usesPurchaseSchema = ["purchaseType", "purchaseNo", "purchaseDate"]
+    .some((field) => Object.hasOwn(row || {}, field));
+  const value = (purchaseName, rowName) => purchaseValue(
+    row,
+    purchaseName,
+    rowName,
+    usesPurchaseSchema,
+  );
+  const quantity = finiteNumber(value("purchaseQuantity", "quantity"));
+  const grossAmount = finiteNumber(value("purchaseGrossAmount", "grossAmount"));
+  const discountAmount = finiteNumber(value("purchaseDiscountAmount", "discountAmount"));
+  const suppliedNetAmount = finiteNumber(value("purchaseNetAmount", "netAmount"));
+  const netAmount = suppliedNetAmount ?? (
+    grossAmount !== null && discountAmount !== null ? grossAmount - discountAmount : null
+  );
+  const suppliedDiscountPct = finiteNumber(
+    value("purchaseEffectiveDiscountPct", "effectiveDiscountPct"),
+  );
+  const effectiveDiscountPct = suppliedDiscountPct ?? (
+    grossAmount !== null && grossAmount !== 0 && discountAmount !== null
+      ? (100 * discountAmount) / grossAmount
+      : 0
+  );
+
+  return {
+    source: row,
+    purchaseType: Number(value("purchaseType", "documentType")),
+    purchaseNo: text(value("purchaseNo", "documentNo")),
+    purchaseDate: value("purchaseDate", "documentDate") ?? null,
+    purchaseAccountCode: text(value("purchaseAccountCode", "accountCode")),
+    purchasePartyName: text(value("purchasePartyName", "partyName")),
+    purchaseQuantity: quantity,
+    purchaseGrossAmount: grossAmount,
+    purchaseDiscountAmount: discountAmount,
+    purchaseNetAmount: netAmount,
+    purchaseVatAmount: finiteNumber(value("purchaseVatAmount", "vatAmount")),
+    purchaseEffectiveDiscountPct: effectiveDiscountPct,
+    purchaseDocumentLineCount: finiteNumber(
+      value("purchaseDocumentLineCount", "documentLineCount"),
+    ),
+    active: row?.active === true || row?.active === 1,
+    productCode: text(row?.productCode),
+    rootId: row?.rootId ?? row?.purchaseId ?? null,
+  };
+}
+
+function purchaseDocumentIsReturn(candidate, returnDocuments) {
+  return returnDocuments.has(candidate.purchaseNo)
+    || returnDocuments.has(`${candidate.purchaseType}|${candidate.purchaseNo}`);
+}
+
+function compareIdentity(left, right) {
+  return text(left.rootId).localeCompare(text(right.rootId), "tr");
+}
+
+function latestFirst(left, right) {
+  return dateValue(right.purchaseDate) - dateValue(left.purchaseDate) || compareIdentity(right, left);
+}
+
+function earliestFirst(left, right) {
+  return dateValue(left.purchaseDate) - dateValue(right.purchaseDate) || compareIdentity(left, right);
+}
+
+function consumedQuantity(candidate, sale, salesConsumption) {
+  const purchaseDate = dateValue(candidate.purchaseDate);
+  const saleDate = dateValue(sale?.documentDate);
+  if (purchaseDate === null || saleDate === null) return 0;
+  const seenMovements = new Set();
+
+  return salesConsumption.reduce((total, movement) => {
+    if (!movement || movement.active === false || text(movement.productCode) !== candidate.productCode) return total;
+    const movementType = Number(movement.documentType);
+    if (Number.isFinite(movementType)
+      && !FINAL_SALE_TYPES.has(movementType)
+      && !FINAL_RETURN_TYPES.has(movementType)) return total;
+    if (text(movement.documentNo) === text(sale?.documentNo)
+      && text(movement.lineNo) === text(sale?.lineNo)) return total;
+    const movementDate = dateValue(movement.documentDate);
+    const quantity = finiteNumber(movement.quantity);
+    if (movementDate === null || quantity === null || quantity <= 0
+      || movementDate <= purchaseDate || movementDate >= saleDate) return total;
+    const movementKey = movement.rootId ?? documentKey(
+      movement.documentType,
+      movement.documentNo,
+      movement.customerCode,
+      movement.lineNo,
+    );
+    if (seenMovements.has(movementKey)) return total;
+    seenMovements.add(movementKey);
+    return total + (movement.isSale === false || FINAL_RETURN_TYPES.has(movementType) ? -quantity : quantity);
+  }, 0);
+}
+
+function missingPurchaseEvidence(reason = "Dogrulanabilir aktif nihai alim faturasi bulunamadi.") {
+  return {
+    costMethod: "missingPurchase",
+    purchaseType: null,
+    purchaseNo: null,
+    purchaseDate: null,
+    purchaseAccountCode: null,
+    purchasePartyName: null,
+    purchaseQuantity: null,
+    purchaseGrossAmount: null,
+    purchaseDiscountAmount: null,
+    purchaseNetAmount: null,
+    purchaseVatAmount: null,
+    purchaseEffectiveDiscountPct: null,
+    purchaseDocumentLineCount: null,
+    purchaseRemainingQuantity: null,
+    unitCost: null,
+    costValidationReason: reason,
+  };
+}
+
+function selectedPurchaseEvidence(candidate, costMethod, remainingQuantity) {
+  if (!candidate) return missingPurchaseEvidence();
+  const reasons = {
+    bulkPurchase: "Satis oncesindeki bir yilda yeterli kalan stoga sahip iskontolu toplu alim faturasi kullanildi.",
+    priorPurchase: "Satis tarihinden onceki son aktif nihai alim faturasi kullanildi.",
+    nextPurchase: "Onceki alim bulunamadigi icin satis tarihinden sonraki ilk aktif nihai alim faturasi kullanildi.",
+  };
+  return {
+    costMethod,
+    purchaseType: candidate.purchaseType,
+    purchaseNo: candidate.purchaseNo,
+    purchaseDate: candidate.purchaseDate,
+    purchaseAccountCode: candidate.purchaseAccountCode || null,
+    purchasePartyName: candidate.purchasePartyName || null,
+    purchaseQuantity: candidate.purchaseQuantity,
+    purchaseGrossAmount: candidate.purchaseGrossAmount,
+    purchaseDiscountAmount: candidate.purchaseDiscountAmount,
+    purchaseNetAmount: candidate.purchaseNetAmount,
+    purchaseVatAmount: candidate.purchaseVatAmount,
+    purchaseEffectiveDiscountPct: candidate.purchaseEffectiveDiscountPct,
+    purchaseDocumentLineCount: candidate.purchaseDocumentLineCount,
+    purchaseRemainingQuantity: remainingQuantity,
+    unitCost: candidate.purchaseNetAmount / candidate.purchaseQuantity,
+    costValidationReason: reasons[costMethod],
+  };
+}
+
+/**
+ * Nihai satis icin denetlenebilir alim faturasi kanitini secer.
+ * Girdi dizileri degistirilmez; CPM'e herhangi bir yazma islemi yapilmaz.
+ *
+ * @param {Object} input
+ * @param {CpmEconomicRow} input.sale
+ * @param {CpmPurchaseRow[]} [input.purchases]
+ * @param {Set<string>|string[]} [input.returnDocuments]
+ * @param {CpmEconomicRow[]} [input.salesConsumption]
+ */
+export function selectPurchaseEvidence({
+  sale,
+  purchases = [],
+  returnDocuments = new Set(),
+  salesConsumption = [],
+} = {}) {
+  const saleDate = dateValue(sale?.documentDate);
+  const saleQuantity = finiteNumber(sale?.quantity);
+  const productCode = text(sale?.productCode);
+  const returnSet = returnDocuments instanceof Set
+    ? new Set([...returnDocuments].map((value) => text(value)))
+    : new Set((Array.isArray(returnDocuments) ? returnDocuments : []).map((value) => text(value)));
+  if (saleDate === null || saleQuantity === null || saleQuantity <= 0 || !productCode) {
+    return missingPurchaseEvidence("Satis tarihi, urun veya miktar bilgisi maliyet secimi icin gecersiz.");
+  }
+
+  const eligible = (Array.isArray(purchases) ? purchases : [])
+    .map(normalizePurchaseCandidate)
+    .filter((candidate) => FINAL_PURCHASE_TYPES.has(candidate.purchaseType)
+      && candidate.active
+      && candidate.productCode === productCode
+      && candidate.purchaseNo
+      && dateValue(candidate.purchaseDate) !== null
+      && candidate.purchaseQuantity > 0
+      && candidate.purchaseNetAmount !== null
+      && candidate.purchaseNetAmount >= 0
+      && !purchaseDocumentIsReturn(candidate, returnSet));
+
+  const lowerBulkDate = oneYearBefore(sale?.documentDate);
+  const withRemaining = eligible.map((candidate) => ({
+    candidate,
+    remainingQuantity: candidate.purchaseQuantity - consumedQuantity(
+      candidate,
+      sale,
+      Array.isArray(salesConsumption) ? salesConsumption : [],
+    ),
+  }));
+  const bulk = withRemaining
+    .filter(({ candidate, remainingQuantity }) => {
+      const purchaseDate = dateValue(candidate.purchaseDate);
+      return lowerBulkDate !== null
+        && purchaseDate >= lowerBulkDate
+        && purchaseDate <= saleDate
+        && candidate.purchaseDocumentLineCount >= 10
+        && candidate.purchaseEffectiveDiscountPct >= 15
+        && remainingQuantity >= saleQuantity;
+    })
+    .sort((left, right) => latestFirst(left.candidate, right.candidate))[0];
+  if (bulk) return selectedPurchaseEvidence(bulk.candidate, "bulkPurchase", bulk.remainingQuantity);
+
+  const prior = withRemaining
+    .filter(({ candidate }) => dateValue(candidate.purchaseDate) <= saleDate)
+    .sort((left, right) => latestFirst(left.candidate, right.candidate))[0];
+  if (prior) return selectedPurchaseEvidence(prior.candidate, "priorPurchase", prior.remainingQuantity);
+
+  const next = withRemaining
+    .filter(({ candidate }) => dateValue(candidate.purchaseDate) > saleDate)
+    .sort((left, right) => earliestFirst(left.candidate, right.candidate))[0];
+  return next
+    ? selectedPurchaseEvidence(next.candidate, "nextPurchase", next.remainingQuantity)
+    : missingPurchaseEvidence();
+}
+
 function resolveRetailEconomicExclusions(
   retailRows,
   evidenceRows,
@@ -410,6 +675,79 @@ function documentNoFromKey(key) {
   return key ? key.split("|")[1] || null : null;
 }
 
+function normalizeEmbeddedPurchaseEvidence(row) {
+  const candidate = normalizePurchaseCandidate({ ...row, active: true });
+  const unitCost = finiteNumber(row?.unitCost)
+    ?? (candidate.purchaseQuantity > 0 && candidate.purchaseNetAmount !== null
+      ? candidate.purchaseNetAmount / candidate.purchaseQuantity
+      : null);
+  if (!FINAL_PURCHASE_TYPES.has(candidate.purchaseType) || !candidate.purchaseNo || unitCost === null) {
+    return missingPurchaseEvidence(row?.costValidationReason);
+  }
+
+  const costMethod = ["bulkPurchase", "priorPurchase", "nextPurchase", "originalSaleCost"]
+    .includes(row?.costMethod)
+    ? row.costMethod
+    : "priorPurchase";
+  const evidence = selectedPurchaseEvidence(
+    candidate,
+    costMethod === "originalSaleCost" ? "priorPurchase" : costMethod,
+    finiteNumber(row?.purchaseRemainingQuantity),
+  );
+  return {
+    ...evidence,
+    costMethod,
+    unitCost,
+    costValidationReason: text(row?.costValidationReason) || (
+      costMethod === "originalSaleCost"
+        ? "Satis iadesi, bagli nihai satis faturasinin maliyet kanitini devraldi."
+        : evidence.costValidationReason
+    ),
+  };
+}
+
+function purchaseEvidenceFrom(row) {
+  return Object.fromEntries(PURCHASE_EVIDENCE_FIELDS.map((field) => [field, row?.[field] ?? null]));
+}
+
+function originalSaleForReturn(returnRow, salesRows) {
+  const sourceLineNo = text(returnRow.sourceLineNo);
+  const candidates = salesRows.filter((saleRow) => saleRow.documentNo === returnRow.originalInvoiceNo
+    && (!returnRow.customerCode || saleRow.customerCode === returnRow.customerCode)
+    && (!returnRow.productCode || saleRow.productCode === returnRow.productCode));
+  if (sourceLineNo) {
+    const exactLine = candidates.find((saleRow) => text(saleRow.lineNo) === sourceLineNo);
+    if (exactLine) return exactLine;
+  }
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
+function applyReturnCostBasis(row, salesRows) {
+  if (row.isSale) return row;
+  const originalSale = row.originalInvoiceNo ? originalSaleForReturn(row, salesRows) : null;
+  if (originalSale?.unitCost !== null && originalSale?.unitCost !== undefined) {
+    const unitCost = Number(originalSale.unitCost);
+    return {
+      ...row,
+      ...purchaseEvidenceFrom(originalSale),
+      costMethod: "originalSaleCost",
+      unitCost,
+      lineCost: -number(row.quantity) * unitCost,
+      costValidationReason: "Satis iadesi, bagli nihai satis faturasinin maliyet kanitini devraldi.",
+    };
+  }
+  if (row.originalInvoiceNo && row.costMethod === "originalSaleCost" && row.unitCost !== null) return row;
+  return {
+    ...row,
+    ...missingPurchaseEvidence(
+      row.originalInvoiceNo
+        ? "Bagli nihai satis faturasi bulundu ancak satis tarihindeki maliyet kaniti bulunamadi."
+        : "Baglantisiz satis iadesi maliyet sahipligi icin inceleme gerektiriyor.",
+    ),
+    lineCost: null,
+  };
+}
+
 function normalizeEconomicRow(row, graph) {
   const documentType = Number(row.documentType);
   const grossAmount = number(row.grossAmount);
@@ -425,9 +763,14 @@ function normalizeEconomicRow(row, graph) {
   const originalInvoiceNo = isSale
     ? null
     : (FINAL_SALE_TYPES.has(directOriginalType) ? text(row.sourceDocumentNo) : documentNoFromKey(originalKey));
+  const purchaseEvidence = normalizeEmbeddedPurchaseEvidence(row);
+  const lineCost = purchaseEvidence.unitCost === null
+    ? null
+    : (isSale ? 1 : -1) * number(row.quantity) * purchaseEvidence.unitCost;
 
   return {
     ...row,
+    ...purchaseEvidence,
     documentType,
     documentNo: text(row.documentNo),
     customerCode: text(row.customerCode),
@@ -441,6 +784,7 @@ function normalizeEconomicRow(row, graph) {
     signedVatAmount: isSale ? vatAmount : -vatAmount,
     signedInvoiceTotalInclVat: isSale ? invoiceTotalInclVat : -invoiceTotalInclVat,
     originalInvoiceNo,
+    lineCost,
   };
 }
 
@@ -518,7 +862,9 @@ export function buildFinalInvoiceLedger({
     !retailResolution.convertedRows.has(row) && !retailResolution.quarantinedRows.has(row));
   const convertedRetailRowsExcluded = retailResolution.convertedRows.size;
 
-  const rows = terminalRows.map((row) => normalizeEconomicRow(row, graph));
+  const normalizedRows = terminalRows.map((row) => normalizeEconomicRow(row, graph));
+  const normalizedSalesRows = normalizedRows.filter((row) => row.isSale);
+  const rows = normalizedRows.map((row) => applyReturnCostBasis(row, normalizedSalesRows));
   const salesRows = rows.filter((row) => row.isSale);
   const returnRows = rows.filter((row) => !row.isSale);
   const sum = (items, field) => items.reduce((total, row) => total + number(row[field]), 0);
@@ -575,6 +921,107 @@ export function buildFinalInvoiceLedger({
 export const finalInvoiceLedgerSql = `
 SET NOCOUNT ON;
 
+CREATE TABLE #incomingReturnDocuments (purchaseNo nvarchar(100) NOT NULL PRIMARY KEY);
+INSERT INTO #incomingReturnDocuments (purchaseNo)
+SELECT DISTINCT CAST(e.EVRAKNO AS nvarchar(100))
+FROM EFAGLN e
+WHERE e.EVRAKNO IS NOT NULL
+  AND (
+    CONCAT(ISNULL(e.NOT1,''),' ',ISNULL(e.NOT2,''),' ',ISNULL(e.NOT3,'')) COLLATE Turkish_CI_AI LIKE N'%iade%'
+    OR CONCAT(ISNULL(e.NOT1,''),' ',ISNULL(e.NOT2,''),' ',ISNULL(e.NOT3,'')) COLLATE Turkish_CI_AI LIKE N'%return%'
+  );
+
+SELECT
+  p.ID purchaseId,
+  p.EVRAKTIP purchaseType,
+  p.EVRAKNO purchaseNo,
+  p.EVRAKTARIH purchaseDate,
+  p.HESAPKOD purchaseAccountCode,
+  supplier.UNVAN purchasePartyName,
+  p.MALKOD productCode,
+  CAST(p.MIKTAR AS decimal(28, 4)) purchaseQuantity,
+  CAST(ISNULL(p.TUTAR, 0) AS decimal(28, 4)) purchaseGrossAmount,
+  CAST(ISNULL(p.ISKONTO, 0) AS decimal(28, 4)) purchaseDiscountAmount,
+  CAST(ISNULL(p.TUTAR, 0) - ISNULL(p.ISKONTO, 0) AS decimal(28, 4)) purchaseNetAmount,
+  CAST(ISNULL(p.KDV, 0) AS decimal(28, 4)) purchaseVatAmount,
+  CAST(CASE WHEN ISNULL(p.TUTAR, 0) = 0 THEN 0
+    ELSE 100.0 * ISNULL(p.ISKONTO, 0) / p.TUTAR END AS decimal(18, 4)) purchaseEffectiveDiscountPct,
+  COUNT_BIG(*) OVER (
+    PARTITION BY p.SIRKETNO, p.EVRAKTIP, p.EVRAKNO, p.HESAPKOD
+  ) purchaseDocumentLineCount
+INTO #purchaseCandidates
+FROM STKHAR p
+LEFT JOIN CARKRT supplier ON supplier.SIRKETNO = p.SIRKETNO AND supplier.HESAPKOD = p.HESAPKOD
+WHERE p.SIRKETNO = @company
+  AND p.KAYITDURUM = 1
+  AND p.EVRAKTIP IN (9,609)
+  AND p.MIKTAR > 0
+  AND ISNULL(p.TUTAR, 0) - ISNULL(p.ISKONTO, 0) >= 0
+  AND NOT EXISTS (
+    SELECT 1 FROM #incomingReturnDocuments rejected WHERE rejected.purchaseNo = p.EVRAKNO
+  );
+
+CREATE INDEX IX_nexus_purchase_candidates
+  ON #purchaseCandidates(productCode, purchaseDate, purchaseId);
+
+;WITH returnLineage AS (
+  SELECT
+    h.ID rootId,
+    h.ID lineageId,
+    h.EVRAKTIP documentType,
+    h.EVRAKTARIH documentDate,
+    h.HESAPKOD customerCode,
+    h.SIRANO lineNo,
+    h.SONKAYNAKEVRAKTIP sourceDocumentType,
+    h.SONKAYNAKEVRAKNO sourceDocumentNo,
+    h.SONKAYNAKHESAPKOD sourceCustomerCode,
+    h.SONKAYNAKSIRANO sourceLineNo,
+    0 depth,
+    CAST('|' + CAST(h.ID AS varchar(24)) + '|' AS varchar(900)) visited
+  FROM STKHAR h
+  WHERE h.SIRKETNO = @company
+    AND YEAR(h.EVRAKTARIH) = @year
+    AND h.KAYITDURUM = 1
+    AND h.EVRAKTIP = 18
+  UNION ALL
+  SELECT
+    lineage.rootId,
+    source.ID,
+    source.EVRAKTIP,
+    source.EVRAKTARIH,
+    source.HESAPKOD,
+    source.SIRANO,
+    source.SONKAYNAKEVRAKTIP,
+    source.SONKAYNAKEVRAKNO,
+    source.SONKAYNAKHESAPKOD,
+    source.SONKAYNAKSIRANO,
+    lineage.depth + 1,
+    CAST(lineage.visited + CAST(source.ID AS varchar(24)) + '|' AS varchar(900))
+  FROM returnLineage lineage
+  JOIN STKHAR source ON source.SIRKETNO = @company
+    AND source.KAYITDURUM = 1
+    AND source.EVRAKTIP = lineage.sourceDocumentType
+    AND source.EVRAKNO = lineage.sourceDocumentNo
+    AND source.HESAPKOD = COALESCE(NULLIF(lineage.sourceCustomerCode, ''), lineage.customerCode)
+    AND source.SIRANO = lineage.sourceLineNo
+  WHERE lineage.depth < 8
+    AND lineage.sourceDocumentType IN (13,14,15,17,18,64,85,91)
+    AND CHARINDEX('|' + CAST(source.ID AS varchar(24)) + '|', lineage.visited) = 0
+), rankedReturnSales AS (
+  SELECT rootId, documentDate originalSaleDate,
+    ROW_NUMBER() OVER (PARTITION BY rootId ORDER BY depth, lineageId DESC) evidenceRank
+  FROM returnLineage
+  WHERE documentType IN (17,85,91)
+)
+SELECT rootId, originalSaleDate
+INTO #returnOriginalSales
+FROM rankedReturnSales
+WHERE evidenceRank = 1
+OPTION (MAXRECURSION 100);
+
+CREATE UNIQUE CLUSTERED INDEX IX_nexus_return_original_sales
+  ON #returnOriginalSales(rootId);
+
 SELECT
   h.ID rootId,
   h.EVRAKTIP documentType,
@@ -610,44 +1057,127 @@ SELECT
   purchase.purchaseNetAmount,
   purchase.purchaseVatAmount,
   purchase.purchaseEffectiveDiscountPct,
-  purchase.purchaseDocumentLineCount
+  purchase.purchaseDocumentLineCount,
+  purchase.purchaseRemainingQuantity,
+  purchase.unitCost,
+  CASE
+    WHEN purchase.purchaseNo IS NULL THEN 'missingPurchase'
+    WHEN h.EVRAKTIP = 18 AND originalSale.originalSaleDate IS NOT NULL THEN 'originalSaleCost'
+    ELSE purchase.selectionMethod
+  END costMethod,
+  CASE
+    WHEN purchase.purchaseNo IS NULL AND h.EVRAKTIP = 18 AND originalSale.originalSaleDate IS NULL
+      THEN 'Baglantisiz satis iadesi maliyet sahipligi icin inceleme gerektiriyor.'
+    WHEN purchase.purchaseNo IS NULL
+      THEN 'Dogrulanabilir aktif nihai alim faturasi bulunamadi.'
+    WHEN h.EVRAKTIP = 18 AND originalSale.originalSaleDate IS NOT NULL
+      THEN 'Satis iadesi, bagli nihai satis faturasinin maliyet kanitini devraldi.'
+    WHEN purchase.selectionMethod = 'bulkPurchase'
+      THEN 'Satis oncesindeki bir yilda yeterli kalan stoga sahip iskontolu toplu alim faturasi kullanildi.'
+    WHEN purchase.selectionMethod = 'priorPurchase'
+      THEN 'Satis tarihinden onceki son aktif nihai alim faturasi kullanildi.'
+    ELSE 'Onceki alim bulunamadigi icin satis tarihinden sonraki ilk aktif nihai alim faturasi kullanildi.'
+  END costValidationReason
 INTO #economics
 FROM STKHAR h
 LEFT JOIN STKKRT k ON k.SIRKETNO = h.SIRKETNO AND k.MALKOD = h.MALKOD
 LEFT JOIN CARKRT c ON c.SIRKETNO = h.SIRKETNO AND c.HESAPKOD = h.HESAPKOD
+LEFT JOIN #returnOriginalSales originalSale ON originalSale.rootId = h.ID
 OUTER APPLY (
   SELECT TOP (1)
-    p.EVRAKTIP purchaseType,
-    p.EVRAKNO purchaseNo,
-    p.EVRAKTARIH purchaseDate,
-    p.HESAPKOD purchaseAccountCode,
-    supplier.UNVAN purchasePartyName,
-    p.MIKTAR purchaseQuantity,
-    CAST(ISNULL(p.TUTAR, 0) AS decimal(28, 4)) purchaseGrossAmount,
-    CAST(ISNULL(p.ISKONTO, 0) AS decimal(28, 4)) purchaseDiscountAmount,
-    CAST(ISNULL(p.TUTAR, 0) - ISNULL(p.ISKONTO, 0) AS decimal(28, 4)) purchaseNetAmount,
-    CAST(ISNULL(p.KDV, 0) AS decimal(28, 4)) purchaseVatAmount,
-    CAST(CASE WHEN ISNULL(p.TUTAR, 0) = 0 THEN 0
-      ELSE 100.0 * ISNULL(p.ISKONTO, 0) / p.TUTAR END AS decimal(18, 4)) purchaseEffectiveDiscountPct,
-    purchaseDocument.purchaseDocumentLineCount
-  FROM STKHAR p
-  LEFT JOIN CARKRT supplier ON supplier.SIRKETNO = p.SIRKETNO AND supplier.HESAPKOD = p.HESAPKOD
-  CROSS APPLY (
-    SELECT COUNT_BIG(*) purchaseDocumentLineCount
-    FROM STKHAR purchaseLine
-    WHERE purchaseLine.SIRKETNO = p.SIRKETNO
-      AND purchaseLine.EVRAKTIP = p.EVRAKTIP
-      AND purchaseLine.EVRAKNO = p.EVRAKNO
-      AND purchaseLine.HESAPKOD = p.HESAPKOD
-      AND purchaseLine.KAYITDURUM = 1
-  ) purchaseDocument
-  WHERE p.SIRKETNO = h.SIRKETNO
-    AND p.KAYITDURUM = 1
-    AND p.EVRAKTIP IN (9,609)
-    AND p.MALKOD = h.MALKOD
-    AND p.MIKTAR > 0
-    AND p.EVRAKTARIH <= h.EVRAKTARIH
-  ORDER BY p.EVRAKTARIH DESC, p.ID DESC
+    p.*,
+    CAST(p.purchaseQuantity - ISNULL(consumption.consumedQuantity, 0) AS decimal(28, 4)) purchaseRemainingQuantity
+  FROM #purchaseCandidates p
+  OUTER APPLY (
+    SELECT SUM(CAST(movement.MIKTAR AS decimal(28, 4))) consumedQuantity
+    FROM STKHAR movement
+    WHERE movement.SIRKETNO = @company
+      AND movement.KAYITDURUM = 1
+      AND movement.MALKOD = p.productCode
+      AND movement.EVRAKTIP IN (17,85,91)
+      AND movement.EVRAKTARIH > p.purchaseDate
+      AND movement.EVRAKTARIH < COALESCE(originalSale.originalSaleDate, h.EVRAKTARIH)
+  ) consumption
+  WHERE p.productCode = h.MALKOD
+    AND p.purchaseDate BETWEEN DATEADD(year, -1, COALESCE(originalSale.originalSaleDate, h.EVRAKTARIH))
+      AND COALESCE(originalSale.originalSaleDate, h.EVRAKTARIH)
+    AND p.purchaseDocumentLineCount >= 10
+    AND p.purchaseEffectiveDiscountPct >= 15
+    AND p.purchaseQuantity - ISNULL(consumption.consumedQuantity, 0) >= ABS(h.MIKTAR)
+  ORDER BY p.purchaseDate DESC, p.purchaseId DESC
+) bulkPurchase
+OUTER APPLY (
+  SELECT TOP (1) p.*
+  FROM #purchaseCandidates p
+  WHERE p.productCode = h.MALKOD
+    AND p.purchaseDate <= COALESCE(originalSale.originalSaleDate, h.EVRAKTARIH)
+  ORDER BY p.purchaseDate DESC, p.purchaseId DESC
+) priorPurchase
+OUTER APPLY (
+  SELECT TOP (1) p.*
+  FROM #purchaseCandidates p
+  WHERE p.productCode = h.MALKOD
+    AND p.purchaseDate > COALESCE(originalSale.originalSaleDate, h.EVRAKTARIH)
+  ORDER BY p.purchaseDate ASC, p.purchaseId ASC
+) nextPurchase
+OUTER APPLY (
+  SELECT TOP (1) selected.*
+  FROM (
+    SELECT bulkPurchase.purchaseId, bulkPurchase.purchaseType, bulkPurchase.purchaseNo,
+      bulkPurchase.purchaseDate, bulkPurchase.purchaseAccountCode, bulkPurchase.purchasePartyName,
+      bulkPurchase.productCode, bulkPurchase.purchaseQuantity, bulkPurchase.purchaseGrossAmount,
+      bulkPurchase.purchaseDiscountAmount, bulkPurchase.purchaseNetAmount, bulkPurchase.purchaseVatAmount,
+      bulkPurchase.purchaseEffectiveDiscountPct, bulkPurchase.purchaseDocumentLineCount,
+      bulkPurchase.purchaseRemainingQuantity, CAST('bulkPurchase' AS varchar(24)) selectionMethod,
+      1 selectionOrder
+    WHERE bulkPurchase.purchaseNo IS NOT NULL
+    UNION ALL
+    SELECT priorPurchase.purchaseId, priorPurchase.purchaseType, priorPurchase.purchaseNo,
+      priorPurchase.purchaseDate, priorPurchase.purchaseAccountCode, priorPurchase.purchasePartyName,
+      priorPurchase.productCode, priorPurchase.purchaseQuantity, priorPurchase.purchaseGrossAmount,
+      priorPurchase.purchaseDiscountAmount, priorPurchase.purchaseNetAmount, priorPurchase.purchaseVatAmount,
+      priorPurchase.purchaseEffectiveDiscountPct, priorPurchase.purchaseDocumentLineCount,
+      CAST(NULL AS decimal(28, 4)), CAST('priorPurchase' AS varchar(24)), 2
+    WHERE priorPurchase.purchaseNo IS NOT NULL
+    UNION ALL
+    SELECT nextPurchase.purchaseId, nextPurchase.purchaseType, nextPurchase.purchaseNo,
+      nextPurchase.purchaseDate, nextPurchase.purchaseAccountCode, nextPurchase.purchasePartyName,
+      nextPurchase.productCode, nextPurchase.purchaseQuantity, nextPurchase.purchaseGrossAmount,
+      nextPurchase.purchaseDiscountAmount, nextPurchase.purchaseNetAmount, nextPurchase.purchaseVatAmount,
+      nextPurchase.purchaseEffectiveDiscountPct, nextPurchase.purchaseDocumentLineCount,
+      CAST(NULL AS decimal(28, 4)), CAST('nextPurchase' AS varchar(24)), 3
+    WHERE nextPurchase.purchaseNo IS NOT NULL
+  ) selected
+  ORDER BY selected.selectionOrder
+) selectedPurchase
+OUTER APPLY (
+  SELECT SUM(CAST(movement.MIKTAR AS decimal(28, 4))) consumedQuantity
+  FROM STKHAR movement
+  WHERE movement.SIRKETNO = @company
+    AND movement.KAYITDURUM = 1
+    AND movement.MALKOD = selectedPurchase.productCode
+    AND movement.EVRAKTIP IN (17,85,91)
+    AND movement.EVRAKTARIH > selectedPurchase.purchaseDate
+    AND movement.EVRAKTARIH < COALESCE(originalSale.originalSaleDate, h.EVRAKTARIH)
+) selectedConsumption
+OUTER APPLY (
+  SELECT
+    selectedPurchase.purchaseType,
+    selectedPurchase.purchaseNo,
+    selectedPurchase.purchaseDate,
+    selectedPurchase.purchaseAccountCode,
+    selectedPurchase.purchasePartyName,
+    selectedPurchase.purchaseQuantity,
+    selectedPurchase.purchaseGrossAmount,
+    selectedPurchase.purchaseDiscountAmount,
+    selectedPurchase.purchaseNetAmount,
+    selectedPurchase.purchaseVatAmount,
+    selectedPurchase.purchaseEffectiveDiscountPct,
+    selectedPurchase.purchaseDocumentLineCount,
+    CAST(selectedPurchase.purchaseQuantity - ISNULL(selectedConsumption.consumedQuantity, 0)
+      AS decimal(28, 4)) purchaseRemainingQuantity,
+    CAST(selectedPurchase.purchaseNetAmount / NULLIF(selectedPurchase.purchaseQuantity, 0) AS decimal(28, 6)) unitCost,
+    selectedPurchase.selectionMethod
 ) purchase
 WHERE h.SIRKETNO = @company
   AND YEAR(h.EVRAKTARIH) = @year
