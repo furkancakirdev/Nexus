@@ -279,7 +279,7 @@ test("active standalone pilot keeps explicit service owner while test order stay
       },
       {
         documentType: 14,
-        documentNo: "SSP-00979",
+        documentNo: "ssp-00979",
         documentDate: "2026-07-21T10:00:00+03:00",
         customerCode: "C-TEST",
         commercialOwner: "FURKAN",
@@ -287,7 +287,7 @@ test("active standalone pilot keeps explicit service owner while test order stay
         depotCode: "YTM",
         lineCount: 1,
         active: true,
-        isTest: true,
+        isTest: false,
       },
     ],
   });

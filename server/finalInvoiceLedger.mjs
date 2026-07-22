@@ -1,4 +1,8 @@
 import { resolveCommercialOwnership } from "./ownershipResolver.mjs";
+import {
+  isExcludedTestDocument,
+  testDocumentExclusion,
+} from "./testDocumentRegistry.mjs";
 
 export const FINAL_SALE_TYPES = new Set([17, 85, 91]);
 export const FINAL_RETURN_TYPES = new Set([18]);
@@ -1104,6 +1108,63 @@ function priorPeriodOriginalOwnership(row, lineageRows, actorEvents, identities)
   return { ...original, ...ownershipFields(ownership) };
 }
 
+function auditDocumentIdentity(row, matchRole) {
+  const exclusion = testDocumentExclusion(row);
+  return {
+    rootId: row?.rootId ?? null,
+    lineageId: row?.lineageId ?? row?.ancestorId ?? null,
+    headerId: row?.headerId ?? row?.recId ?? null,
+    documentType: Number(row?.documentType),
+    documentNo: text(row?.documentNo),
+    customerCode: text(row?.customerCode),
+    lineNo: row?.lineNo ?? null,
+    documentDate: row?.documentDate ?? null,
+    depth: number(row?.depth),
+    matchRole,
+    exclusionReason: exclusion?.reason || null,
+    normalizedDocumentNo: exclusion?.normalizedDocumentNo || null,
+  };
+}
+
+function excludedTestAudit(economic, lineageRows) {
+  const candidates = [
+    { row: economic, matchRole: "economic" },
+    ...lineageRows.map((row) => ({ row, matchRole: "lineage-ancestor" })),
+  ];
+  const matchedDocuments = candidates
+    .filter(({ row }) => isExcludedTestDocument(row))
+    .map(({ row, matchRole }) => auditDocumentIdentity(row, matchRole))
+    .sort((left, right) => (
+      Number(right.matchRole === "economic") - Number(left.matchRole === "economic")
+      || right.depth - left.depth
+      || left.documentNo.localeCompare(right.documentNo, "tr")
+    ));
+  if (matchedDocuments.length === 0) return null;
+
+  return {
+    rootId: economic.rootId ?? null,
+    documentType: Number(economic.documentType),
+    documentNo: text(economic.documentNo),
+    customerCode: text(economic.customerCode),
+    lineNo: economic.lineNo ?? null,
+    reviewReason: "excluded-test-document",
+    reviewStatus: "excluded",
+    economicDocument: {
+      ...auditDocumentIdentity(economic, "economic"),
+      productCode: text(economic.productCode),
+      quantity: economic.quantity ?? null,
+      grossAmount: economic.grossAmount ?? null,
+      discountAmount: economic.discountAmount ?? null,
+      netAmount: economic.netAmount ?? null,
+      vatAmount: economic.vatAmount ?? null,
+      invoiceTotalInclVat: economic.invoiceTotalInclVat ?? null,
+      lineCost: economic.lineCost ?? null,
+    },
+    matchedDocument: { ...matchedDocuments[0] },
+    matchedDocuments: matchedDocuments.map((row) => ({ ...row })),
+  };
+}
+
 /**
  * Bir CPM satirinin ekonomik olarak nihai olup olmadigini belirler.
  * Tip 91, yalnizca 17/85 alt belgesi yoksa ekonomik satirdir.
@@ -1163,7 +1224,20 @@ export function buildFinalInvoiceLedger({
   const structurallyValidRows = economicRows.filter(isValidEconomicRow);
   const economicCandidateRows = structurallyValidRows.filter((row) =>
     FINAL_SALE_TYPES.has(Number(row.documentType)) || FINAL_RETURN_TYPES.has(Number(row.documentType)));
-  const financialValidations = economicCandidateRows.map(validateFinancialRow);
+  const lineageByRoot = new Map();
+  for (const lineageRow of lineageRows) {
+    const rootId = text(lineageRow?.rootId);
+    if (!lineageByRoot.has(rootId)) lineageByRoot.set(rootId, []);
+    lineageByRoot.get(rootId).push(lineageRow);
+  }
+  const testExclusionsByRow = new Map(economicCandidateRows.flatMap((row) => {
+    const audit = excludedTestAudit(row, lineageByRoot.get(text(row.rootId)) || []);
+    return audit ? [[row, audit]] : [];
+  }));
+  const excludedTestRows = [...testExclusionsByRow.values()];
+  const includedEconomicCandidateRows = economicCandidateRows
+    .filter((row) => !testExclusionsByRow.has(row));
+  const financialValidations = includedEconomicCandidateRows.map(validateFinancialRow);
   const financiallyValidRows = financialValidations
     .filter((validation) => validation.valid)
     .map((validation) => validation.row);
@@ -1184,12 +1258,6 @@ export function buildFinalInvoiceLedger({
   const normalizedSalesRows = normalizedRows.filter((row) => row.isSale);
   const returnCostResolutions = normalizedRows.map((row) => applyReturnCostBasis(row, normalizedSalesRows));
   const costRows = returnCostResolutions.map((resolution) => resolution.row);
-  const lineageByRoot = new Map();
-  for (const lineageRow of lineageRows) {
-    const rootId = text(lineageRow?.rootId);
-    if (!lineageByRoot.has(rootId)) lineageByRoot.set(rootId, []);
-    lineageByRoot.get(rootId).push(lineageRow);
-  }
   const directlyOwnedRows = costRows.map((row) => {
     const ownership = resolveCommercialOwnership({
       economic: row,
@@ -1234,6 +1302,10 @@ export function buildFinalInvoiceLedger({
     lineNo: row.lineNo,
     invalidFields: [...invalidFields],
   })).concat(returnCostQuarantines);
+  const excludedPilotOrders = pilotRows
+    .filter(isExcludedTestDocument)
+    .map((row) => ({ ...row, reviewReason: "excluded-test-document", reviewStatus: "excluded" }));
+  const includedPilotOrders = pilotRows.filter((row) => !isExcludedTestDocument(row));
 
   return {
     rows,
@@ -1266,12 +1338,22 @@ export function buildFinalInvoiceLedger({
       linkedReturnRows: returnRows.filter((row) => row.originalInvoiceNo).length,
       unlinkedReturnRows: returnRows.filter((row) => !row.originalInvoiceNo).length,
       ambiguousReturnCostRows: returnCostQuarantines.length,
+      excludedTestRows: excludedTestRows.length,
       lineageRows: lineageRows.length,
       actorEvents: eventRows.length,
     },
     quarantinedRows,
-    reviewRequiredRows: retailResolution.reviewRequiredRows.map((row) => ({ ...row })),
-    pilotOrders: pilotRows.map((row) => ({ ...row })),
+    reviewRequiredRows: retailResolution.reviewRequiredRows
+      .map((row) => ({ ...row }))
+      .concat(excludedTestRows.map((row) => ({ ...row }))),
+    excludedTestRows: excludedTestRows.map((row) => ({
+      ...row,
+      economicDocument: { ...row.economicDocument },
+      matchedDocument: { ...row.matchedDocument },
+      matchedDocuments: row.matchedDocuments.map((item) => ({ ...item })),
+    })),
+    pilotOrders: includedPilotOrders.map((row) => ({ ...row })),
+    excludedPilotOrders,
   };
 }
 

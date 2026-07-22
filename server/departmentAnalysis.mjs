@@ -1,11 +1,15 @@
 import { resolveCommercialOwnership } from "./ownershipResolver.mjs";
+import {
+  EXCLUDED_TEST_DOCUMENT_NUMBERS,
+  isExcludedTestDocument,
+} from "./testDocumentRegistry.mjs";
 
 const MONTH_NAMES = [
   "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
   "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık",
 ];
 
-export const TEST_DOCUMENTS = new Set(["SSP-00979"]);
+export const TEST_DOCUMENTS = new Set(EXCLUDED_TEST_DOCUMENT_NUMBERS);
 
 export const departmentAnalysisSql = `
 SET NOCOUNT ON;
@@ -275,7 +279,7 @@ function resolveAttribution(economic, evidenceRows, actorEvents, identities) {
     number(row.documentType) === 14 && row.documentNo === resolved.sourceOrderNo
   ));
   const hasTestAncestor = resolved.evidenceDocuments.some((row) => (
-    TEST_DOCUMENTS.has(String(row.documentNo || "").trim().toLocaleUpperCase("tr-TR"))
+    isExcludedTestDocument(row)
   ));
   const batchRisk = Boolean(economic.prepaidBatchRisk)
     || resolved.evidenceDocuments.some((row) => (
@@ -410,7 +414,7 @@ export function buildDepartmentAnalysis({
       actorEvents,
       identities,
     );
-    if (attribution.hasTestAncestor || TEST_DOCUMENTS.has(String(economic.documentNo || "").trim().toLocaleUpperCase("tr-TR"))) {
+    if (attribution.hasTestAncestor || isExcludedTestDocument(economic)) {
       excludedTestLines += 1;
       continue;
     }
@@ -514,7 +518,7 @@ export function buildDepartmentAnalysis({
   const reviewAmount = normalized.filter((row) => row.attributionStatus === "review").reduce((sum, row) => sum + row.netSales, 0);
   const hintedReviewAmount = normalized.filter((row) => row.attributionMethod === "b2b-candidate-hint").reduce((sum, row) => sum + row.netSales, 0);
   const realPilotOrders = pilotOrders
-    .filter((row) => !row.isTest && !TEST_DOCUMENTS.has(String(row.documentNo || "").trim().toLocaleUpperCase("tr-TR")))
+    .filter((row) => !isExcludedTestDocument(row))
     .map((row) => {
       const attribution = resolveCommercialOwnership({
         economic: row,

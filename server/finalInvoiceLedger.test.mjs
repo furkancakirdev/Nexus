@@ -1920,3 +1920,111 @@ test("current return inherits a prior-period standalone retail owner by stable o
   assert.equal(returnRow.ownershipEvidence.inheritedFromRootId, "PRIOR-RETAIL-91");
   assert.equal(returnRow.ownershipEvidence.inheritedFromDocumentNo, "PS-2025-91");
 });
+
+test("direct SSP-00979 ancestor excludes type 17 economics and preserves audit identity", () => {
+  const invoice = sale(17, "F-TEST-DIRECT", {
+    rootId: "ROOT-TEST-DIRECT",
+    unitCost: 40,
+    lineCost: 40,
+  });
+  const testOrder = {
+    rootId: "ROOT-TEST-DIRECT",
+    lineageId: "LINE-SSP-00979-DIRECT",
+    headerId: "HEADER-SSP-00979-DIRECT",
+    documentType: 14,
+    documentNo: "sSp-00979",
+    customerCode: "C-1",
+    lineNo: 1,
+    documentDate: "2026-06-29T10:00:00+03:00",
+    depth: 1,
+    commercialOwner: "FURKAN",
+    departmentCode: "SERVIS",
+  };
+
+  const result = buildFinalInvoiceLedger({ economics: [invoice], lineage: [testOrder] });
+
+  assert.deepEqual(result.rows, []);
+  assert.equal(result.totals.rowCount, 0);
+  assert.equal(result.totals.grossSales, 0);
+  assert.equal(result.totals.netSales, 0);
+  assert.equal(result.excludedTestRows.length, 1);
+  assert.equal(result.quality.excludedTestRows, 1);
+  assert.equal(result.excludedTestRows[0].economicDocument.documentNo, "F-TEST-DIRECT");
+  assert.equal(result.excludedTestRows[0].matchedDocument.documentNo, "sSp-00979");
+  assert.equal(result.excludedTestRows[0].matchedDocument.lineageId, "LINE-SSP-00979-DIRECT");
+  assert.equal(result.excludedTestRows[0].matchedDocument.matchRole, "lineage-ancestor");
+  assert.equal(result.reviewRequiredRows.some((row) => (
+    row.rootId === "ROOT-TEST-DIRECT" && row.reviewReason === "excluded-test-document"
+  )), true);
+});
+
+test("recursive SSP-00979 ancestor excludes type 85 economics before cost and ownership", () => {
+  const invoice = sale(85, "F-TEST-RECURSIVE", { rootId: "ROOT-TEST-RECURSIVE" });
+  const dispatch = {
+    rootId: "ROOT-TEST-RECURSIVE",
+    lineageId: "LINE-DISPATCH-RECURSIVE",
+    headerId: "HEADER-DISPATCH-RECURSIVE",
+    documentType: 15,
+    documentNo: "IRS-TEST-RECURSIVE",
+    customerCode: "C-1",
+    lineNo: 1,
+    documentDate: "2026-06-30T10:00:00+03:00",
+    depth: 1,
+  };
+  const testOrder = {
+    rootId: "ROOT-TEST-RECURSIVE",
+    lineageId: "LINE-SSP-00979-RECURSIVE",
+    headerId: "HEADER-SSP-00979-RECURSIVE",
+    documentType: 14,
+    documentNo: "SSP-00979",
+    customerCode: "C-1",
+    lineNo: 1,
+    documentDate: "2026-06-29T10:00:00+03:00",
+    depth: 2,
+    commercialOwner: "FURKAN",
+    departmentCode: "SERVIS",
+  };
+
+  const result = buildFinalInvoiceLedger({
+    economics: [invoice],
+    lineage: [dispatch, testOrder],
+  });
+
+  assert.equal(result.rows.length, 0);
+  assert.equal(result.totals.netSales, 0);
+  assert.equal(result.rows.reduce((sum, row) => sum + Number(row.lineCost || 0), 0), 0);
+  assert.equal(result.rows.some((row) => row.commercialOwner), false);
+  assert.equal(result.excludedTestRows[0].matchedDocument.depth, 2);
+  assert.equal(result.excludedTestRows[0].matchedDocument.documentNo, "SSP-00979");
+});
+
+test("economic row matching the exclusion registry is audited instead of confirmed", () => {
+  const result = buildFinalInvoiceLedger({
+    economics: [sale(85, "ssp-00979", { rootId: "ROOT-SELF-TEST" })],
+  });
+
+  assert.equal(result.rows.length, 0);
+  assert.equal(result.excludedTestRows[0].economicDocument.documentNo, "ssp-00979");
+  assert.equal(result.excludedTestRows[0].matchedDocument.matchRole, "economic");
+});
+
+test("normal active pilot remains available while excluded pilot stays auditable", () => {
+  const normalPilot = {
+    documentType: 14,
+    documentNo: "SSP-PILOT-ACTIVE",
+    documentDate: "2026-07-21T10:00:00+03:00",
+    customerCode: "C-PILOT",
+    commercialOwner: "FURKAN",
+    departmentCode: "SERVIS",
+    active: true,
+    isTest: false,
+  };
+  const excludedPilot = { ...normalPilot, documentNo: "SsP-00979", isTest: false };
+
+  const result = buildFinalInvoiceLedger({ pilotOrders: [normalPilot, excludedPilot] });
+
+  assert.deepEqual(result.pilotOrders, [normalPilot]);
+  assert.equal(result.excludedPilotOrders.length, 1);
+  assert.equal(result.excludedPilotOrders[0].documentNo, "SsP-00979");
+  assert.equal(result.excludedPilotOrders[0].reviewReason, "excluded-test-document");
+});
