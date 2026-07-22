@@ -1,3 +1,5 @@
+import { resolveCommercialOwnership } from "./ownershipResolver.mjs";
+
 const MONTH_NAMES = [
   "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
   "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık",
@@ -233,24 +235,6 @@ ORDER BY b.EVRAKTARIH DESC, b.EVRAKNO DESC;
 DROP TABLE #economics;
 `;
 
-const EMPLOYEES = {
-  FURKAN: { name: "Furkan Çakır", department: "service", location: "Yatmarin", active: true },
-  BCETINEL: { name: "Burak Çetinel", department: "service", location: "Yatmarin", active: true },
-  MKARA: { name: "Mehmet Kara", department: "service", location: "Merkez Ofis", active: true },
-  OGENCOGLU: { name: "Özlenen Gençoğlu", department: "service", location: "Yatmarin", active: false },
-  NTOKER: { name: "N. Toker", department: "parts", location: "Merkez Ofis", active: false },
-  AERIMLI: { name: "Alperen Erimli", department: "parts", location: "Merkez Ofis", active: false },
-  TSEMIZ: {
-    name: "Tuğrul Semiz", department: "parts", location: "Merkez Ofis", active: true,
-    assignments: [
-      { until: "2026-05-25", department: "service", location: "Yatmarin" },
-      { from: "2026-05-26", department: "parts", location: "Merkez Ofis" },
-    ],
-  },
-};
-
-const NON_COMMERCIAL_USERS = new Set(["BIRCAN"]);
-
 const DEPARTMENT_META = {
   service: { id: "service", name: "Servis", center: "Yatmarin", color: "#087f8c" },
   parts: { id: "parts", name: "Yedek Parça Satış", center: "Merkez Ofis", color: "#0a3972" },
@@ -270,50 +254,6 @@ function key(value) {
     .replace(/[^A-Z0-9]/g, "");
 }
 
-function departmentFromCode(value) {
-  const normalized = key(value);
-  if (!normalized) return null;
-  if (normalized.includes("SERVIS")) return "service";
-  if (normalized.includes("YEDEKPARCA") || normalized === "PARCA" || normalized.includes("SATIS")) return "parts";
-  return null;
-}
-
-function isCustomerLikeActorCode(normalized) {
-  return /\d/.test(normalized);
-}
-
-function isCommercialUser(value) {
-  const normalized = key(value);
-  return Boolean(normalized)
-    && !/^(SYSTEM|SYS|ADMIN|SA|CPM|CPMAPP|SQL|MSSQL)/.test(normalized)
-    && !NON_COMMERCIAL_USERS.has(normalized)
-    && !isCustomerLikeActorCode(normalized);
-}
-
-function dateOnly(value) {
-  if (!value) return null;
-  return new Date(value).toISOString().slice(0, 10);
-}
-
-function assignmentFor(employee, atDate) {
-  if (!employee?.assignments?.length) return employee;
-  const currentDate = dateOnly(atDate);
-  if (!currentDate) return employee;
-  const assignment = employee.assignments.find((item) => (
-    (!item.from || currentDate >= item.from) && (!item.until || currentDate <= item.until)
-  ));
-  return assignment ? { ...employee, ...assignment } : employee;
-}
-
-function employeeFor(value, atDate = null) {
-  const normalized = key(value);
-  if (!normalized) return null;
-  const employee = EMPLOYEES[normalized] ? assignmentFor(EMPLOYEES[normalized], atDate) : null;
-  return employee || (isCommercialUser(normalized)
-    ? { name: String(value).trim(), department: "parts", location: "Merkez Ofis", active: true, defaulted: true }
-    : null);
-}
-
 function normalizeDepot(value) {
   const normalized = key(value);
   if (!normalized) return { code: "—", name: "Belirsiz" };
@@ -322,55 +262,51 @@ function normalizeDepot(value) {
   return { code: String(value).trim(), name: String(value).trim() };
 }
 
-function resolveAttribution(economic, evidenceRows) {
-  const rows = evidenceRows.slice().sort((a, b) => number(b.depth) - number(a.depth));
-  const explicitDepartmentRow = rows.find((row) => departmentFromCode(row.departmentCode));
-  const explicitOwnerRow = rows.find((row) => isCommercialUser(row.commercialOwner));
-  const fallbackActor = rows.flatMap((row) => [row.preparerUser, row.entryUser])
-    .find((value) => isCommercialUser(value));
-  const candidateActor = isCommercialUser(economic.candidateAttributionActor)
-    ? economic.candidateAttributionActor
-    : null;
-  const ownerCode = explicitOwnerRow?.commercialOwner || fallbackActor || candidateActor || null;
-  const employee = employeeFor(ownerCode, economic.documentDate);
-  const explicitDepartment = explicitDepartmentRow ? departmentFromCode(explicitDepartmentRow.departmentCode) : null;
-  const department = explicitDepartment || employee?.department || "review";
-  const sourceOrder = rows.find((row) => number(row.documentType) === 14);
-  const fulfillmentDepot = normalizeDepot(economic.depotCode || rows.find((row) => row.depotCode)?.depotCode);
-  const expectedDepot = department === "service" ? "YTM" : department === "parts" ? "MRK" : null;
-  const method = explicitDepartment
-    ? "explicit-department"
-    : explicitOwnerRow
-      ? (number(explicitOwnerRow.depth) > 0 ? "source-owner" : "document-owner")
-      : employee
-        ? (candidateActor && !fallbackActor ? "nearby-document-hint" : "user-fallback")
-        : "review";
-  const status = method === "explicit-department" || method === "source-owner" || method === "document-owner"
-    ? "confirmed"
-    : method === "user-fallback" ? "inferred" : "review";
-  const hasTestAncestor = rows.some((row) => TEST_DOCUMENTS.has(String(row.documentNo || "").trim().toLocaleUpperCase("tr-TR")));
-  const batchRisk = Boolean(economic.prepaidBatchRisk) || rows.some((row) => number(row.documentType) === 91 && number(economic.documentType) === 85);
+function resolveAttribution(economic, evidenceRows, actorEvents, identities) {
+  const resolved = resolveCommercialOwnership({
+    economic,
+    lineage: evidenceRows,
+    actorEvents,
+    identities,
+  });
+  const sourceOrder = resolved.evidenceDocuments.find((row) => (
+    number(row.documentType) === 14 && row.documentNo === resolved.sourceOrderNo
+  ));
+  const hasTestAncestor = resolved.evidenceDocuments.some((row) => (
+    TEST_DOCUMENTS.has(String(row.documentNo || "").trim().toLocaleUpperCase("tr-TR"))
+  ));
+  const batchRisk = Boolean(economic.prepaidBatchRisk)
+    || resolved.evidenceDocuments.some((row) => (
+      number(row.documentType) === 91 && number(economic.documentType) === 85
+    ));
 
   return {
-    department,
-    departmentName: DEPARTMENT_META[department].name,
-    ownerCode: ownerCode ? String(ownerCode).trim() : null,
-    ownerName: employee?.name || ownerCode || "Belirsiz",
-    ownerActive: employee?.active ?? null,
-    ownerLocation: employee?.location || "Belirsiz",
-    method,
-    status,
-    explicitDepartment: Boolean(explicitDepartmentRow),
-    explicitOwner: Boolean(explicitOwnerRow),
-    sourceOrderNo: sourceOrder?.documentNo || null,
+    department: resolved.department,
+    departmentName: DEPARTMENT_META[resolved.department].name,
+    ownerCode: resolved.ownerCode,
+    ownerName: resolved.ownerName,
+    ownerActive: resolved.ownerActive,
+    ownerLocation: resolved.ownerLocation,
+    method: resolved.method,
+    status: resolved.confidence,
+    confidence: resolved.confidence,
+    explicitDepartment: resolved.method === "macro-source-order",
+    explicitOwner: ["macro-source-order", "supported-source-seller"].includes(resolved.method),
+    sourceOrderNo: resolved.sourceOrderNo,
     sourceOrderDepth: sourceOrder ? number(sourceOrder.depth) : null,
     candidateDocumentNo: economic.candidateAttributionDocumentNo || null,
     candidateDocumentType: economic.candidateAttributionDocumentType || null,
     candidateField: economic.candidateAttributionField || null,
-    fulfillmentDepot,
-    crossDepot: Boolean(expectedDepot && fulfillmentDepot.code !== "—" && fulfillmentDepot.code !== expectedDepot),
+    fulfillmentDepot: {
+      code: resolved.fulfillmentDepotCode || "—",
+      name: resolved.fulfillmentDepotName,
+    },
+    crossDepot: resolved.crossDepot,
     hasTestAncestor,
     batchRisk,
+    evidenceDocuments: resolved.evidenceDocuments,
+    actorEvents: resolved.actorEvents,
+    ownershipEvidence: resolved.evidence,
   };
 }
 
@@ -449,7 +385,7 @@ function topGroups(rows, selector, limit = 8) {
 }
 
 export function buildDepartmentAnalysis({
-  economics = [], lineage = [], pilotOrders = [], year,
+  economics = [], lineage = [], actorEvents = [], pilotOrders = [], identities = {}, year,
   pilotCardCostRates = {}, costOverrides = [], requireApproval = true,
 }) {
   const lineageByRoot = new Map();
@@ -466,7 +402,12 @@ export function buildDepartmentAnalysis({
 
   for (const economic of economics) {
     const rootId = String(economic.rootId);
-    const attribution = resolveAttribution(economic, lineageByRoot.get(rootId) || []);
+    const attribution = resolveAttribution(
+      economic,
+      lineageByRoot.get(rootId) || [],
+      actorEvents,
+      identities,
+    );
     if (attribution.hasTestAncestor || TEST_DOCUMENTS.has(String(economic.documentNo || "").trim().toLocaleUpperCase("tr-TR"))) {
       excludedTestLines += 1;
       continue;
@@ -513,6 +454,7 @@ export function buildDepartmentAnalysis({
       ownerLocation: attribution.ownerLocation,
       attributionMethod: attribution.method,
       attributionStatus: attribution.status,
+      attributionConfidence: attribution.confidence,
       explicitDepartment: attribution.explicitDepartment,
       explicitOwner: attribution.explicitOwner,
       sourceOrderNo: attribution.sourceOrderNo,
@@ -524,6 +466,9 @@ export function buildDepartmentAnalysis({
       fulfillmentDepotName: attribution.fulfillmentDepot.name,
       crossDepot: attribution.crossDepot,
       batchRisk: attribution.batchRisk,
+      evidenceDocuments: attribution.evidenceDocuments,
+      actorEvents: attribution.actorEvents,
+      ownershipEvidence: attribution.ownershipEvidence,
     });
   }
 
@@ -565,23 +510,28 @@ export function buildDepartmentAnalysis({
   const sourceOrderAmount = normalized.filter((row) => row.sourceOrderNo).reduce((sum, row) => sum + row.netSales, 0);
   const batchRiskAmount = normalized.filter((row) => row.batchRisk).reduce((sum, row) => sum + row.netSales, 0);
   const reviewAmount = normalized.filter((row) => row.attributionStatus === "review").reduce((sum, row) => sum + row.netSales, 0);
-  const hintedReviewAmount = normalized.filter((row) => row.attributionMethod === "nearby-document-hint").reduce((sum, row) => sum + row.netSales, 0);
+  const hintedReviewAmount = normalized.filter((row) => row.attributionMethod === "b2b-candidate-hint").reduce((sum, row) => sum + row.netSales, 0);
   const realPilotOrders = pilotOrders
     .filter((row) => !row.isTest && !TEST_DOCUMENTS.has(String(row.documentNo || "").trim().toLocaleUpperCase("tr-TR")))
     .map((row) => {
-      const employee = employeeFor(row.commercialOwner, row.documentDate);
-      const department = departmentFromCode(row.departmentCode) || employee?.department || "review";
+      const attribution = resolveCommercialOwnership({
+        economic: row,
+        lineage: [row],
+        actorEvents,
+        identities,
+      });
+      const department = attribution.department;
       return {
         documentNo: row.documentNo,
         documentDate: row.documentDate,
         customerCode: row.customerCode,
-        ownerCode: row.commercialOwner || null,
-        ownerName: employee?.name || row.commercialOwner || "Belirsiz",
+        ownerCode: attribution.ownerCode,
+        ownerName: attribution.ownerName,
         department,
         departmentName: DEPARTMENT_META[department].name,
         depot: normalizeDepot(row.depotCode),
         lineCount: number(row.lineCount),
-        status: department !== "review" && isCommercialUser(row.commercialOwner) ? "ready" : "review",
+        status: attribution.confidence === "confirmed" ? "ready" : "review",
       };
     });
 

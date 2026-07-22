@@ -1769,3 +1769,86 @@ test("pilot orders require an active type 14 header", () => {
     /WHERE\s+b\.SIRKETNO\s*=\s*@company\s+AND\s+b\.KAYITDURUM\s*=\s*1\s+AND\s+b\.EVRAKTIP\s*=\s*14/i,
   );
 });
+
+test("final ledger rows expose full-chain commercial ownership audit fields", () => {
+  const invoice = sale(85, "F-OWN", { rootId: "ROOT-OWN", depotCode: "MRK" });
+  const order = {
+    rootId: "ROOT-OWN",
+    lineageId: "ORDER-OWN",
+    documentType: 14,
+    documentNo: "SSP-OWN",
+    customerCode: "C-1",
+    lineNo: 1,
+    documentDate: "2026-06-29T00:00:00.000Z",
+    depth: 2,
+    commercialOwner: "FURKAN",
+    departmentCode: "SERVIS",
+    depotCode: "YTM",
+  };
+
+  const result = buildFinalInvoiceLedger({
+    economics: [invoice],
+    lineage: [order],
+    actorEvents: [{
+      documentKey: "85|F-OWN|C-1",
+      documentType: 85,
+      documentNo: "F-OWN",
+      customerCode: "C-1",
+      actorCode: "BIRCAN",
+      actorRole: "history-change",
+      sourceType: "MIREVRBAS",
+      firstSeen: "2026-07-01T09:00:00.000Z",
+    }],
+  });
+
+  assert.equal(result.rows[0].commercialOwner, "FURKAN");
+  assert.equal(result.rows[0].commercialOwnerName, "Furkan Çakır");
+  assert.equal(result.rows[0].department, "service");
+  assert.equal(result.rows[0].attributionMethod, "macro-source-order");
+  assert.equal(result.rows[0].attributionConfidence, "confirmed");
+  assert.equal(result.rows[0].sourceOrderNo, "SSP-OWN");
+  assert.equal(result.rows[0].fulfillmentDepotCode, "MRK");
+  assert.equal(result.rows[0].crossDepot, true);
+  assert.equal(result.rows[0].evidenceDocuments.some((row) => row.documentNo === "SSP-OWN"), true);
+  assert.equal(result.rows[0].actorEvents[0].actorCode, "BIRCAN");
+  assert.equal(result.rows[0].ownershipEvidence.excludedActors[0].code, "BIRCAN");
+});
+
+test("linked returns inherit the original final sale ownership evidence", () => {
+  const invoice = sale(17, "F-RETURN", { rootId: "SALE-ROOT", depotCode: "MRK" });
+  const returned = sale(18, "R-RETURN", {
+    rootId: "RETURN-ROOT",
+    isSale: false,
+    depotCode: "MRK",
+    sourceDocumentType: 17,
+    sourceDocumentNo: "F-RETURN",
+    sourceCustomerCode: "C-1",
+    sourceLineNo: 1,
+  });
+  const sourceOrder = {
+    rootId: "SALE-ROOT",
+    lineageId: "ORDER-RETURN",
+    documentType: 14,
+    documentNo: "SSP-RETURN",
+    customerCode: "C-1",
+    lineNo: 1,
+    documentDate: "2026-06-28T00:00:00.000Z",
+    depth: 2,
+    commercialOwner: "MKARA",
+    departmentCode: "SERVIS",
+  };
+
+  const result = buildFinalInvoiceLedger({
+    economics: [invoice, returned],
+    lineage: [sourceOrder],
+  });
+  const returnRow = result.rows.find((row) => row.documentNo === "R-RETURN");
+
+  assert.equal(returnRow.originalRootId, "SALE-ROOT");
+  assert.equal(returnRow.commercialOwner, "MKARA");
+  assert.equal(returnRow.commercialOwnerName, "Mehmet Kara");
+  assert.equal(returnRow.department, "service");
+  assert.equal(returnRow.attributionMethod, "original-sale-owner");
+  assert.equal(returnRow.sourceOrderNo, "SSP-RETURN");
+  assert.equal(returnRow.ownershipEvidence.inheritedFromRootId, "SALE-ROOT");
+});

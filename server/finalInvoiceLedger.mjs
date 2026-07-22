@@ -1,3 +1,5 @@
+import { resolveCommercialOwnership } from "./ownershipResolver.mjs";
+
 export const FINAL_SALE_TYPES = new Set([17, 85, 91]);
 export const FINAL_RETURN_TYPES = new Set([18]);
 
@@ -1028,6 +1030,56 @@ function normalizeEconomicRow(row, graph) {
   };
 }
 
+function ownershipFields(ownership) {
+  return {
+    commercialOwner: ownership.ownerCode,
+    commercialOwnerName: ownership.ownerName,
+    ownerActive: ownership.ownerActive,
+    ownerLocation: ownership.ownerLocation,
+    department: ownership.department,
+    attributionMethod: ownership.method,
+    attributionConfidence: ownership.confidence,
+    sourceOrderNo: ownership.sourceOrderNo,
+    evidenceDocuments: ownership.evidenceDocuments,
+    actorEvents: ownership.actorEvents,
+    fulfillmentDepotCode: ownership.fulfillmentDepotCode,
+    fulfillmentDepotName: ownership.fulfillmentDepotName,
+    crossDepot: ownership.crossDepot,
+    ownershipEvidence: ownership.evidence,
+  };
+}
+
+function linkedReturnOwnership(row, original, directOwnership) {
+  if (!original) return ownershipFields(directOwnership);
+  const expectedDepot = original.department === "service"
+    ? "YTM"
+    : original.department === "parts" ? "MRK" : null;
+  return {
+    commercialOwner: original.commercialOwner,
+    commercialOwnerName: original.commercialOwnerName,
+    ownerActive: original.ownerActive,
+    ownerLocation: original.ownerLocation,
+    department: original.department,
+    attributionMethod: "original-sale-owner",
+    attributionConfidence: original.attributionConfidence,
+    sourceOrderNo: original.sourceOrderNo,
+    evidenceDocuments: original.evidenceDocuments.map((item) => ({ ...item })),
+    actorEvents: original.actorEvents.map((item) => ({ ...item })),
+    fulfillmentDepotCode: directOwnership.fulfillmentDepotCode,
+    fulfillmentDepotName: directOwnership.fulfillmentDepotName,
+    crossDepot: Boolean(
+      expectedDepot
+      && directOwnership.fulfillmentDepotCode
+      && directOwnership.fulfillmentDepotCode !== expectedDepot,
+    ),
+    ownershipEvidence: {
+      ...original.ownershipEvidence,
+      inheritedFromRootId: row.originalRootId,
+      inheritedFromDocumentNo: original.documentNo,
+    },
+  };
+}
+
 /**
  * Bir CPM satirinin ekonomik olarak nihai olup olmadigini belirler.
  * Tip 91, yalnizca 17/85 alt belgesi yoksa ekonomik satirdir.
@@ -1071,12 +1123,14 @@ export function isTerminalEconomicRow(row, downstreamRows = []) {
  * @param {Object[]} [input.lineage]
  * @param {Object[]} [input.actorEvents]
  * @param {Object[]} [input.pilotOrders]
+ * @param {Record<string, Object>} [input.identities]
  */
 export function buildFinalInvoiceLedger({
   economics = [],
   lineage = [],
   actorEvents = [],
   pilotOrders = [],
+  identities = {},
 } = {}) {
   const economicRows = Array.isArray(economics) ? economics : [];
   const lineageRows = Array.isArray(lineage) ? lineage : [];
@@ -1105,7 +1159,37 @@ export function buildFinalInvoiceLedger({
   const normalizedRows = terminalRows.map((row) => normalizeEconomicRow(row, graph));
   const normalizedSalesRows = normalizedRows.filter((row) => row.isSale);
   const returnCostResolutions = normalizedRows.map((row) => applyReturnCostBasis(row, normalizedSalesRows));
-  const rows = returnCostResolutions.map((resolution) => resolution.row);
+  const costRows = returnCostResolutions.map((resolution) => resolution.row);
+  const lineageByRoot = new Map();
+  for (const lineageRow of lineageRows) {
+    const rootId = text(lineageRow?.rootId);
+    if (!lineageByRoot.has(rootId)) lineageByRoot.set(rootId, []);
+    lineageByRoot.get(rootId).push(lineageRow);
+  }
+  const directlyOwnedRows = costRows.map((row) => {
+    const ownership = resolveCommercialOwnership({
+      economic: row,
+      lineage: lineageByRoot.get(text(row.rootId)) || [],
+      actorEvents: eventRows,
+      identities,
+    });
+    return { ...row, ...ownershipFields(ownership) };
+  });
+  const salesByRoot = new Map(directlyOwnedRows
+    .filter((row) => row.isSale && text(row.rootId))
+    .map((row) => [text(row.rootId), row]));
+  const rows = directlyOwnedRows.map((row) => {
+    if (row.isSale || !text(row.originalRootId)) return row;
+    const original = salesByRoot.get(text(row.originalRootId));
+    if (!original) return row;
+    const directOwnership = resolveCommercialOwnership({
+      economic: row,
+      lineage: lineageByRoot.get(text(row.rootId)) || [],
+      actorEvents: eventRows,
+      identities,
+    });
+    return { ...row, ...linkedReturnOwnership(row, original, directOwnership) };
+  });
   const returnCostQuarantines = returnCostResolutions
     .map((resolution) => resolution.quarantine)
     .filter(Boolean);

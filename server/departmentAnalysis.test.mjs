@@ -14,11 +14,49 @@ function economic(overrides = {}) {
 
 function evidence(overrides = {}) {
   return {
-    rootId: 1, documentType: 85, documentNo: "SF-1", depth: 0,
+    rootId: 1, documentType: 85, documentNo: "SF-1", customerCode: "C-1", depth: 0,
     commercialOwner: null, preparerUser: "CAN", entryUser: "CAN",
     departmentCode: null, depotCode: "MRK", ...overrides,
   };
 }
+
+function actor(documentRow, actorCode, overrides = {}) {
+  return {
+    documentKey: `${documentRow.documentType}|${documentRow.documentNo}|C-1`,
+    documentType: documentRow.documentType,
+    documentNo: documentRow.documentNo,
+    customerCode: "C-1",
+    actorCode,
+    actorRole: "history-entry",
+    sourceType: "MIREVRBAS",
+    firstSeen: "2026-06-29T08:00:00.000Z",
+    ...overrides,
+  };
+}
+
+test("department details expose the selected ownership chain and confidence", () => {
+  const source = evidence({
+    documentType: 14,
+    documentNo: "SSP-CHAIN",
+    documentDate: "2026-06-29T00:00:00.000Z",
+    depth: 2,
+    entryUser: "MKARA",
+  });
+  const result = buildDepartmentAnalysis({
+    year: 2026,
+    economics: [economic()],
+    lineage: [evidence(), source],
+    actorEvents: [actor(source, "MKARA")],
+  });
+
+  assert.equal(result.detailRows[0].commercialOwner, "MKARA");
+  assert.equal(result.detailRows[0].commercialOwnerName, "Mehmet Kara");
+  assert.equal(result.detailRows[0].attributionMethod, "upstream-history");
+  assert.equal(result.detailRows[0].attributionConfidence, "inferred");
+  assert.equal(result.detailRows[0].sourceOrderNo, "SSP-CHAIN");
+  assert.equal(result.detailRows[0].evidenceDocuments.some((row) => row.documentNo === "SSP-CHAIN"), true);
+  assert.equal(result.detailRows[0].actorEvents[0].actorCode, "MKARA");
+});
 
 test("source order department and owner override central fulfillment actor", () => {
   const result = buildDepartmentAnalysis({
@@ -36,21 +74,31 @@ test("source order department and owner override central fulfillment actor", () 
 });
 
 test("Mehmet Kara remains service when material leaves central depot", () => {
+  const source = evidence({
+    documentType: 14, documentNo: "SSP-MK", depth: 2,
+    documentDate: "2026-06-29T00:00:00.000Z", commercialOwner: null, preparerUser: "MKARA",
+  });
   const result = buildDepartmentAnalysis({
     year: 2026,
     economics: [economic()],
-    lineage: [evidence({ commercialOwner: "MKARA", preparerUser: "CAN" })],
+    lineage: [evidence(), source],
+    actorEvents: [actor(source, "MKARA")],
   });
   assert.equal(result.detailRows[0].department, "service");
   assert.equal(result.detailRows[0].crossDepot, true);
-  assert.equal(result.quality.inferredCoveragePct, 0);
+  assert.equal(result.quality.inferredCoveragePct, 100);
 });
 
 test("historical user fallback is reported as inferred rather than confirmed", () => {
+  const source = evidence({
+    documentType: 13, documentNo: "TKL-F", depth: 3,
+    documentDate: "2026-06-28T00:00:00.000Z", preparerUser: "FURKAN", entryUser: "FURKAN",
+  });
   const result = buildDepartmentAnalysis({
     year: 2026,
     economics: [economic()],
-    lineage: [evidence({ preparerUser: "FURKAN", entryUser: "FURKAN" })],
+    lineage: [evidence(), source],
+    actorEvents: [actor(source, "FURKAN")],
   });
   assert.equal(result.detailRows[0].attributionStatus, "inferred");
   assert.equal(result.quality.attributionCoveragePct, 0);
@@ -71,10 +119,15 @@ test("gross sales and net sales remain separate reconciliation metrics", () => {
 });
 
 test("former employee mappings remain available for historical attribution", () => {
+  const source = evidence({
+    documentType: 14, documentNo: "SSP-OLD", depth: 2,
+    documentDate: "2024-06-30T00:00:00.000Z", commercialOwner: "OGENCOGLU",
+  });
   const result = buildDepartmentAnalysis({
     year: 2026,
-    economics: [economic()],
-    lineage: [evidence({ commercialOwner: "OGENCOGLU" })],
+    economics: [economic({ documentDate: "2024-06-30T00:00:00.000Z" })],
+    lineage: [source],
+    actorEvents: [actor(source, "OGENCOGLU", { firstSeen: "2024-06-30T08:00:00.000Z" })],
   });
   assert.equal(result.detailRows[0].department, "service");
   assert.equal(result.detailRows[0].commercialOwnerName, "Özlenen Gençoğlu");
@@ -82,13 +135,21 @@ test("former employee mappings remain available for historical attribution", () 
 });
 
 test("customer account-like actor codes are skipped before choosing a real user", () => {
+  const employeeSource = evidence({
+    documentType: 13, documentNo: "TKL-A", depth: 3,
+    documentDate: "2026-06-28T00:00:00.000Z", preparerUser: "AERIMLI", entryUser: "AERIMLI",
+  });
+  const customerSource = evidence({
+    documentType: 14, documentNo: "B2B-1", depth: 2,
+    documentDate: "2026-06-29T00:00:00.000Z", preparerUser: "", entryUser: "DBS003",
+  });
   const result = buildDepartmentAnalysis({
     year: 2026,
     economics: [economic()],
-    lineage: [
-      evidence({ preparerUser: "AERIMLI", entryUser: "AERIMLI" }),
-      evidence({ documentType: 14, documentNo: "B2B-1", depth: 1, preparerUser: "", entryUser: "DBS003" }),
-    ],
+    lineage: [evidence(), employeeSource, customerSource],
+    actorEvents: [actor(customerSource, "DBS003"), actor(employeeSource, "AERIMLI", {
+      firstSeen: "2026-06-28T08:00:00.000Z",
+    })],
   });
   assert.equal(result.detailRows[0].commercialOwner, "AERIMLI");
   assert.equal(result.detailRows[0].commercialOwnerName, "Alperen Erimli");
@@ -99,8 +160,9 @@ test("customer account-like actor codes are skipped before choosing a real user"
 test("customer account-only rows require review instead of defaulting to parts", () => {
   const result = buildDepartmentAnalysis({
     year: 2026,
-    economics: [economic()],
-    lineage: [evidence({ preparerUser: "", entryUser: "S001" })],
+    economics: [economic({ depotCode: null })],
+    lineage: [evidence({ preparerUser: "", entryUser: "S001", depotCode: null })],
+    actorEvents: [actor(evidence(), "S001")],
   });
   assert.equal(result.detailRows[0].department, "review");
   assert.equal(result.detailRows[0].attributionStatus, "review");
@@ -108,36 +170,52 @@ test("customer account-only rows require review instead of defaulting to parts",
 });
 
 test("accounting users and final modifiers do not take commercial ownership", () => {
+  const source = evidence({
+    documentType: 14, documentNo: "SSP-F", depth: 2,
+    documentDate: "2026-06-29T00:00:00.000Z", preparerUser: "FURKAN", entryUser: "FURKAN",
+  });
   const result = buildDepartmentAnalysis({
     year: 2026,
     economics: [economic()],
-    lineage: [evidence({ preparerUser: "FURKAN", entryUser: "FURKAN", modifierUser: "BIRCAN" })],
+    lineage: [evidence({ modifierUser: "BIRCAN" }), source],
+    actorEvents: [actor(source, "FURKAN"), actor(evidence(), "BIRCAN", { actorRole: "history-change" })],
   });
   assert.equal(result.detailRows[0].commercialOwner, "FURKAN");
   assert.equal(result.detailRows[0].department, "service");
 
   const accountingOnly = buildDepartmentAnalysis({
     year: 2026,
-    economics: [economic()],
-    lineage: [evidence({ preparerUser: "BIRCAN", entryUser: "BIRCAN" })],
+    economics: [economic({ depotCode: null })],
+    lineage: [evidence({ preparerUser: "BIRCAN", entryUser: "BIRCAN", depotCode: null })],
+    actorEvents: [actor(evidence(), "BIRCAN")],
   });
   assert.equal(accountingOnly.detailRows[0].department, "review");
   assert.equal(accountingOnly.detailRows[0].commercialOwner, null);
 });
 
 test("Tuğrul Semiz changes department after Alperen transition cutoff", () => {
+  const beforeSource = evidence({
+    documentType: 14, documentNo: "SSP-25", depth: 2,
+    documentDate: "2026-05-25T00:00:00.000Z", preparerUser: "TSEMİZ", entryUser: "TSEMİZ", depotCode: "YTM",
+  });
   const before = buildDepartmentAnalysis({
     year: 2026,
     economics: [economic({ documentDate: "2026-05-25T00:00:00.000Z" })],
-    lineage: [evidence({ preparerUser: "TSEMİZ", entryUser: "TSEMİZ", depotCode: "YTM" })],
+    lineage: [beforeSource],
+    actorEvents: [actor(beforeSource, "TSEMİZ", { firstSeen: "2026-05-25T08:00:00.000Z" })],
   });
   assert.equal(before.detailRows[0].department, "service");
   assert.equal(before.detailRows[0].ownerLocation, "Yatmarin");
 
+  const afterSource = evidence({
+    documentType: 14, documentNo: "SSP-26", depth: 2,
+    documentDate: "2026-05-26T00:00:00.000Z", preparerUser: "TSEMİZ", entryUser: "TSEMİZ", depotCode: "MRK",
+  });
   const after = buildDepartmentAnalysis({
     year: 2026,
     economics: [economic({ documentDate: "2026-05-26T00:00:00.000Z" })],
-    lineage: [evidence({ preparerUser: "TSEMİZ", entryUser: "TSEMİZ", depotCode: "MRK" })],
+    lineage: [afterSource],
+    actorEvents: [actor(afterSource, "TSEMİZ", { firstSeen: "2026-05-26T08:00:00.000Z" })],
   });
   assert.equal(after.detailRows[0].department, "parts");
   assert.equal(after.detailRows[0].ownerLocation, "Merkez Ofis");
@@ -155,9 +233,9 @@ test("nearby document hint can move review rows to a department without ranking 
     lineage: [evidence({ preparerUser: "BIRCAN", entryUser: "BIRCAN" })],
   });
   assert.equal(result.detailRows[0].department, "service");
-  assert.equal(result.detailRows[0].commercialOwner, "FURKAN");
+  assert.equal(result.detailRows[0].commercialOwner, null);
   assert.equal(result.detailRows[0].attributionStatus, "review");
-  assert.equal(result.detailRows[0].attributionMethod, "nearby-document-hint");
+  assert.equal(result.detailRows[0].attributionMethod, "b2b-candidate-hint");
   assert.equal(result.topOwners.some((item) => item.id === "FURKAN"), false);
   assert.equal(result.quality.hintedReviewAmount, 900);
 });
