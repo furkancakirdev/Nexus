@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildSalesCaseModel, filterSalesCases, salesCaseSql } from "./salesCases.mjs";
 import { buildDepartmentAnalysis, departmentAnalysisSql } from "./departmentAnalysis.mjs";
+import { buildFinalInvoiceLedger, finalInvoiceLedgerSql } from "./finalInvoiceLedger.mjs";
 
 const app = express();
 const port = Number(process.env.PORT || 4318);
@@ -115,6 +116,21 @@ async function getDepartmentAnalysisSource(year, forceRefresh = false) {
   };
   departmentAnalysisCache.set(year, { cachedAt: Date.now(), source });
   return source;
+}
+
+async function loadFinalInvoiceLedger(year) {
+  const pool = await getPool();
+  if (!pool) return null;
+  const result = await pool.request()
+    .input("company", sql.VarChar(3), process.env.CPM_SQL_COMPANY || "01")
+    .input("year", sql.Int, year)
+    .query(finalInvoiceLedgerSql);
+  return buildFinalInvoiceLedger({
+    economics: result.recordsets[0] || [],
+    lineage: result.recordsets[1] || [],
+    actorEvents: result.recordsets[2] || [],
+    pilotOrders: result.recordsets[3] || [],
+  });
 }
 
 async function getStoredAppState() {
