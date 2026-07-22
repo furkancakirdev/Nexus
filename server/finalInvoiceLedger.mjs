@@ -3,6 +3,7 @@ export const FINAL_RETURN_TYPES = new Set([18]);
 
 const LINEAGE_DOCUMENT_TYPES = new Set([13, 14, 15, 17, 18, 64, 85, 91]);
 const FINANCIAL_FIELDS = [
+  "quantity",
   "grossAmount",
   "discountAmount",
   "netAmount",
@@ -133,6 +134,10 @@ function validateFinancialRow(row) {
   const invalidFields = [];
   const values = {};
 
+  const quantity = finiteNumber(row.quantity);
+  if (quantity === null || quantity <= 0) invalidFields.push("quantity");
+  else values.quantity = quantity;
+
   for (const field of ["grossAmount", "discountAmount", "vatAmount"]) {
     const parsed = finiteNumber(row[field]);
     if (parsed === null) invalidFields.push(field);
@@ -174,10 +179,17 @@ function buildLineageGraph(economics, lineage) {
   const descendants = new Map();
   const ancestors = new Map();
   const types = new Map();
+  const rowsByKey = new Map();
 
   const remember = (row) => {
     if (!row || !Number.isInteger(Number(row.documentType)) || !text(row.documentNo)) return;
-    types.set(rowKey(row), Number(row.documentType));
+    const key = rowKey(row);
+    types.set(key, Number(row.documentType));
+    if (!rowsByKey.has(key)) rowsByKey.set(key, []);
+    const identity = text(row.rootId ?? row.lineageId);
+    if (!rowsByKey.get(key).some((candidate) => identity
+      ? text(candidate.rootId ?? candidate.lineageId) === identity
+      : candidate === row)) rowsByKey.get(key).push(row);
   };
 
   const connect = (row) => {
@@ -194,7 +206,7 @@ function buildLineageGraph(economics, lineage) {
 
   for (const row of economics) connect(row);
   for (const row of lineage) connect(row);
-  return { descendants, ancestors, types };
+  return { descendants, ancestors, types, rowsByKey };
 }
 
 function findConnectedDocument(startKey, adjacency, types, acceptedTypes) {
@@ -323,13 +335,37 @@ function sumFinite(items, field) {
 }
 
 function dateValue(value) {
-  const parsed = new Date(value).getTime();
+  if (value instanceof Date) {
+    const parsed = value.getTime();
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  if (typeof value !== "string" || !value.trim()) return null;
+  const normalized = value.trim();
+  const match = normalized.match(
+    /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,7}))?)?(Z|[+-]\d{2}:\d{2})?)?$/,
+  );
+  if (!match) return null;
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText, , zoneText] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const calendarCheck = new Date(Date.UTC(year, month - 1, day));
+  if (calendarCheck.getUTCFullYear() !== year
+    || calendarCheck.getUTCMonth() !== month - 1
+    || calendarCheck.getUTCDate() !== day) return null;
+  if (hourText !== undefined && (Number(hourText) > 23 || Number(minuteText) > 59
+    || Number(secondText || 0) > 59)) return null;
+  const deterministic = hourText === undefined
+    ? `${normalized}T00:00:00.000Z`
+    : (zoneText ? normalized : `${normalized}Z`);
+  const parsed = new Date(deterministic).getTime();
   return Number.isFinite(parsed) ? parsed : null;
 }
 
 function oneYearBefore(value) {
-  const parsed = new Date(value);
-  if (!Number.isFinite(parsed.getTime())) return null;
+  const timestamp = dateValue(value);
+  if (timestamp === null) return null;
+  const parsed = new Date(timestamp);
   const originalMonth = parsed.getUTCMonth();
   parsed.setUTCFullYear(parsed.getUTCFullYear() - 1);
   if (parsed.getUTCMonth() !== originalMonth) parsed.setUTCDate(0);
@@ -352,18 +388,24 @@ function normalizePurchaseCandidate(row) {
   const quantity = finiteNumber(value("purchaseQuantity", "quantity"));
   const grossAmount = finiteNumber(value("purchaseGrossAmount", "grossAmount"));
   const discountAmount = finiteNumber(value("purchaseDiscountAmount", "discountAmount"));
-  const suppliedNetAmount = finiteNumber(value("purchaseNetAmount", "netAmount"));
-  const netAmount = suppliedNetAmount ?? (
-    grossAmount !== null && discountAmount !== null ? grossAmount - discountAmount : null
-  );
-  const suppliedDiscountPct = finiteNumber(
-    value("purchaseEffectiveDiscountPct", "effectiveDiscountPct"),
-  );
-  const effectiveDiscountPct = suppliedDiscountPct ?? (
-    grossAmount !== null && grossAmount !== 0 && discountAmount !== null
-      ? (100 * discountAmount) / grossAmount
-      : 0
-  );
+  const reportedNetAmount = value("purchaseNetAmount", "netAmount");
+  const hasReportedNet = !isAbsent(reportedNetAmount)
+    && !(typeof reportedNetAmount === "string" && reportedNetAmount.trim() === "");
+  const suppliedNetAmount = finiteNumber(reportedNetAmount);
+  const netAmount = grossAmount !== null && discountAmount !== null
+    ? grossAmount - discountAmount
+    : null;
+  const reportedDiscountPct = value("purchaseEffectiveDiscountPct", "effectiveDiscountPct");
+  const hasReportedDiscountPct = !isAbsent(reportedDiscountPct)
+    && !(typeof reportedDiscountPct === "string" && reportedDiscountPct.trim() === "");
+  const suppliedDiscountPct = finiteNumber(reportedDiscountPct);
+  const effectiveDiscountPct = grossAmount !== null && grossAmount !== 0 && discountAmount !== null
+    ? (100 * discountAmount) / grossAmount
+    : 0;
+  const inconsistentNet = hasReportedNet && (suppliedNetAmount === null || netAmount === null
+    || Math.abs(suppliedNetAmount - netAmount) > 0.01);
+  const inconsistentDiscountPct = hasReportedDiscountPct && (suppliedDiscountPct === null
+    || Math.abs(suppliedDiscountPct - effectiveDiscountPct) > 0.01);
 
   return {
     source: row,
@@ -376,14 +418,18 @@ function normalizePurchaseCandidate(row) {
     purchaseGrossAmount: grossAmount,
     purchaseDiscountAmount: discountAmount,
     purchaseNetAmount: netAmount,
+    purchaseReportedNetAmount: reportedNetAmount ?? null,
     purchaseVatAmount: finiteNumber(value("purchaseVatAmount", "vatAmount")),
     purchaseEffectiveDiscountPct: effectiveDiscountPct,
+    purchaseReportedDiscountPct: reportedDiscountPct ?? null,
     purchaseDocumentLineCount: finiteNumber(
       value("purchaseDocumentLineCount", "documentLineCount"),
     ),
-    active: row?.active === true || row?.active === 1,
+    active: row?.active === true || Number(row?.active) === 1,
     productCode: text(row?.productCode),
     rootId: row?.rootId ?? row?.purchaseId ?? null,
+    inconsistentNet,
+    inconsistentDiscountPct,
   };
 }
 
@@ -404,37 +450,62 @@ function earliestFirst(left, right) {
   return dateValue(left.purchaseDate) - dateValue(right.purchaseDate) || compareIdentity(left, right);
 }
 
-function consumedQuantity(candidate, sale, salesConsumption) {
+function isActiveMovement(row) {
+  if (!Object.hasOwn(row || {}, "active")) return true;
+  return row.active === true || Number(row.active) === 1;
+}
+
+function movementIdentity(row) {
+  if (row?.rootId !== null && row?.rootId !== undefined && text(row.rootId)) return `root|${text(row.rootId)}`;
+  return [
+    Number(row?.documentType), text(row?.documentNo), text(row?.customerCode), text(row?.lineNo),
+    text(row?.productCode), dateValue(row?.documentDate),
+  ].join("|");
+}
+
+function terminalConsumptionRows(salesConsumption) {
+  const identityRows = new Map();
+  for (const movement of Array.isArray(salesConsumption) ? salesConsumption : []) {
+    const type = Number(movement?.documentType);
+    if (!movement || !isActiveMovement(movement) || !LINEAGE_DOCUMENT_TYPES.has(type)
+      || dateValue(movement.documentDate) === null) continue;
+    const identity = movementIdentity(movement);
+    if (!identityRows.has(identity)) identityRows.set(identity, movement);
+  }
+  const evidenceRows = [...identityRows.values()];
+  const terminalRows = evidenceRows.filter((movement) => {
+    const quantity = finiteNumber(movement?.quantity);
+    return FINAL_SALE_TYPES.has(Number(movement?.documentType))
+      && quantity !== null
+      && quantity > 0;
+  });
+  const retailResolution = resolveRetailEconomicExclusions(
+    terminalRows.filter((row) => Number(row.documentType) === 91),
+    evidenceRows,
+    evidenceRows,
+    terminalRows,
+  );
+  return terminalRows.filter((row) => !retailResolution.convertedRows.has(row)
+    && !retailResolution.quarantinedRows.has(row));
+}
+
+function consumedQuantity(candidate, sale, terminalSales) {
   const purchaseDate = dateValue(candidate.purchaseDate);
   const saleDate = dateValue(sale?.documentDate);
   if (purchaseDate === null || saleDate === null) return 0;
-  const seenMovements = new Set();
-
-  return salesConsumption.reduce((total, movement) => {
-    if (!movement || movement.active === false || text(movement.productCode) !== candidate.productCode) return total;
-    const movementType = Number(movement.documentType);
-    if (Number.isFinite(movementType)
-      && !FINAL_SALE_TYPES.has(movementType)
-      && !FINAL_RETURN_TYPES.has(movementType)) return total;
+  return terminalSales.reduce((total, movement) => {
+    if (text(movement.productCode) !== candidate.productCode) return total;
     if (text(movement.documentNo) === text(sale?.documentNo)
       && text(movement.lineNo) === text(sale?.lineNo)) return total;
     const movementDate = dateValue(movement.documentDate);
     const quantity = finiteNumber(movement.quantity);
     if (movementDate === null || quantity === null || quantity <= 0
       || movementDate <= purchaseDate || movementDate >= saleDate) return total;
-    const movementKey = movement.rootId ?? documentKey(
-      movement.documentType,
-      movement.documentNo,
-      movement.customerCode,
-      movement.lineNo,
-    );
-    if (seenMovements.has(movementKey)) return total;
-    seenMovements.add(movementKey);
-    return total + (movement.isSale === false || FINAL_RETURN_TYPES.has(movementType) ? -quantity : quantity);
+    return total + quantity;
   }, 0);
 }
 
-function missingPurchaseEvidence(reason = "Dogrulanabilir aktif nihai alim faturasi bulunamadi.") {
+function missingPurchaseEvidence(reason = "Dogrulanabilir aktif nihai alim faturasi bulunamadi.", extras = {}) {
   return {
     costMethod: "missingPurchase",
     purchaseType: null,
@@ -452,6 +523,7 @@ function missingPurchaseEvidence(reason = "Dogrulanabilir aktif nihai alim fatur
     purchaseRemainingQuantity: null,
     unitCost: null,
     costValidationReason: reason,
+    ...extras,
   };
 }
 
@@ -508,25 +580,39 @@ export function selectPurchaseEvidence({
     return missingPurchaseEvidence("Satis tarihi, urun veya miktar bilgisi maliyet secimi icin gecersiz.");
   }
 
-  const eligible = (Array.isArray(purchases) ? purchases : [])
-    .map(normalizePurchaseCandidate)
+  const normalizedPurchases = (Array.isArray(purchases) ? purchases : []).map(normalizePurchaseCandidate);
+  const rejectedPurchases = normalizedPurchases
+    .filter((candidate) => candidate.inconsistentNet || candidate.inconsistentDiscountPct)
+    .map((candidate) => ({
+      purchaseType: candidate.purchaseType,
+      purchaseNo: candidate.purchaseNo,
+      reason: candidate.inconsistentNet ? "inconsistent-purchase-net" : "inconsistent-purchase-discount-pct",
+      reportedNetAmount: candidate.purchaseReportedNetAmount,
+      reportedDiscountPct: candidate.purchaseReportedDiscountPct,
+    }));
+  const eligible = normalizedPurchases
     .filter((candidate) => FINAL_PURCHASE_TYPES.has(candidate.purchaseType)
       && candidate.active
       && candidate.productCode === productCode
       && candidate.purchaseNo
       && dateValue(candidate.purchaseDate) !== null
       && candidate.purchaseQuantity > 0
+      && candidate.purchaseGrossAmount !== null
+      && candidate.purchaseDiscountAmount !== null
       && candidate.purchaseNetAmount !== null
       && candidate.purchaseNetAmount >= 0
+      && !candidate.inconsistentNet
+      && !candidate.inconsistentDiscountPct
       && !purchaseDocumentIsReturn(candidate, returnSet));
 
   const lowerBulkDate = oneYearBefore(sale?.documentDate);
+  const terminalSales = terminalConsumptionRows(salesConsumption);
   const withRemaining = eligible.map((candidate) => ({
     candidate,
     remainingQuantity: candidate.purchaseQuantity - consumedQuantity(
       candidate,
       sale,
-      Array.isArray(salesConsumption) ? salesConsumption : [],
+      terminalSales,
     ),
   }));
   const bulk = withRemaining
@@ -552,7 +638,12 @@ export function selectPurchaseEvidence({
     .sort((left, right) => earliestFirst(left.candidate, right.candidate))[0];
   return next
     ? selectedPurchaseEvidence(next.candidate, "nextPurchase", next.remainingQuantity)
-    : missingPurchaseEvidence();
+    : missingPurchaseEvidence(
+      rejectedPurchases.length
+        ? "Alim faturasi net tutar veya efektif iskonto kaniti tutarsiz oldugu icin karantinaya alindi."
+        : undefined,
+      rejectedPurchases.length ? { rejectedPurchases } : {},
+    );
 }
 
 function resolveRetailEconomicExclusions(
@@ -677,12 +768,16 @@ function documentNoFromKey(key) {
 
 function normalizeEmbeddedPurchaseEvidence(row) {
   const candidate = normalizePurchaseCandidate({ ...row, active: true });
-  const unitCost = finiteNumber(row?.unitCost)
-    ?? (candidate.purchaseQuantity > 0 && candidate.purchaseNetAmount !== null
-      ? candidate.purchaseNetAmount / candidate.purchaseQuantity
-      : null);
-  if (!FINAL_PURCHASE_TYPES.has(candidate.purchaseType) || !candidate.purchaseNo || unitCost === null) {
-    return missingPurchaseEvidence(row?.costValidationReason);
+  const unitCost = candidate.purchaseQuantity > 0 && candidate.purchaseNetAmount !== null
+    ? candidate.purchaseNetAmount / candidate.purchaseQuantity
+    : null;
+  if (!FINAL_PURCHASE_TYPES.has(candidate.purchaseType) || !candidate.purchaseNo || unitCost === null
+    || candidate.purchaseGrossAmount === null || candidate.purchaseDiscountAmount === null
+    || candidate.inconsistentNet || candidate.inconsistentDiscountPct) {
+    const reason = candidate.inconsistentNet || candidate.inconsistentDiscountPct
+      ? "Alim faturasi tutar kaniti tutarsiz oldugu icin karantinaya alindi."
+      : row?.costValidationReason;
+    return missingPurchaseEvidence(reason);
   }
 
   const costMethod = ["bulkPurchase", "priorPurchase", "nextPurchase", "originalSaleCost"]
@@ -711,41 +806,134 @@ function purchaseEvidenceFrom(row) {
 }
 
 function originalSaleForReturn(returnRow, salesRows) {
-  const sourceLineNo = text(returnRow.sourceLineNo);
-  const candidates = salesRows.filter((saleRow) => saleRow.documentNo === returnRow.originalInvoiceNo
-    && (!returnRow.customerCode || saleRow.customerCode === returnRow.customerCode)
-    && (!returnRow.productCode || saleRow.productCode === returnRow.productCode));
-  if (sourceLineNo) {
-    const exactLine = candidates.find((saleRow) => text(saleRow.lineNo) === sourceLineNo);
-    if (exactLine) return exactLine;
+  if (finiteNumber(returnRow.originalCandidateCount) > 1) {
+    return { status: "ambiguous", sale: null };
   }
-  return candidates.length === 1 ? candidates[0] : null;
+  const candidates = salesRows.filter((saleRow) => Number(saleRow.documentType) === Number(returnRow.originalDocumentType)
+    && saleRow.documentNo === returnRow.originalDocumentNo
+    && (!returnRow.customerCode || saleRow.customerCode === returnRow.customerCode)
+    && (!returnRow.productCode || saleRow.productCode === returnRow.productCode)
+    && (!text(returnRow.originalLineNo) || text(saleRow.lineNo) === text(returnRow.originalLineNo)));
+  const rootMatches = text(returnRow.originalRootId)
+    ? candidates.filter((saleRow) => text(saleRow.rootId) === text(returnRow.originalRootId))
+    : candidates;
+  if (rootMatches.length === 1) return { status: "matched", sale: rootMatches[0] };
+  if (rootMatches.length > 1 || candidates.length > 1
+    || (text(returnRow.originalRootId) && candidates.length > 0)) {
+    return { status: "ambiguous", sale: null };
+  }
+  return { status: "missing", sale: null };
 }
 
 function applyReturnCostBasis(row, salesRows) {
-  if (row.isSale) return row;
-  const originalSale = row.originalInvoiceNo ? originalSaleForReturn(row, salesRows) : null;
+  if (row.isSale) return { row, quarantine: null };
+  const resolution = row.originalDocumentNo
+    ? originalSaleForReturn(row, salesRows)
+    : { status: "missing", sale: null };
+  const originalSale = resolution.sale;
   if (originalSale?.unitCost !== null && originalSale?.unitCost !== undefined) {
     const unitCost = Number(originalSale.unitCost);
     return {
-      ...row,
-      ...purchaseEvidenceFrom(originalSale),
-      costMethod: "originalSaleCost",
-      unitCost,
-      lineCost: -number(row.quantity) * unitCost,
-      costValidationReason: "Satis iadesi, bagli nihai satis faturasinin maliyet kanitini devraldi.",
+      row: {
+        ...row,
+        ...purchaseEvidenceFrom(originalSale),
+        costMethod: "originalSaleCost",
+        unitCost,
+        lineCost: -row.quantity * unitCost,
+        costReviewStatus: "verified",
+        costValidationReason: "Satis iadesi, bagli nihai satis faturasinin maliyet kanitini devraldi.",
+      },
+      quarantine: null,
     };
   }
-  if (row.originalInvoiceNo && row.costMethod === "originalSaleCost" && row.unitCost !== null) return row;
+  if (resolution.status === "ambiguous") {
+    const quarantineReason = "ambiguous-original-sale-cost";
+    return {
+      row: {
+        ...row,
+        ...missingPurchaseEvidence("Birden fazla asil satis satiri ayni kimlikle eslesti; maliyet karantinaya alindi."),
+        lineCost: null,
+        costReviewStatus: "quarantined",
+      },
+      quarantine: {
+        rootId: row.rootId,
+        documentType: row.documentType,
+        documentNo: row.documentNo,
+        customerCode: row.customerCode,
+        lineNo: row.lineNo,
+        quarantineReason,
+        originalDocumentType: row.originalDocumentType,
+        originalDocumentNo: row.originalDocumentNo,
+        originalLineNo: row.originalLineNo,
+      },
+    };
+  }
+  const stableTraceIdentity = FINAL_SALE_TYPES.has(Number(row.originalDocumentType))
+    && text(row.originalRootId)
+    && text(row.originalLineNo)
+    && finiteNumber(row.originalQuantity) > 0;
+  if (stableTraceIdentity && row.costMethod === "originalSaleCost" && row.unitCost !== null) {
+    return {
+      row: {
+        ...row,
+        lineCost: -row.quantity * row.unitCost,
+        costReviewStatus: "verified-trace",
+      },
+      quarantine: null,
+    };
+  }
   return {
-    ...row,
-    ...missingPurchaseEvidence(
-      row.originalInvoiceNo
-        ? "Bagli nihai satis faturasi bulundu ancak satis tarihindeki maliyet kaniti bulunamadi."
-        : "Baglantisiz satis iadesi maliyet sahipligi icin inceleme gerektiriyor.",
-    ),
-    lineCost: null,
+    row: {
+      ...row,
+      ...missingPurchaseEvidence(
+        row.originalDocumentNo
+          ? "Bagli nihai satis faturasi bulundu ancak satis tarihindeki maliyet kaniti bulunamadi."
+          : "Baglantisiz satis iadesi maliyet sahipligi icin inceleme gerektiriyor.",
+      ),
+      lineCost: null,
+      costReviewStatus: "review",
+    },
+    quarantine: null,
   };
+}
+
+function identityFromKey(key, graph) {
+  if (!key) return null;
+  const candidates = graph.rowsByKey.get(key) || [];
+  const unique = candidates.length === 1 ? candidates[0] : null;
+  const [typeText, documentNo, customerCode, lineNo] = key.split("|");
+  return {
+    documentType: Number(typeText),
+    documentNo,
+    customerCode,
+    lineNo: unique?.lineNo ?? (lineNo || null),
+    rootId: unique?.rootId ?? unique?.lineageId ?? null,
+    quantity: finiteNumber(unique?.quantity),
+  };
+}
+
+function originalIdentity(row, graph, isSale) {
+  if (isSale) return null;
+  if (FINAL_SALE_TYPES.has(Number(row.originalDocumentType)) && text(row.originalDocumentNo)) {
+    return {
+      documentType: Number(row.originalDocumentType),
+      documentNo: text(row.originalDocumentNo),
+      customerCode: text(row.originalCustomerCode || row.sourceCustomerCode || row.customerCode),
+      lineNo: row.originalLineNo ?? row.sourceLineNo ?? null,
+      rootId: row.originalRootId ?? null,
+      quantity: finiteNumber(row.originalQuantity),
+    };
+  }
+  const directOriginalType = Number(row.sourceDocumentType);
+  const key = FINAL_SALE_TYPES.has(directOriginalType)
+    ? documentKey(
+      directOriginalType,
+      row.sourceDocumentNo,
+      row.sourceCustomerCode || row.customerCode,
+      row.sourceLineNo,
+    )
+    : findConnectedDocument(rowKey(row), graph.ancestors, graph.types, FINAL_SALE_TYPES);
+  return identityFromKey(key, graph);
 }
 
 function normalizeEconomicRow(row, graph) {
@@ -756,13 +944,7 @@ function normalizeEconomicRow(row, graph) {
   const vatAmount = number(row.vatAmount);
   const invoiceTotalInclVat = number(row.invoiceTotalInclVat, netAmount + vatAmount);
   const isSale = !FINAL_RETURN_TYPES.has(documentType);
-  const directOriginalType = Number(row.sourceDocumentType);
-  const originalKey = isSale || FINAL_SALE_TYPES.has(directOriginalType)
-    ? null
-    : findConnectedDocument(rowKey(row), graph.ancestors, graph.types, FINAL_SALE_TYPES);
-  const originalInvoiceNo = isSale
-    ? null
-    : (FINAL_SALE_TYPES.has(directOriginalType) ? text(row.sourceDocumentNo) : documentNoFromKey(originalKey));
+  const original = originalIdentity(row, graph, isSale);
   const purchaseEvidence = normalizeEmbeddedPurchaseEvidence(row);
   const lineCost = purchaseEvidence.unitCost === null
     ? null
@@ -783,7 +965,13 @@ function normalizeEconomicRow(row, graph) {
     signedNetSales: isSale ? netAmount : -netAmount,
     signedVatAmount: isSale ? vatAmount : -vatAmount,
     signedInvoiceTotalInclVat: isSale ? invoiceTotalInclVat : -invoiceTotalInclVat,
-    originalInvoiceNo,
+    originalDocumentType: original?.documentType ?? null,
+    originalDocumentNo: original?.documentNo ?? null,
+    originalInvoiceNo: original?.documentNo ?? null,
+    originalCustomerCode: original?.customerCode ?? null,
+    originalLineNo: original?.lineNo ?? null,
+    originalRootId: original?.rootId ?? null,
+    originalQuantity: original?.quantity ?? null,
     lineCost,
   };
 }
@@ -864,7 +1052,11 @@ export function buildFinalInvoiceLedger({
 
   const normalizedRows = terminalRows.map((row) => normalizeEconomicRow(row, graph));
   const normalizedSalesRows = normalizedRows.filter((row) => row.isSale);
-  const rows = normalizedRows.map((row) => applyReturnCostBasis(row, normalizedSalesRows));
+  const returnCostResolutions = normalizedRows.map((row) => applyReturnCostBasis(row, normalizedSalesRows));
+  const rows = returnCostResolutions.map((resolution) => resolution.row);
+  const returnCostQuarantines = returnCostResolutions
+    .map((resolution) => resolution.quarantine)
+    .filter(Boolean);
   const salesRows = rows.filter((row) => row.isSale);
   const returnRows = rows.filter((row) => !row.isSale);
   const sum = (items, field) => items.reduce((total, row) => total + number(row[field]), 0);
@@ -879,7 +1071,7 @@ export function buildFinalInvoiceLedger({
     customerCode: text(row.customerCode),
     lineNo: row.lineNo,
     invalidFields: [...invalidFields],
-  }));
+  })).concat(returnCostQuarantines);
 
   return {
     rows,
@@ -898,6 +1090,8 @@ export function buildFinalInvoiceLedger({
       invalidRowsExcluded: economicRows.length - structurallyValidRows.length + invalidFinancialRows.length,
       invalidStructuralRows: economicRows.length - structurallyValidRows.length,
       invalidFinancialRows: invalidFinancialRows.length,
+      invalidQuantityRows: invalidFinancialRows.filter((validation) =>
+        validation.invalidFields.includes("quantity")).length,
       invalidFinancialFieldCounts,
       provisionalRowsExcluded,
       convertedRetailRowsExcluded,
@@ -909,6 +1103,7 @@ export function buildFinalInvoiceLedger({
       retailLineageAmbiguities: retailResolution.ambiguities.map((ambiguity) => ({ ...ambiguity })),
       linkedReturnRows: returnRows.filter((row) => row.originalInvoiceNo).length,
       unlinkedReturnRows: returnRows.filter((row) => !row.originalInvoiceNo).length,
+      ambiguousReturnCostRows: returnCostQuarantines.length,
       lineageRows: lineageRows.length,
       actorEvents: eventRows.length,
     },
@@ -940,14 +1135,14 @@ SELECT
   supplier.UNVAN purchasePartyName,
   p.MALKOD productCode,
   CAST(p.MIKTAR AS decimal(28, 4)) purchaseQuantity,
-  CAST(ISNULL(p.TUTAR, 0) AS decimal(28, 4)) purchaseGrossAmount,
-  CAST(ISNULL(p.ISKONTO, 0) AS decimal(28, 4)) purchaseDiscountAmount,
-  CAST(ISNULL(p.TUTAR, 0) - ISNULL(p.ISKONTO, 0) AS decimal(28, 4)) purchaseNetAmount,
+  CAST(p.TUTAR AS decimal(28, 4)) purchaseGrossAmount,
+  CAST(p.ISKONTO AS decimal(28, 4)) purchaseDiscountAmount,
+  CAST(p.TUTAR - p.ISKONTO AS decimal(28, 4)) purchaseNetAmount,
   CAST(ISNULL(p.KDV, 0) AS decimal(28, 4)) purchaseVatAmount,
-  CAST(CASE WHEN ISNULL(p.TUTAR, 0) = 0 THEN 0
-    ELSE 100.0 * ISNULL(p.ISKONTO, 0) / p.TUTAR END AS decimal(18, 4)) purchaseEffectiveDiscountPct,
+  CAST(CASE WHEN p.TUTAR = 0 THEN 0
+    ELSE 100.0 * p.ISKONTO / p.TUTAR END AS decimal(18, 4)) purchaseEffectiveDiscountPct,
   COUNT_BIG(*) OVER (
-    PARTITION BY p.SIRKETNO, p.EVRAKTIP, p.EVRAKNO, p.HESAPKOD
+    PARTITION BY p.SIRKETNO, p.EVRAKTIP, p.EVRAKNO, p.HESAPKOD, p.EVRAKTARIH
   ) purchaseDocumentLineCount
 INTO #purchaseCandidates
 FROM STKHAR p
@@ -956,7 +1151,9 @@ WHERE p.SIRKETNO = @company
   AND p.KAYITDURUM = 1
   AND p.EVRAKTIP IN (9,609)
   AND p.MIKTAR > 0
-  AND ISNULL(p.TUTAR, 0) - ISNULL(p.ISKONTO, 0) >= 0
+  AND p.TUTAR IS NOT NULL
+  AND p.ISKONTO IS NOT NULL
+  AND p.TUTAR - p.ISKONTO >= 0
   AND NOT EXISTS (
     SELECT 1 FROM #incomingReturnDocuments rejected WHERE rejected.purchaseNo = p.EVRAKNO
   );
@@ -964,14 +1161,96 @@ WHERE p.SIRKETNO = @company
 CREATE INDEX IX_nexus_purchase_candidates
   ON #purchaseCandidates(productCode, purchaseDate, purchaseId);
 
+;WITH retailConsumptionLineage AS (
+  SELECT
+    retail.ID retailRootId,
+    retail.ID movementId,
+    retail.EVRAKTIP documentType,
+    retail.EVRAKNO documentNo,
+    retail.HESAPKOD customerCode,
+    retail.SIRANO lineNo,
+    retail.SONKAYNAKEVRAKTIP sourceDocumentType,
+    retail.SONKAYNAKEVRAKNO sourceDocumentNo,
+    retail.SONKAYNAKHESAPKOD sourceCustomerCode,
+    retail.SONKAYNAKSIRANO sourceLineNo,
+    0 depth,
+    CAST('|' + CAST(retail.ID AS varchar(24)) + '|' AS varchar(900)) visited
+  FROM STKHAR retail
+  WHERE retail.SIRKETNO = @company
+    AND retail.KAYITDURUM = 1
+    AND retail.EVRAKTIP = 91
+    AND retail.MIKTAR > 0
+  UNION ALL
+  SELECT
+    lineage.retailRootId,
+    downstream.ID,
+    downstream.EVRAKTIP,
+    downstream.EVRAKNO,
+    downstream.HESAPKOD,
+    downstream.SIRANO,
+    downstream.SONKAYNAKEVRAKTIP,
+    downstream.SONKAYNAKEVRAKNO,
+    downstream.SONKAYNAKHESAPKOD,
+    downstream.SONKAYNAKSIRANO,
+    lineage.depth + 1,
+    CAST(lineage.visited + CAST(downstream.ID AS varchar(24)) + '|' AS varchar(900))
+  FROM retailConsumptionLineage lineage
+  JOIN STKHAR downstream ON downstream.SIRKETNO = @company
+    AND downstream.KAYITDURUM = 1
+    AND downstream.EVRAKTIP IN (13,14,15,17,64,85)
+    AND downstream.SONKAYNAKEVRAKTIP = lineage.documentType
+    AND downstream.SONKAYNAKEVRAKNO = lineage.documentNo
+    AND COALESCE(NULLIF(downstream.SONKAYNAKHESAPKOD, ''), downstream.HESAPKOD) = lineage.customerCode
+    AND downstream.SONKAYNAKSIRANO = lineage.lineNo
+  WHERE lineage.depth < 8
+    AND CHARINDEX('|' + CAST(downstream.ID AS varchar(24)) + '|', lineage.visited) = 0
+), convertedRetailConsumption AS (
+  SELECT DISTINCT retailRootId
+  FROM retailConsumptionLineage
+  WHERE depth > 0 AND documentType IN (17,85)
+), rankedTerminalSales AS (
+  SELECT
+    movement.ID movementId,
+    movement.EVRAKTIP documentType,
+    movement.EVRAKNO documentNo,
+    movement.HESAPKOD customerCode,
+    movement.SIRANO lineNo,
+    movement.EVRAKTARIH documentDate,
+    movement.MALKOD productCode,
+    CAST(movement.MIKTAR AS decimal(28, 4)) quantity,
+    ROW_NUMBER() OVER (PARTITION BY movement.ID ORDER BY movement.ID) identityRank
+  FROM STKHAR movement
+  WHERE movement.SIRKETNO = @company
+    AND movement.KAYITDURUM = 1
+    AND movement.EVRAKTIP IN (17,85,91)
+    AND movement.MIKTAR > 0
+    AND (
+      movement.EVRAKTIP <> 91
+      OR NOT EXISTS (
+        SELECT 1 FROM convertedRetailConsumption converted WHERE converted.retailRootId = movement.ID
+      )
+    )
+)
+SELECT movementId, documentType, documentNo, customerCode, lineNo, documentDate, productCode, quantity
+INTO #terminalSales
+FROM rankedTerminalSales
+WHERE identityRank = 1
+OPTION (MAXRECURSION 100);
+
+CREATE UNIQUE CLUSTERED INDEX IX_nexus_terminal_sales ON #terminalSales(movementId);
+CREATE INDEX IX_nexus_terminal_sales_consumption ON #terminalSales(productCode, documentDate, movementId);
+
 ;WITH returnLineage AS (
   SELECT
     h.ID rootId,
     h.ID lineageId,
     h.EVRAKTIP documentType,
+    h.EVRAKNO documentNo,
     h.EVRAKTARIH documentDate,
     h.HESAPKOD customerCode,
     h.SIRANO lineNo,
+    h.MALKOD productCode,
+    h.MIKTAR quantity,
     h.SONKAYNAKEVRAKTIP sourceDocumentType,
     h.SONKAYNAKEVRAKNO sourceDocumentNo,
     h.SONKAYNAKHESAPKOD sourceCustomerCode,
@@ -988,9 +1267,12 @@ CREATE INDEX IX_nexus_purchase_candidates
     lineage.rootId,
     source.ID,
     source.EVRAKTIP,
+    source.EVRAKNO,
     source.EVRAKTARIH,
     source.HESAPKOD,
     source.SIRANO,
+    source.MALKOD,
+    source.MIKTAR,
     source.SONKAYNAKEVRAKTIP,
     source.SONKAYNAKEVRAKNO,
     source.SONKAYNAKHESAPKOD,
@@ -1007,13 +1289,33 @@ CREATE INDEX IX_nexus_purchase_candidates
   WHERE lineage.depth < 8
     AND lineage.sourceDocumentType IN (13,14,15,17,18,64,85,91)
     AND CHARINDEX('|' + CAST(source.ID AS varchar(24)) + '|', lineage.visited) = 0
-), rankedReturnSales AS (
-  SELECT rootId, documentDate originalSaleDate,
-    ROW_NUMBER() OVER (PARTITION BY rootId ORDER BY depth, lineageId DESC) evidenceRank
+), returnFinalCandidates AS (
+  SELECT DISTINCT rootId, lineageId, documentType, documentNo, documentDate, customerCode,
+    lineNo, productCode, quantity, depth
   FROM returnLineage
   WHERE documentType IN (17,85,91)
+), nearestReturnDepth AS (
+  SELECT rootId, MIN(depth) nearestDepth
+  FROM returnFinalCandidates
+  GROUP BY rootId
+), rankedReturnSales AS (
+  SELECT
+    candidate.rootId,
+    candidate.lineageId originalRootId,
+    candidate.documentType originalDocumentType,
+    candidate.documentNo originalDocumentNo,
+    candidate.documentDate originalSaleDate,
+    candidate.customerCode originalCustomerCode,
+    candidate.lineNo originalLineNo,
+    candidate.productCode originalProductCode,
+    candidate.quantity originalQuantity,
+    COUNT_BIG(*) OVER (PARTITION BY candidate.rootId) originalCandidateCount,
+    ROW_NUMBER() OVER (PARTITION BY candidate.rootId ORDER BY candidate.lineageId DESC) evidenceRank
+  FROM returnFinalCandidates candidate
+  JOIN nearestReturnDepth nearest ON nearest.rootId = candidate.rootId AND nearest.nearestDepth = candidate.depth
 )
-SELECT rootId, originalSaleDate
+SELECT rootId, originalRootId, originalDocumentType, originalDocumentNo, originalSaleDate,
+  originalCustomerCode, originalLineNo, originalProductCode, originalQuantity, originalCandidateCount
 INTO #returnOriginalSales
 FROM rankedReturnSales
 WHERE evidenceRank = 1
@@ -1046,6 +1348,13 @@ SELECT
   h.SONKAYNAKEVRAKNO sourceDocumentNo,
   h.SONKAYNAKHESAPKOD sourceCustomerCode,
   h.SONKAYNAKSIRANO sourceLineNo,
+  originalSale.originalDocumentType,
+  originalSale.originalDocumentNo,
+  originalSale.originalRootId,
+  originalSale.originalCustomerCode,
+  originalSale.originalLineNo,
+  originalSale.originalQuantity,
+  originalSale.originalCandidateCount,
   purchase.purchaseType,
   purchase.purchaseNo,
   purchase.purchaseDate,
@@ -1062,15 +1371,17 @@ SELECT
   purchase.unitCost,
   CASE
     WHEN purchase.purchaseNo IS NULL THEN 'missingPurchase'
-    WHEN h.EVRAKTIP = 18 AND originalSale.originalSaleDate IS NOT NULL THEN 'originalSaleCost'
+    WHEN h.EVRAKTIP = 18 AND originalSale.originalCandidateCount = 1 THEN 'originalSaleCost'
     ELSE purchase.selectionMethod
   END costMethod,
   CASE
+    WHEN h.EVRAKTIP = 18 AND originalSale.originalCandidateCount > 1
+      THEN 'Birden fazla asil satis satiri ayni iade ile eslesti; maliyet karantinaya alindi.'
     WHEN purchase.purchaseNo IS NULL AND h.EVRAKTIP = 18 AND originalSale.originalSaleDate IS NULL
       THEN 'Baglantisiz satis iadesi maliyet sahipligi icin inceleme gerektiriyor.'
     WHEN purchase.purchaseNo IS NULL
       THEN 'Dogrulanabilir aktif nihai alim faturasi bulunamadi.'
-    WHEN h.EVRAKTIP = 18 AND originalSale.originalSaleDate IS NOT NULL
+    WHEN h.EVRAKTIP = 18 AND originalSale.originalCandidateCount = 1
       THEN 'Satis iadesi, bagli nihai satis faturasinin maliyet kanitini devraldi.'
     WHEN purchase.selectionMethod = 'bulkPurchase'
       THEN 'Satis oncesindeki bir yilda yeterli kalan stoga sahip iskontolu toplu alim faturasi kullanildi.'
@@ -1084,40 +1395,44 @@ LEFT JOIN STKKRT k ON k.SIRKETNO = h.SIRKETNO AND k.MALKOD = h.MALKOD
 LEFT JOIN CARKRT c ON c.SIRKETNO = h.SIRKETNO AND c.HESAPKOD = h.HESAPKOD
 LEFT JOIN #returnOriginalSales originalSale ON originalSale.rootId = h.ID
 OUTER APPLY (
+  SELECT
+    CASE WHEN h.EVRAKTIP = 18 THEN originalSale.originalSaleDate ELSE h.EVRAKTARIH END costDate,
+    CASE WHEN h.EVRAKTIP = 18 THEN originalSale.originalProductCode ELSE h.MALKOD END costProductCode,
+    CAST(CASE WHEN h.EVRAKTIP = 18 THEN originalSale.originalQuantity ELSE h.MIKTAR END AS decimal(28, 4)) costQuantity
+  WHERE h.EVRAKTIP <> 18 OR originalSale.originalCandidateCount = 1
+) costSubject
+OUTER APPLY (
   SELECT TOP (1)
     p.*,
     CAST(p.purchaseQuantity - ISNULL(consumption.consumedQuantity, 0) AS decimal(28, 4)) purchaseRemainingQuantity
   FROM #purchaseCandidates p
   OUTER APPLY (
     SELECT SUM(CAST(movement.MIKTAR AS decimal(28, 4))) consumedQuantity
-    FROM STKHAR movement
-    WHERE movement.SIRKETNO = @company
-      AND movement.KAYITDURUM = 1
-      AND movement.MALKOD = p.productCode
-      AND movement.EVRAKTIP IN (17,85,91)
-      AND movement.EVRAKTARIH > p.purchaseDate
-      AND movement.EVRAKTARIH < COALESCE(originalSale.originalSaleDate, h.EVRAKTARIH)
+    FROM #terminalSales movement
+    WHERE movement.productCode = p.productCode
+      AND movement.documentDate > p.purchaseDate
+      AND movement.documentDate < costSubject.costDate
   ) consumption
-  WHERE p.productCode = h.MALKOD
-    AND p.purchaseDate BETWEEN DATEADD(year, -1, COALESCE(originalSale.originalSaleDate, h.EVRAKTARIH))
-      AND COALESCE(originalSale.originalSaleDate, h.EVRAKTARIH)
+  WHERE p.productCode = costSubject.costProductCode
+    AND p.purchaseDate BETWEEN DATEADD(year, -1, costSubject.costDate)
+      AND costSubject.costDate
     AND p.purchaseDocumentLineCount >= 10
     AND p.purchaseEffectiveDiscountPct >= 15
-    AND p.purchaseQuantity - ISNULL(consumption.consumedQuantity, 0) >= ABS(h.MIKTAR)
+    AND p.purchaseQuantity - ISNULL(consumption.consumedQuantity, 0) >= costSubject.costQuantity
   ORDER BY p.purchaseDate DESC, p.purchaseId DESC
 ) bulkPurchase
 OUTER APPLY (
   SELECT TOP (1) p.*
   FROM #purchaseCandidates p
-  WHERE p.productCode = h.MALKOD
-    AND p.purchaseDate <= COALESCE(originalSale.originalSaleDate, h.EVRAKTARIH)
+  WHERE p.productCode = costSubject.costProductCode
+    AND p.purchaseDate <= costSubject.costDate
   ORDER BY p.purchaseDate DESC, p.purchaseId DESC
 ) priorPurchase
 OUTER APPLY (
   SELECT TOP (1) p.*
   FROM #purchaseCandidates p
-  WHERE p.productCode = h.MALKOD
-    AND p.purchaseDate > COALESCE(originalSale.originalSaleDate, h.EVRAKTARIH)
+  WHERE p.productCode = costSubject.costProductCode
+    AND p.purchaseDate > costSubject.costDate
   ORDER BY p.purchaseDate ASC, p.purchaseId ASC
 ) nextPurchase
 OUTER APPLY (
@@ -1152,13 +1467,10 @@ OUTER APPLY (
 ) selectedPurchase
 OUTER APPLY (
   SELECT SUM(CAST(movement.MIKTAR AS decimal(28, 4))) consumedQuantity
-  FROM STKHAR movement
-  WHERE movement.SIRKETNO = @company
-    AND movement.KAYITDURUM = 1
-    AND movement.MALKOD = selectedPurchase.productCode
-    AND movement.EVRAKTIP IN (17,85,91)
-    AND movement.EVRAKTARIH > selectedPurchase.purchaseDate
-    AND movement.EVRAKTARIH < COALESCE(originalSale.originalSaleDate, h.EVRAKTARIH)
+  FROM #terminalSales movement
+  WHERE movement.productCode = selectedPurchase.productCode
+    AND movement.documentDate > selectedPurchase.purchaseDate
+    AND movement.documentDate < costSubject.costDate
 ) selectedConsumption
 OUTER APPLY (
   SELECT
@@ -1182,7 +1494,8 @@ OUTER APPLY (
 WHERE h.SIRKETNO = @company
   AND YEAR(h.EVRAKTARIH) = @year
   AND h.KAYITDURUM = 1
-  AND h.EVRAKTIP IN (17,85,91,18);
+  AND h.EVRAKTIP IN (17,85,91,18)
+  AND h.MIKTAR > 0;
 
 CREATE UNIQUE CLUSTERED INDEX IX_nexus_final_economics ON #economics(rootId);
 
