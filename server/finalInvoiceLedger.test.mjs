@@ -1685,6 +1685,18 @@ test("final invoice SQL exposes four read-only recordsets with separate invoice 
   assert.match(finalInvoiceLedgerSql, /purchaseRemainingQuantity/i);
   assert.match(finalInvoiceLedgerSql, /unitCost/i);
   assert.match(finalInvoiceLedgerSql, /costValidationReason/i);
+  assert.match(finalInvoiceLedgerSql, /candidateAttributionActor/i);
+  assert.match(finalInvoiceLedgerSql, /candidateAttributionField/i);
+  assert.match(finalInvoiceLedgerSql, /candidateAttributionDocumentType/i);
+  assert.match(finalInvoiceLedgerSql, /candidateAttributionDocumentNo/i);
+  assert.match(finalInvoiceLedgerSql, /candidateAttributionDocumentDate/i);
+  assert.match(finalInvoiceLedgerSql, /h2\.HESAPKOD\s*=\s*h\.HESAPKOD/i);
+  assert.match(finalInvoiceLedgerSql, /h2\.MALKOD\s*=\s*h\.MALKOD/i);
+  assert.match(
+    finalInvoiceLedgerSql,
+    /h2\.EVRAKTARIH\s+BETWEEN\s+DATEADD\(day,\s*-180,\s*h\.EVRAKTARIH\)\s+AND\s+DATEADD\(day,\s*14,\s*h\.EVRAKTARIH\)/i,
+  );
+  assert.match(finalInvoiceLedgerSql, /h2\.EVRAKTIP\s+IN\s*\(13,14,15,64,17,85,91\)/i);
   assert.match(finalInvoiceLedgerSql, /MIREVRBAS/i);
   assert.match(finalInvoiceLedgerSql, /EVRONY/i);
   assert.match(finalInvoiceLedgerSql, /EVRAKTIP\s*=\s*14/i);

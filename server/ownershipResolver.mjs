@@ -585,6 +585,7 @@ export function resolveCommercialOwnership({
         candidateOwnerCode: candidate.code,
         candidateDocumentNo: economic.candidateAttributionDocumentNo || null,
         candidateDocumentType: economic.candidateAttributionDocumentType || null,
+        candidateDocumentDate: economic.candidateAttributionDocumentDate || null,
         candidateField: economic.candidateAttributionField || null,
       },
       evidenceDocuments,

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import express from "express";
+import { buildFinalInvoiceLedger } from "./finalInvoiceLedger.mjs";
 import { createLedgerService } from "./ledgerService.mjs";
 import { createUnifiedLedgerRouter } from "./ledgerApi.mjs";
 
@@ -546,6 +547,121 @@ test("eşzamanlı overview departman ve audit istekleri tek ledger sürümünü 
       { rootId: 99, quarantineReason: "fixture-review" },
     ]);
     assert.equal(departments.detailRows[0].ownershipEvidence !== undefined, true);
+  });
+});
+
+test("SQL recordset nearby FURKAN kanıtını unified departmanda review hint olarak korur", async () => {
+  const recordsets = [[{
+    rootId: "ROOT-HINT",
+    documentType: 85,
+    documentNo: "SF-HINT",
+    documentDate: "2026-07-01T10:00:00.000Z",
+    customerCode: "C-HINT",
+    customerName: "Hint Müşterisi",
+    lineNo: 1,
+    productCode: "P-HINT",
+    productName: "Hint Ürünü",
+    quantity: 1,
+    grossAmount: 100,
+    discountAmount: 0,
+    netAmount: 100,
+    vatAmount: 20,
+    invoiceTotalInclVat: 120,
+    isSale: true,
+    depotCode: "MRK",
+    purchaseType: 9,
+    purchaseNo: "AF-HINT",
+    purchaseDate: "2026-06-01T10:00:00.000Z",
+    purchaseQuantity: 10,
+    purchaseGrossAmount: 600,
+    purchaseDiscountAmount: 0,
+    purchaseNetAmount: 600,
+    purchaseVatAmount: 120,
+    purchaseDocumentLineCount: 1,
+    purchaseRemainingQuantity: 9,
+    unitCost: 60,
+    costMethod: "priorPurchase",
+    costValidationReason: "Production-shaped fixture.",
+    candidateAttributionActor: "FURKAN",
+    candidateAttributionField: "EVRAKHAZIRLAYAN",
+    candidateAttributionDocumentType: 64,
+    candidateAttributionDocumentNo: "SP-HINT",
+    candidateAttributionDocumentDate: "2026-06-30T10:00:00.000Z",
+  }], [], [], []];
+  let loads = 0;
+  const service = createLedgerService({
+    loadYear: async () => {
+      loads += 1;
+      return buildFinalInvoiceLedger({
+        economics: recordsets[0],
+        lineage: recordsets[1],
+        actorEvents: recordsets[2],
+        pilotOrders: recordsets[3],
+      });
+    },
+  });
+  const router = createUnifiedLedgerRouter({
+    ledgerService: service,
+    getAppState: async () => ({}),
+  });
+
+  await withApiServer(router, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/department-analysis?year=2026`);
+    const payload = await response.json();
+    const row = payload.detailRows[0];
+    const ledgerRow = (await service.get(2026)).value.rows[0];
+
+    assert.equal(response.status, 200);
+    assert.equal(loads, 1);
+    assert.equal(payload.departments.find((item) => item.id === "service").netSales, 100);
+    assert.equal(payload.departments.find((item) => item.id === "parts").netSales, 0);
+    assert.equal(payload.quality.hintedReviewAmount, 100);
+    assert.equal(payload.quality.attributionCoveragePct, 0);
+    assert.equal(payload.quality.inferredCoveragePct, 0);
+    assert.equal(payload.topOwners.some((item) => item.id === "FURKAN"), false);
+    assert.equal(row.department, "service");
+    assert.equal(row.commercialOwner, null);
+    assert.equal(row.attributionStatus, "review");
+    assert.equal(row.attributionMethod, "b2b-candidate-hint");
+    assert.equal(row.candidateAttributionActor, "FURKAN");
+    assert.equal(row.candidateAttributionDocumentType, 64);
+    assert.equal(row.candidateAttributionDocumentNo, "SP-HINT");
+    assert.equal(row.candidateAttributionDocumentDate, "2026-06-30T10:00:00.000Z");
+    assert.equal(row.candidateAttributionField, "EVRAKHAZIRLAYAN");
+    assert.equal(row.candidateActor, "FURKAN");
+    assert.equal(row.candidateDocumentType, 64);
+    assert.equal(row.candidateDocumentNo, "SP-HINT");
+    assert.equal(row.candidateDocumentDate, "2026-06-30T10:00:00.000Z");
+    assert.equal(row.candidateField, "EVRAKHAZIRLAYAN");
+    assert.equal(row.ownershipEvidence.candidateOwnerCode, "FURKAN");
+    assert.equal(row.ownershipEvidence.candidateDocumentType, 64);
+    assert.equal(row.ownershipEvidence.candidateDocumentNo, "SP-HINT");
+    assert.equal(
+      row.ownershipEvidence.candidateDocumentDate,
+      "2026-06-30T10:00:00.000Z",
+    );
+    assert.equal(row.ownershipEvidence.candidateField, "EVRAKHAZIRLAYAN");
+    assert.equal(ledgerRow.candidateAttributionActor, "FURKAN");
+    assert.equal(ledgerRow.candidateAttributionDocumentType, 64);
+    assert.equal(ledgerRow.candidateAttributionDocumentNo, "SP-HINT");
+    assert.equal(
+      ledgerRow.candidateAttributionDocumentDate,
+      "2026-06-30T10:00:00.000Z",
+    );
+    assert.equal(ledgerRow.candidateAttributionField, "EVRAKHAZIRLAYAN");
+    assert.equal(ledgerRow.candidateActor, "FURKAN");
+    assert.equal(ledgerRow.candidateDocumentType, 64);
+    assert.equal(ledgerRow.candidateDocumentNo, "SP-HINT");
+    assert.equal(ledgerRow.candidateDocumentDate, "2026-06-30T10:00:00.000Z");
+    assert.equal(ledgerRow.candidateField, "EVRAKHAZIRLAYAN");
+    assert.equal(ledgerRow.ownershipEvidence.candidateOwnerCode, "FURKAN");
+    assert.equal(ledgerRow.ownershipEvidence.candidateDocumentType, 64);
+    assert.equal(ledgerRow.ownershipEvidence.candidateDocumentNo, "SP-HINT");
+    assert.equal(
+      ledgerRow.ownershipEvidence.candidateDocumentDate,
+      "2026-06-30T10:00:00.000Z",
+    );
+    assert.equal(ledgerRow.ownershipEvidence.candidateField, "EVRAKHAZIRLAYAN");
   });
 });
 

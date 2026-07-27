@@ -54,6 +54,11 @@ const PURCHASE_EVIDENCE_FIELDS = [
  * @property {string} [sourceDocumentNo]
  * @property {string} [sourceCustomerCode]
  * @property {number|string} [sourceLineNo]
+ * @property {string} [candidateAttributionActor]
+ * @property {number|string} [candidateAttributionDocumentType]
+ * @property {string} [candidateAttributionDocumentNo]
+ * @property {string|Date} [candidateAttributionDocumentDate]
+ * @property {string} [candidateAttributionField]
  */
 
 /**
@@ -1035,6 +1040,7 @@ function normalizeEconomicRow(row, graph) {
 }
 
 function ownershipFields(ownership) {
+  const evidence = ownership.evidence || {};
   return {
     commercialOwner: ownership.ownerCode,
     commercialOwnerName: ownership.ownerName,
@@ -1049,7 +1055,12 @@ function ownershipFields(ownership) {
     fulfillmentDepotCode: ownership.fulfillmentDepotCode,
     fulfillmentDepotName: ownership.fulfillmentDepotName,
     crossDepot: ownership.crossDepot,
-    ownershipEvidence: ownership.evidence,
+    candidateActor: evidence.candidateOwnerCode || null,
+    candidateDocumentType: evidence.candidateDocumentType ?? null,
+    candidateDocumentNo: evidence.candidateDocumentNo || null,
+    candidateDocumentDate: evidence.candidateDocumentDate || null,
+    candidateField: evidence.candidateField || null,
+    ownershipEvidence: evidence,
   };
 }
 
@@ -1076,6 +1087,11 @@ function linkedReturnOwnership(row, original, directOwnership) {
       && directOwnership.fulfillmentDepotCode
       && directOwnership.fulfillmentDepotCode !== expectedDepot,
     ),
+    candidateActor: original.candidateActor || null,
+    candidateDocumentType: original.candidateDocumentType ?? null,
+    candidateDocumentNo: original.candidateDocumentNo || null,
+    candidateDocumentDate: original.candidateDocumentDate || null,
+    candidateField: original.candidateField || null,
     ownershipEvidence: {
       ...original.ownershipEvidence,
       inheritedFromRootId: row.originalRootId,
@@ -1627,6 +1643,11 @@ SELECT
   CAST(CASE WHEN h.EVRAKTIP = 18 THEN 0 ELSE 1 END AS bit) isSale,
   h.DEPOKOD depotCode,
   h.MASRAFKOD departmentCode,
+  ownerHint.actor candidateAttributionActor,
+  ownerHint.fieldName candidateAttributionField,
+  ownerHint.documentType candidateAttributionDocumentType,
+  ownerHint.documentNo candidateAttributionDocumentNo,
+  ownerHint.documentDate candidateAttributionDocumentDate,
   h.SONKAYNAKEVRAKTIP sourceDocumentType,
   h.SONKAYNAKEVRAKNO sourceDocumentNo,
   h.SONKAYNAKHESAPKOD sourceCustomerCode,
@@ -1677,6 +1698,52 @@ FROM STKHAR h
 LEFT JOIN STKKRT k ON k.SIRKETNO = h.SIRKETNO AND k.MALKOD = h.MALKOD
 LEFT JOIN CARKRT c ON c.SIRKETNO = h.SIRKETNO AND c.HESAPKOD = h.HESAPKOD
 LEFT JOIN #returnOriginalSales originalSale ON originalSale.rootId = h.ID
+OUTER APPLY (
+  SELECT TOP (1)
+    candidate.actor,
+    candidate.fieldName,
+    h2.EVRAKTIP documentType,
+    h2.EVRAKNO documentNo,
+    h2.EVRAKTARIH documentDate
+  FROM STKHAR h2
+  JOIN EVRBAS b2 ON b2.SIRKETNO = h2.SIRKETNO
+    AND b2.EVRAKTIP = h2.EVRAKTIP
+    AND b2.EVRAKNO = h2.EVRAKNO
+    AND b2.HESAPKOD = h2.HESAPKOD
+    AND b2.EVRAKTARIH = h2.EVRAKTARIH
+    AND b2.KAYITDURUM = 1
+  CROSS APPLY (
+    SELECT TOP (1) actor.fieldName, actor.actor
+    FROM (VALUES
+      ('SATICINO', b2.SATICINO),
+      ('EVRAKHAZIRLAYAN', b2.EVRAKHAZIRLAYAN),
+      ('GIRENKULLANICI', b2.GIRENKULLANICI),
+      ('DEGISTIRENKULLANICI', b2.DEGISTIRENKULLANICI)
+    ) actor(fieldName, actor)
+    WHERE NULLIF(LTRIM(RTRIM(actor.actor)), '') IS NOT NULL
+      AND actor.actor NOT LIKE '%[0-9]%'
+      AND actor.actor COLLATE Turkish_CI_AI NOT IN ('BIRCAN','SYSTEM','ADMIN','SA')
+    ORDER BY CASE actor.fieldName
+      WHEN 'SATICINO' THEN 0
+      WHEN 'EVRAKHAZIRLAYAN' THEN 1
+      WHEN 'GIRENKULLANICI' THEN 2
+      ELSE 3
+    END
+  ) candidate
+  WHERE h2.SIRKETNO = h.SIRKETNO
+    AND h2.KAYITDURUM = 1
+    AND h2.ID <> h.ID
+    AND h2.HESAPKOD = h.HESAPKOD
+    AND h2.MALKOD = h.MALKOD
+    AND h2.EVRAKTIP IN (13,14,15,64,17,85,91)
+    AND h2.EVRAKTARIH BETWEEN DATEADD(day, -180, h.EVRAKTARIH)
+      AND DATEADD(day, 14, h.EVRAKTARIH)
+  ORDER BY
+    CASE WHEN h2.EVRAKTIP IN (13,14,15,64) THEN 0 ELSE 1 END,
+    CASE WHEN h2.EVRAKTARIH <= h.EVRAKTARIH THEN 0 ELSE 1 END,
+    ABS(DATEDIFF(day, h2.EVRAKTARIH, h.EVRAKTARIH)),
+    h2.ID DESC
+) ownerHint
 OUTER APPLY (
   SELECT
     CASE WHEN h.EVRAKTIP = 18 THEN originalSale.originalSaleDate ELSE h.EVRAKTARIH END costDate,

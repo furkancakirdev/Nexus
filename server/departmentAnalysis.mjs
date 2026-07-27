@@ -97,8 +97,15 @@ function resolveAttribution(economic, evidenceRows, actorEvents, identities) {
     explicitOwner: ["macro-source-order", "supported-source-seller"].includes(resolved.method),
     sourceOrderNo: resolved.sourceOrderNo,
     sourceOrderDepth: sourceOrder ? number(sourceOrder.depth) : null,
+    candidateAttributionActor: economic.candidateAttributionActor || null,
+    candidateAttributionDocumentType: economic.candidateAttributionDocumentType ?? null,
+    candidateAttributionDocumentNo: economic.candidateAttributionDocumentNo || null,
+    candidateAttributionDocumentDate: economic.candidateAttributionDocumentDate || null,
+    candidateAttributionField: economic.candidateAttributionField || null,
+    candidateActor: resolved.evidence?.candidateOwnerCode || null,
     candidateDocumentNo: economic.candidateAttributionDocumentNo || null,
-    candidateDocumentType: economic.candidateAttributionDocumentType || null,
+    candidateDocumentType: economic.candidateAttributionDocumentType ?? null,
+    candidateDocumentDate: economic.candidateAttributionDocumentDate || null,
     candidateField: economic.candidateAttributionField || null,
     fulfillmentDepot: {
       code: resolved.fulfillmentDepotCode || "—",
@@ -126,6 +133,9 @@ function ledgerAttribution(economic) {
   const sourceOrder = evidenceDocuments.find((row) => (
     number(row.documentType) === 14 && row.documentNo === economic.sourceOrderNo
   ));
+  const ownershipEvidence = economic.ownershipEvidence
+    ? { ...economic.ownershipEvidence }
+    : {};
   return {
     department,
     departmentName: DEPARTMENT_META[department].name,
@@ -142,9 +152,31 @@ function ledgerAttribution(economic) {
     ),
     sourceOrderNo: economic.sourceOrderNo || null,
     sourceOrderDepth: sourceOrder ? number(sourceOrder.depth) : null,
-    candidateDocumentNo: economic.candidateDocumentNo || null,
-    candidateDocumentType: economic.candidateDocumentType || null,
-    candidateField: economic.candidateField || null,
+    candidateAttributionActor: economic.candidateAttributionActor || null,
+    candidateAttributionDocumentType: economic.candidateAttributionDocumentType ?? null,
+    candidateAttributionDocumentNo: economic.candidateAttributionDocumentNo || null,
+    candidateAttributionDocumentDate: economic.candidateAttributionDocumentDate || null,
+    candidateAttributionField: economic.candidateAttributionField || null,
+    candidateActor: economic.candidateActor
+      || ownershipEvidence.candidateOwnerCode
+      || economic.candidateAttributionActor
+      || null,
+    candidateDocumentNo: economic.candidateDocumentNo
+      || ownershipEvidence.candidateDocumentNo
+      || economic.candidateAttributionDocumentNo
+      || null,
+    candidateDocumentType: economic.candidateDocumentType
+      ?? ownershipEvidence.candidateDocumentType
+      ?? economic.candidateAttributionDocumentType
+      ?? null,
+    candidateDocumentDate: economic.candidateDocumentDate
+      || ownershipEvidence.candidateDocumentDate
+      || economic.candidateAttributionDocumentDate
+      || null,
+    candidateField: economic.candidateField
+      || ownershipEvidence.candidateField
+      || economic.candidateAttributionField
+      || null,
     fulfillmentDepot: {
       code: economic.fulfillmentDepotCode || "—",
       name: economic.fulfillmentDepotName || normalizeDepot(
@@ -156,9 +188,7 @@ function ledgerAttribution(economic) {
     batchRisk: Boolean(economic.prepaidBatchRisk || economic.batchRisk),
     evidenceDocuments,
     actorEvents,
-    ownershipEvidence: economic.ownershipEvidence
-      ? { ...economic.ownershipEvidence }
-      : {},
+    ownershipEvidence,
   };
 }
 
@@ -344,8 +374,15 @@ export function buildDepartmentAnalysis({
       explicitOwner: attribution.explicitOwner,
       sourceOrderNo: attribution.sourceOrderNo,
       sourceOrderDepth: attribution.sourceOrderDepth,
+      candidateAttributionActor: attribution.candidateAttributionActor,
+      candidateAttributionDocumentType: attribution.candidateAttributionDocumentType,
+      candidateAttributionDocumentNo: attribution.candidateAttributionDocumentNo,
+      candidateAttributionDocumentDate: attribution.candidateAttributionDocumentDate,
+      candidateAttributionField: attribution.candidateAttributionField,
+      candidateActor: attribution.candidateActor,
       candidateDocumentNo: attribution.candidateDocumentNo,
       candidateDocumentType: attribution.candidateDocumentType,
+      candidateDocumentDate: attribution.candidateDocumentDate,
       candidateField: attribution.candidateField,
       fulfillmentDepotCode: attribution.fulfillmentDepot.code,
       fulfillmentDepotName: attribution.fulfillmentDepot.name,
