@@ -674,7 +674,8 @@ test("ledger API geçersiz yıl yanıtları tam metadata sözleşmesini taşır"
 
   await withApiServer(router, async (baseUrl) => {
     for (const endpoint of [
-      "overview", "department-analysis", "audit-ledger", "audit-samples",
+      "overview", "department-analysis", "department-targets",
+      "audit-ledger", "audit-samples",
     ]) {
       const response = await fetch(`${baseUrl}/api/${endpoint}?year=invalid`);
       const payload = await response.json();
@@ -702,7 +703,8 @@ test("ilk loader hatasında ledger API uçları null metadata ile 500 döndürü
 
   await withApiServer(router, async (baseUrl) => {
     for (const endpoint of [
-      "overview", "department-analysis", "audit-ledger", "audit-samples",
+      "overview", "department-analysis", "department-targets",
+      "audit-ledger", "audit-samples",
     ]) {
       const response = await fetch(`${baseUrl}/api/${endpoint}?year=2026`);
       const payload = await response.json();
@@ -749,6 +751,120 @@ test("audit samples birleşik cached ledger sürümünden uyumlu kanıt satırla
     ]);
     assert.equal(samples.rows.every((row) => row.category === "priorPurchase"), true);
     assert.equal(samples.rows.some((row) => row.saleNo === "SI-001"), false);
+  });
+});
+
+test("departman hedef API cari ve önceki yıl ledger sürümlerini birlikte raporlar", async () => {
+  const service = createLedgerService({
+    loadYear: async (year) => {
+      const ledger = apiFixtureLedger();
+      ledger.rows = ledger.rows.map((row) => ({
+        ...row,
+        documentDate: row.documentDate.replace(/^2026/, String(year)),
+      }));
+      return ledger;
+    },
+  });
+  const router = createUnifiedLedgerRouter({
+    ledgerService: service,
+    getAppState: async () => ({
+      settings: {
+        departmentGrowthTargets: { service: 10, parts: 10 },
+        departmentStretchThresholds: { service: 5, parts: 5 },
+        rates: { conservative: 3, growth: 8 },
+        reserveRate: 5,
+      },
+    }),
+  });
+
+  await withApiServer(router, async (baseUrl) => {
+    const response = await fetch(
+      `${baseUrl}/api/department-targets?year=2026`,
+    );
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assertLedgerMetadata(payload);
+    assert.equal(payload.mode, "live");
+    assert.equal(payload.year, 2026);
+    assert.equal(payload.previousYear, 2025);
+    assert.equal(payload.rows.length, 24);
+    assert.equal(payload.readOnly, true);
+    assert.deepEqual(
+      payload.rows.filter((row) => row.department === "service").map((row) => row.month),
+      Array.from({ length: 12 }, (_, index) => index + 1),
+    );
+    assert.deepEqual(
+      payload.rows.filter((row) => row.department === "parts").map((row) => row.month),
+      Array.from({ length: 12 }, (_, index) => index + 1),
+    );
+    for (const row of payload.rows) {
+      for (const field of [
+        "priorNetSales", "target", "stretchTarget", "actual", "difference",
+        "achievementPct", "band", "appliedRate", "profit",
+        "uncoveredNetSales", "eligibleProfit", "reserve", "pool",
+      ]) {
+        assert.equal(Object.hasOwn(row, field), true, `${field} alanı eksik`);
+      }
+    }
+    assert.equal(typeof payload.previousLedgerVersion, "string");
+    assert.equal(typeof payload.previousGeneratedAt, "string");
+    assert.equal(typeof payload.previousCacheStatus, "string");
+    assert.equal(payload.summary.totalPool >= 0, true);
+  });
+});
+
+test("departman hedef API ekran ayrıntısının 500 satır sınırından etkilenmez", async () => {
+  const service = createLedgerService({
+    loadYear: async (year) => {
+      const base = apiFixtureLedger().rows[0];
+      const rowCount = year === 2026 ? 501 : 1;
+      const rows = Array.from({ length: rowCount }, (_, index) => ({
+        ...base,
+        rootId: `${year}-${index}`,
+        documentNo: `SF-${year}-${index}`,
+        documentDate: `${year}-01-10T10:00:00.000Z`,
+        grossAmount: 1,
+        discountAmount: 0,
+        netAmount: 1,
+        signedNetSales: 1,
+        lineCost: 0.5,
+        unitCost: 0.5,
+      }));
+      return {
+        rows,
+        totals: { netSales: rowCount, rowCount },
+        quality: {},
+        quarantinedRows: [],
+        reviewRequiredRows: [],
+        excludedTestRows: [],
+        pilotOrders: [],
+        excludedPilotOrders: [],
+      };
+    },
+  });
+  const router = createUnifiedLedgerRouter({
+    ledgerService: service,
+    getAppState: async () => ({
+      settings: {
+        departmentGrowthTargets: { service: 10, parts: 10 },
+        departmentStretchThresholds: { service: 5, parts: 5 },
+        rates: { conservative: 3, growth: 8 },
+        reserveRate: 5,
+      },
+    }),
+  });
+
+  await withApiServer(router, async (baseUrl) => {
+    const payload = await fetch(
+      `${baseUrl}/api/department-targets?year=2026`,
+    ).then((response) => response.json());
+    const january = payload.rows.find((row) => (
+      row.department === "service" && row.month === 1
+    ));
+
+    assert.equal(january.actual, 501);
+    assert.equal(january.profit, 250.5);
   });
 });
 

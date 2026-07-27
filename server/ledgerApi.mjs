@@ -1,5 +1,9 @@
 import express from "express";
 import { buildDepartmentAnalysis } from "./departmentAnalysis.mjs";
+import {
+  buildDepartmentTargets,
+  summarizeDepartmentTargets,
+} from "../shared/targetPolicy.mjs";
 
 const MONTH_NAMES = [
   "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
@@ -425,6 +429,18 @@ function validYear(value) {
   return Number.isInteger(year) && year >= 2023 && year <= 2030 ? year : null;
 }
 
+function targetSourceRows(analysis) {
+  return (analysis?.months || []).flatMap((month) => (
+    ["service", "parts"].map((department) => ({
+      month: month.month,
+      department,
+      netSales: month[department]?.netSales || 0,
+      cost: month[department]?.cost || 0,
+      uncoveredNetSales: month[department]?.uncoveredNetSales || 0,
+    }))
+  ));
+}
+
 /**
  * Aynı ledger snapshot'ını kullanan salt-okunur Nexus API uçlarını oluşturur.
  */
@@ -528,6 +544,93 @@ export function createUnifiedLedgerRouter({
         year, departments: [], months: [], detailRows: [], pilotOrders: [],
         mode: "error", ...retainedMetadata(ledgerService, year),
         error: "Departman analizi birleşik defterden okunamadı.",
+      });
+    }
+  });
+
+  router.get("/api/department-targets", async (request, response) => {
+    const year = validYear(request.query.year);
+    if (!year) {
+      return response.status(400).json({
+        error: "Geçersiz yıl.",
+        ...INVALID_METADATA,
+        previousLedgerVersion: null,
+        previousGeneratedAt: null,
+        previousCacheStatus: "invalid",
+      });
+    }
+    try {
+      const refresh = request.query.refresh === "1";
+      const [currentSnapshot, previousSnapshot, state] = await Promise.all([
+        ledgerService.get(year, { refresh }),
+        ledgerService.get(year - 1, { refresh }),
+        getAppState(),
+      ]);
+      const previousMetadata = metadata(previousSnapshot);
+      if (!currentSnapshot.value || !previousSnapshot.value) {
+        return response.status(503).json({
+          year,
+          previousYear: year - 1,
+          rows: [],
+          summary: { departments: [], totalPool: 0 },
+          mode: "unavailable",
+          ...metadata(currentSnapshot),
+          previousLedgerVersion: previousMetadata.ledgerVersion,
+          previousGeneratedAt: previousMetadata.generatedAt,
+          previousCacheStatus: previousMetadata.cacheStatus,
+          error: "Cari veya önceki yıl nihai defteri hazır olmadığı için hedefler üretilemedi.",
+        });
+      }
+      const analysisOptions = {
+        pilotCardCostRates: state.settings?.pilotCardCostRates || {},
+        costOverrides: Array.isArray(state.costOverrides) ? state.costOverrides : [],
+        requireApproval: state.settings?.requireManagementApprovalForManualCost !== false,
+      };
+      const [currentAnalysis, previousAnalysis] = [
+        buildDepartmentAnalysis({
+          ledger: currentSnapshot.value,
+          year,
+          ...analysisOptions,
+        }),
+        buildDepartmentAnalysis({
+          ledger: previousSnapshot.value,
+          year: year - 1,
+          ...analysisOptions,
+        }),
+      ];
+      const rows = buildDepartmentTargets({
+        year,
+        currentRows: targetSourceRows(currentAnalysis),
+        previousRows: targetSourceRows(previousAnalysis),
+        settings: state.settings || {},
+      });
+      response.setHeader("Cache-Control", "no-store");
+      return response.json({
+        year,
+        previousYear: year - 1,
+        rows,
+        summary: summarizeDepartmentTargets(rows),
+        mode: "live",
+        ...metadata(currentSnapshot),
+        previousLedgerVersion: previousMetadata.ledgerVersion,
+        previousGeneratedAt: previousMetadata.generatedAt,
+        previousCacheStatus: previousMetadata.cacheStatus,
+        source: "CPM salt okunur nihai fatura defteri + Nexus hedef kuralları",
+      });
+    } catch (error) {
+      logger.error("Marlin Nexus department target read failed:", error);
+      const previousMetadata = retainedMetadata(ledgerService, year - 1);
+      return response.status(500).json({
+        year,
+        previousYear: year - 1,
+        rows: [],
+        summary: { departments: [], totalPool: 0 },
+        mode: "error",
+        ...retainedMetadata(ledgerService, year),
+        previousLedgerVersion: previousMetadata.ledgerVersion,
+        previousGeneratedAt: previousMetadata.generatedAt,
+        previousCacheStatus: previousMetadata.cacheStatus,
+        error: "Departman hedefleri birleşik defterden üretilemedi.",
       });
     }
   });
