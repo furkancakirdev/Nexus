@@ -82,19 +82,32 @@ const service = createLedgerService({
 
 await service.get(2026);
 const durations = [];
+const overviewDurations = [];
+const departmentDurations = [];
+const auditDurations = [];
 for (let iteration = 0; iteration < 10; iteration += 1) {
   const startedAt = performance.now();
   const snapshot = await service.get(2026);
+  const overviewStartedAt = performance.now();
   buildOverviewRows(snapshot.value);
+  overviewDurations.push(performance.now() - overviewStartedAt);
+  const departmentStartedAt = performance.now();
   buildDepartmentAnalysis({ ledger: snapshot.value, year: 2026 });
+  departmentDurations.push(performance.now() - departmentStartedAt);
+  const auditStartedAt = performance.now();
   filterAuditLedger(snapshot.value, { page: 1, pageSize: 50 });
+  auditDurations.push(performance.now() - auditStartedAt);
   durations.push(performance.now() - startedAt);
 }
 
 const maximumMs = Math.max(...durations);
 const averageMs = durations.reduce((sum, value) => sum + value, 0) / durations.length;
+const average = (values) => values.reduce((sum, value) => sum + value, 0) / values.length;
+const percentile95 = (values) => {
+  const sorted = [...values].sort((left, right) => left - right);
+  return sorted[Math.ceil(sorted.length * 0.95) - 1];
+};
 assert.equal(loaderCalls, 1, "Warm okumalar aynı yıl için yeniden CPM yüklemesi yapmamalı.");
-assert.ok(maximumMs < 100, `Warm aggregate ${maximumMs.toFixed(2)} ms ile 100 ms sınırını aştı.`);
 
 console.log(JSON.stringify({
   rows: ledger.rows.length,
@@ -102,5 +115,19 @@ console.log(JSON.stringify({
   loaderCalls,
   averageMs: Number(averageMs.toFixed(2)),
   maximumMs: Number(maximumMs.toFixed(2)),
-  thresholdMs: 100,
+  p95Ms: Number(percentile95(durations).toFixed(2)),
+  components: {
+    overviewAverageMs: Number(average(overviewDurations).toFixed(2)),
+    overviewMaximumMs: Number(Math.max(...overviewDurations).toFixed(2)),
+    departmentAverageMs: Number(average(departmentDurations).toFixed(2)),
+    departmentMaximumMs: Number(Math.max(...departmentDurations).toFixed(2)),
+    auditAverageMs: Number(average(auditDurations).toFixed(2)),
+    auditMaximumMs: Number(Math.max(...auditDurations).toFixed(2)),
+  },
+  thresholdMs: 80,
 }, null, 2));
+
+assert.ok(
+  maximumMs <= 80,
+  `Warm aggregate ${maximumMs.toFixed(2)} ms ile 80 ms sınırını aştı.`,
+);

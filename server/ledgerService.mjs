@@ -47,6 +47,7 @@ export function createLedgerService({
   function stateFor(year) {
     if (!states.has(year)) {
       states.set(year, {
+        generation: 0,
         hasValue: false,
         value: null,
         loadedAt: 0,
@@ -62,9 +63,19 @@ export function createLedgerService({
   function startLoad(year, state) {
     if (state.promise) return state.promise;
 
-    state.promise = Promise.resolve()
-      .then(() => loadYear(year))
-      .then((value) => {
+    state.promise = (async () => {
+      while (true) {
+        const generation = state.generation;
+        let value;
+        try {
+          value = await loadYear(year);
+        } catch (error) {
+          if (generation !== state.generation) continue;
+          state.error = error instanceof Error ? error : new Error(String(error));
+          throw state.error;
+        }
+        if (generation !== state.generation) continue;
+
         const loadedAt = now();
         versionSequence += 1;
         state.hasValue = true;
@@ -74,14 +85,10 @@ export function createLedgerService({
         state.ledgerVersion = `${year}:${loadedAt}:${versionSequence}`;
         state.error = null;
         return state;
-      })
-      .catch((error) => {
-        state.error = error instanceof Error ? error : new Error(String(error));
-        throw state.error;
-      })
-      .finally(() => {
-        state.promise = null;
-      });
+      }
+    })().finally(() => {
+      state.promise = null;
+    });
 
     return state.promise;
   }
@@ -113,12 +120,42 @@ export function createLedgerService({
     return cacheResult(state, "refresh", now());
   }
 
+  function invalidateState(state) {
+    state.generation += 1;
+    state.hasValue = false;
+    state.value = null;
+    state.loadedAt = 0;
+    state.generatedAt = null;
+    state.ledgerVersion = null;
+    state.error = null;
+  }
+
   function invalidate(yearValue) {
     if (yearValue === undefined || yearValue === null) {
-      states.clear();
+      for (const state of states.values()) invalidateState(state);
       return;
     }
-    states.delete(assertYear(yearValue));
+    const state = states.get(assertYear(yearValue));
+    if (state) invalidateState(state);
+  }
+
+  function inspect(yearValue) {
+    const year = assertYear(yearValue);
+    const state = states.get(year);
+    if (!state) {
+      return {
+        value: null,
+        ledgerVersion: null,
+        generatedAt: null,
+        cache: { status: "empty", ageMs: 0, error: null },
+      };
+    }
+    const status = state.error
+      ? state.hasValue ? "refresh-error" : "error"
+      : state.promise
+        ? state.hasValue ? "stale-refreshing" : "loading"
+        : state.hasValue ? "hit" : "empty";
+    return cacheResult(state, status, now());
   }
 
   async function prewarm(yearValues) {
@@ -133,5 +170,5 @@ export function createLedgerService({
     }));
   }
 
-  return { get, invalidate, prewarm };
+  return { get, inspect, invalidate, prewarm };
 }

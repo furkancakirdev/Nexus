@@ -17,6 +17,7 @@ const DEPARTMENT_META = {
   parts: { id: "parts", name: "Yedek Parça Satış", center: "Merkez Ofis", color: "#0a3972" },
   review: { id: "review", name: "İnceleme Gerekli", center: "—", color: "#d9730d" },
 };
+const ROW_SORT_TIME = Symbol("departmentRowSortTime");
 
 function number(value) {
   return Number(value || 0);
@@ -29,16 +30,31 @@ function nullableNumber(value) {
 }
 
 function key(value) {
-  return String(value || "")
-    .trim()
-    .toLocaleUpperCase("tr-TR")
+  const trimmed = String(value || "").trim();
+  if (/^[\x00-\x7F]*$/.test(trimmed)) {
+    return trimmed.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  }
+  return trimmed.toLocaleUpperCase("tr-TR")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^A-Z0-9]/g, "");
 }
 
+function monthOf(value) {
+  if (typeof value === "string" && /^\d{4}-\d{2}/.test(value)) {
+    const month = Number(value.slice(5, 7));
+    return month >= 1 && month <= 12 ? month : 0;
+  }
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed.getMonth() + 1 : 0;
+}
+
+function isExcludedIncomeKey(productKey) {
+  return ["KOMISYON", "GD0187", "GD0079", "PDI"].includes(productKey);
+}
+
 function isExcludedIncome(productCode) {
-  return ["KOMISYON", "GD0187", "GD0079", "PDI"].includes(key(productCode));
+  return isExcludedIncomeKey(key(productCode));
 }
 
 function normalizeDepot(value) {
@@ -102,10 +118,10 @@ function ledgerAttribution(economic) {
     ? economic.department
     : "review";
   const evidenceDocuments = Array.isArray(economic.evidenceDocuments)
-    ? economic.evidenceDocuments.map((row) => ({ ...row }))
+    ? economic.evidenceDocuments
     : [];
   const actorEvents = Array.isArray(economic.actorEvents)
-    ? economic.actorEvents.map((row) => ({ ...row }))
+    ? economic.actorEvents
     : [];
   const sourceOrder = evidenceDocuments.find((row) => (
     number(row.documentType) === 14 && row.documentNo === economic.sourceOrderNo
@@ -193,8 +209,8 @@ function finalizeMetric(metric) {
   };
 }
 
-function configuredRate(productCode, rates) {
-  const code = key(productCode);
+function configuredRate(productCode, rates, normalizedProductCode = key(productCode)) {
+  const code = normalizedProductCode;
   if (code === key("İŞÇİLİK")) return number(rates.labor ?? 0) / 100;
   if (code === "SRF" || code === "BARNACLE") return number(rates.srf ?? 100) / 100;
   if (code === "TSR") return number(rates.tsr ?? 100) / 100;
@@ -202,8 +218,8 @@ function configuredRate(productCode, rates) {
   return null;
 }
 
-function configuredCostMethod(productCode) {
-  const code = key(productCode);
+function configuredCostMethod(productCode, normalizedProductCode = key(productCode)) {
+  const code = normalizedProductCode;
   if (code === key("İŞÇİLİK")) return "configuredLabor";
   if (code === "SRF" || code === "BARNACLE") return "configuredSrf";
   if (code === "TSR") return "configuredTsr";
@@ -235,7 +251,7 @@ export function buildDepartmentAnalysis({
 }) {
   const usesLedger = Boolean(ledger && Array.isArray(ledger.rows));
   const economicRows = usesLedger
-    ? ledger.rows.filter((row) => !isExcludedIncome(row.productCode))
+    ? ledger.rows
     : economics;
   const sourcePilotOrders = usesLedger ? ledger.pilotOrders || [] : pilotOrders;
   const lineageByRoot = new Map();
@@ -254,6 +270,8 @@ export function buildDepartmentAnalysis({
   const normalized = [];
 
   for (const economic of economicRows) {
+    const productKey = key(economic.productCode);
+    if (usesLedger && isExcludedIncomeKey(productKey)) continue;
     const rootId = String(economic.rootId);
     const evidenceRows = lineageByRoot.get(rootId) || [];
     if (!usesLedger) {
@@ -269,7 +287,7 @@ export function buildDepartmentAnalysis({
       : resolveAttribution(economic, evidenceRows, actorEvents, identities);
     const netSales = number(economic.signedNetSales);
     const override = overrides.get(rootId);
-    const rate = configuredRate(economic.productCode, pilotCardCostRates);
+    const rate = configuredRate(economic.productCode, pilotCardCostRates, productKey);
     const evidenceCost = usesLedger
       ? nullableNumber(economic.lineCost)
       : nullableNumber(economic.resolvedCost);
@@ -283,11 +301,12 @@ export function buildDepartmentAnalysis({
     const documentKey = `${economic.documentType}|${economic.documentNo}|${economic.customerCode}`;
     normalized.push({
       id: rootId,
+      [ROW_SORT_TIME]: Date.parse(economic.documentDate) || 0,
       documentKey,
       documentType: number(economic.documentType),
       documentNo: economic.documentNo,
       documentDate: economic.documentDate,
-      month: new Date(economic.documentDate).getMonth() + 1,
+      month: monthOf(economic.documentDate),
       customerCode: economic.customerCode,
       customerName: economic.customerName || economic.customerCode || "Belirsiz",
       productCode: economic.productCode,
@@ -310,7 +329,7 @@ export function buildDepartmentAnalysis({
       costCovered,
       costMethod: override
         ? "manualDecision"
-        : configuredCostMethod(economic.productCode) || economic.costMethod,
+        : configuredCostMethod(economic.productCode, productKey) || economic.costMethod,
       revenueSource: economic.revenueSource || (economic.isSale ? "invoice" : "return"),
       department: attribution.department,
       departmentName: attribution.departmentName,
@@ -344,6 +363,16 @@ export function buildDepartmentAnalysis({
     ["review", emptyMetrics("review", DEPARTMENT_META.review.name)],
   ]);
   const monthMetrics = new Map();
+  const totalMetric = emptyMetrics("all", "Toplam");
+  const depotMetrics = new Map();
+  let confirmedAmount = 0;
+  let inferredAmount = 0;
+  let explicitDepartmentAmount = 0;
+  let explicitOwnerAmount = 0;
+  let sourceOrderAmount = 0;
+  let batchRiskAmount = 0;
+  let reviewAmount = 0;
+  let hintedReviewAmount = 0;
   for (let month = 1; month <= 12; month += 1) {
     monthMetrics.set(month, {
       month, monthName: MONTH_NAMES[month - 1],
@@ -355,6 +384,20 @@ export function buildDepartmentAnalysis({
   for (const row of normalized) {
     addMetric(departmentMetrics.get(row.department), row);
     addMetric(monthMetrics.get(row.month)[row.department], row);
+    addMetric(totalMetric, row);
+    if (row.attributionStatus === "confirmed") confirmedAmount += row.netSales;
+    else if (row.attributionStatus === "inferred") inferredAmount += row.netSales;
+    else if (row.attributionStatus === "review") reviewAmount += row.netSales;
+    if (row.explicitDepartment) explicitDepartmentAmount += row.netSales;
+    if (row.explicitOwner) explicitOwnerAmount += row.netSales;
+    if (row.sourceOrderNo) sourceOrderAmount += row.netSales;
+    if (row.batchRisk) batchRiskAmount += row.netSales;
+    if (row.attributionMethod === "b2b-candidate-hint") hintedReviewAmount += row.netSales;
+    const depotKey = `${row.department}|${row.fulfillmentDepotCode}`;
+    const depot = depotMetrics.get(depotKey) || { netSales: 0, documents: new Set() };
+    depot.netSales += row.netSales;
+    depot.documents.add(row.documentKey);
+    depotMetrics.set(depotKey, depot);
   }
 
   const departments = [...departmentMetrics.values()].map(finalizeMetric);
@@ -365,18 +408,7 @@ export function buildDepartmentAnalysis({
     parts: finalizeMetric(item.parts),
     review: finalizeMetric(item.review),
   }));
-  const total = finalizeMetric(normalized.reduce((metric, row) => {
-    addMetric(metric, row);
-    return metric;
-  }, emptyMetrics("all", "Toplam")));
-  const confirmedAmount = normalized.filter((row) => row.attributionStatus === "confirmed").reduce((sum, row) => sum + row.netSales, 0);
-  const inferredAmount = normalized.filter((row) => row.attributionStatus === "inferred").reduce((sum, row) => sum + row.netSales, 0);
-  const explicitDepartmentAmount = normalized.filter((row) => row.explicitDepartment).reduce((sum, row) => sum + row.netSales, 0);
-  const explicitOwnerAmount = normalized.filter((row) => row.explicitOwner).reduce((sum, row) => sum + row.netSales, 0);
-  const sourceOrderAmount = normalized.filter((row) => row.sourceOrderNo).reduce((sum, row) => sum + row.netSales, 0);
-  const batchRiskAmount = normalized.filter((row) => row.batchRisk).reduce((sum, row) => sum + row.netSales, 0);
-  const reviewAmount = normalized.filter((row) => row.attributionStatus === "review").reduce((sum, row) => sum + row.netSales, 0);
-  const hintedReviewAmount = normalized.filter((row) => row.attributionMethod === "b2b-candidate-hint").reduce((sum, row) => sum + row.netSales, 0);
+  const total = finalizeMetric(totalMetric);
   const realPilotOrders = sourcePilotOrders
     .filter((row) => !isExcludedTestDocument(row))
     .map((row) => {
@@ -434,19 +466,19 @@ export function buildDepartmentAnalysis({
     topProducts: topGroups(normalized, (row) => ({ id: row.productCode, name: row.productName, code: row.productCode, brand: row.brandName }), 10),
     topCustomers: topGroups(normalized, (row) => ({ id: row.customerCode, name: row.customerName, code: row.customerCode }), 10),
     depotMatrix: ["service", "parts", "review"].flatMap((department) => ["MRK", "YTM", "—"].map((depot) => {
-      const rows = normalized.filter((row) => row.department === department && row.fulfillmentDepotCode === depot);
+      const metric = depotMetrics.get(`${department}|${depot}`);
       return {
         department,
         departmentName: DEPARTMENT_META[department].name,
         depot,
         depotName: normalizeDepot(depot).name,
-        netSales: rows.reduce((sum, row) => sum + row.netSales, 0),
-        documentCount: new Set(rows.map((row) => row.documentKey)).size,
+        netSales: metric?.netSales || 0,
+        documentCount: metric?.documents.size || 0,
       };
     })),
     detailRows: normalized
       .slice()
-      .sort((a, b) => new Date(b.documentDate) - new Date(a.documentDate) || b.netSales - a.netSales)
+      .sort((a, b) => b[ROW_SORT_TIME] - a[ROW_SORT_TIME] || b.netSales - a.netSales)
       .slice(0, 500),
     excludedTestRows: excludedTestRows.map((row) => ({
       ...row,

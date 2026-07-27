@@ -13,6 +13,9 @@ const AUDIT_METHODS = new Set([
 const AUDIT_VERIFICATIONS = new Set(["verified", "configured", "review", "excluded"]);
 const AUDIT_SOURCES = new Set(["invoice", "provisional", "return"]);
 const EXCLUDED_INCOME_CODES = new Set(["KOMISYON", "GD-0187", "GD-0079", "PDI"]);
+const overviewRowsCache = new WeakMap();
+const auditRowsCache = new WeakMap();
+const AUDIT_SORT_TIME = Symbol("auditSortTime");
 
 function number(value) {
   const parsed = Number(value);
@@ -25,15 +28,19 @@ function positiveInteger(value, fallback) {
 }
 
 function monthOf(value) {
+  if (typeof value === "string" && /^\d{4}-\d{2}/.test(value)) {
+    const month = Number(value.slice(5, 7));
+    return month >= 1 && month <= 12 ? month : 0;
+  }
   const parsed = new Date(value);
   const month = parsed.getUTCMonth() + 1;
   return Number.isFinite(parsed.getTime()) && month >= 1 && month <= 12 ? month : 0;
 }
 
 function normalizedCode(value) {
-  return String(value || "")
-    .trim()
-    .toLocaleUpperCase("tr-TR")
+  const trimmed = String(value || "").trim();
+  if (/^[\x00-\x7F]*$/.test(trimmed)) return trimmed.toUpperCase();
+  return trimmed.toLocaleUpperCase("tr-TR")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
 }
@@ -102,6 +109,9 @@ function emptyOverviewMonth(month) {
 }
 
 export function buildOverviewRows(ledger) {
+  if (ledger && typeof ledger === "object" && overviewRowsCache.has(ledger)) {
+    return overviewRowsCache.get(ledger);
+  }
   const months = new Map();
   for (const row of ledger?.rows || []) {
     if (isExcludedIncome(row.productCode)) continue;
@@ -149,7 +159,7 @@ export function buildOverviewRows(ledger) {
     months.set(month, target);
   }
 
-  return [...months.values()]
+  const rows = [...months.values()]
     .sort((left, right) => left.month - right.month)
     .map((row) => ({
       ...row,
@@ -157,6 +167,8 @@ export function buildOverviewRows(ledger) {
         ? Number((100 * row.costCoveredLines / row.lineCount).toFixed(1))
         : 0,
     }));
+  if (ledger && typeof ledger === "object") overviewRowsCache.set(ledger, rows);
+  return rows;
 }
 
 function overviewNetSales(rows) {
@@ -202,6 +214,7 @@ function auditRow(row) {
   const verification = verificationStatus(effectiveRow);
   return {
     ...row,
+    [AUDIT_SORT_TIME]: Date.parse(row.documentDate) || 0,
     id: row.rootId,
     revenueSource: row.isSale ? "invoice" : "return",
     customerCode: row.customerCode || "",
@@ -260,7 +273,14 @@ export function filterAuditLedger(ledger, query = {}) {
   const returnRisk = query.returnRisk === "1" ? true
     : query.returnRisk === "0" ? false : null;
   const search = normalizedCode(String(query.search || "").trim().slice(0, 80));
-  const allRows = (ledger?.rows || []).map(auditRow);
+  let allRows = ledger && typeof ledger === "object" ? auditRowsCache.get(ledger) : null;
+  if (!allRows) {
+    allRows = (ledger?.rows || []).map(auditRow).sort((left, right) => (
+      right[AUDIT_SORT_TIME] - left[AUDIT_SORT_TIME]
+      || String(right.id).localeCompare(String(left.id), "tr")
+    ));
+    if (ledger && typeof ledger === "object") auditRowsCache.set(ledger, allRows);
+  }
   const filteredRows = allRows.filter((row) => (
     (!month || monthOf(row.documentDate) === month)
     && (!documentType || number(row.documentType) === documentType)
@@ -269,21 +289,24 @@ export function filterAuditLedger(ledger, query = {}) {
     && (!verification || row.verificationStatus === verification)
     && (returnRisk === null || row.returnRisk === returnRisk)
     && (!search || auditSearchText(row).includes(search))
-  )).sort((left, right) => (
-    new Date(right.documentDate).getTime() - new Date(left.documentDate).getTime()
-    || String(right.id).localeCompare(String(left.id), "tr")
   ));
   const summary = {
     totalRows: filteredRows.length,
-    verifiedRows: filteredRows.filter((row) => row.verificationStatus === "verified").length,
-    configuredRows: filteredRows.filter((row) => row.verificationStatus === "configured").length,
-    reviewRows: filteredRows.filter((row) => row.verificationStatus === "review").length,
-    excludedRows: filteredRows.filter((row) => row.verificationStatus === "excluded").length,
-    returnRiskRows: filteredRows.filter((row) => row.returnRisk).length,
-    filteredNetAmount: filteredRows.reduce((sum, row) => (
-      sum + (row.isSale ? number(row.netAmount) : -number(row.netAmount))
-    ), 0),
+    verifiedRows: 0,
+    configuredRows: 0,
+    reviewRows: 0,
+    excludedRows: 0,
+    returnRiskRows: 0,
+    filteredNetAmount: 0,
   };
+  for (const row of filteredRows) {
+    if (row.verificationStatus === "verified") summary.verifiedRows += 1;
+    else if (row.verificationStatus === "configured") summary.configuredRows += 1;
+    else if (row.verificationStatus === "review") summary.reviewRows += 1;
+    else if (row.verificationStatus === "excluded") summary.excludedRows += 1;
+    if (row.returnRisk) summary.returnRiskRows += 1;
+    summary.filteredNetAmount += row.isSale ? number(row.netAmount) : -number(row.netAmount);
+  }
   const offset = (page - 1) * pageSize;
   return {
     page,
@@ -291,6 +314,68 @@ export function filterAuditLedger(ledger, query = {}) {
     rows: filteredRows.slice(offset, offset + pageSize),
     summary,
   };
+}
+
+const AUDIT_SAMPLE_CATEGORY_ORDER = [
+  "priorPurchase",
+  "nextPurchase",
+  "configuredSrf",
+  "excludedIncome",
+];
+
+function auditSampleCategory(row) {
+  if (!row.isSale) return null;
+  const method = configuredCostMethod(row.productCode) || row.costMethod;
+  if (method === "excludedIncome") return "excludedIncome";
+  if (method === "configuredSrf") return "configuredSrf";
+  if (method === "nextPurchase") return "nextPurchase";
+  if (["bulkPurchase", "priorPurchase", "originalSaleCost"].includes(method)) {
+    return row.purchaseNo ? "priorPurchase" : null;
+  }
+  return null;
+}
+
+/**
+ * Eski kanıt örneği alanlarını birleşik nihai fatura defterinden üretir.
+ */
+export function buildAuditSamples(ledger) {
+  const buckets = new Map();
+  for (const row of ledger?.rows || []) {
+    const category = auditSampleCategory(row);
+    if (!category) continue;
+    const sample = {
+      category,
+      saleType: row.documentType,
+      saleNo: row.documentNo,
+      saleDate: row.documentDate,
+      cardCode: row.productCode,
+      cardName: row.productName || row.productCode || "",
+      quantity: number(row.quantity),
+      netSales: number(row.netAmount),
+      purchaseType: row.purchaseType ?? null,
+      purchaseNo: row.purchaseNo ?? null,
+      purchaseDate: row.purchaseDate ?? null,
+      unitCost: row.unitCost ?? null,
+      lineCost: row.lineCost ?? null,
+    };
+    if (!buckets.has(category)) buckets.set(category, []);
+    buckets.get(category).push(sample);
+  }
+
+  const categories = [
+    ...AUDIT_SAMPLE_CATEGORY_ORDER,
+    ...[...buckets.keys()].filter((category) => (
+      !AUDIT_SAMPLE_CATEGORY_ORDER.includes(category)
+    )).sort(),
+  ];
+  return categories.flatMap((category) => (
+    (buckets.get(category) || [])
+      .sort((left, right) => (
+        right.netSales - left.netSales
+        || new Date(right.saleDate).getTime() - new Date(left.saleDate).getTime()
+      ))
+      .slice(0, 4)
+  ));
 }
 
 function normalizedDifference(value) {
@@ -319,14 +404,21 @@ function reconciliation(
   };
 }
 
-function metadata(snapshot) {
+function metadata(snapshot, fallbackStatus = "error") {
   return {
-    ledgerVersion: snapshot.ledgerVersion,
-    generatedAt: snapshot.generatedAt,
-    cacheStatus: snapshot.cache.status,
+    ledgerVersion: snapshot?.ledgerVersion ?? null,
+    generatedAt: snapshot?.generatedAt ?? null,
+    cacheStatus: snapshot?.cache?.status || fallbackStatus,
     readOnly: true,
   };
 }
+
+function retainedMetadata(ledgerService, year) {
+  if (!year || typeof ledgerService.inspect !== "function") return metadata(null);
+  return metadata(ledgerService.inspect(year));
+}
+
+const INVALID_METADATA = Object.freeze(metadata(null, "invalid"));
 
 function validYear(value) {
   const year = Number(value || 2026);
@@ -348,7 +440,12 @@ export function createUnifiedLedgerRouter({
 
   router.get("/api/overview", async (request, response) => {
     const year = validYear(request.query.year);
-    if (!year) return response.status(400).json({ error: "Geçersiz yıl." });
+    if (!year) {
+      return response.status(400).json({
+        error: "Geçersiz yıl.",
+        ...INVALID_METADATA,
+      });
+    }
     try {
       const snapshot = await ledgerService.get(year, {
         refresh: request.query.refresh === "1",
@@ -378,7 +475,7 @@ export function createUnifiedLedgerRouter({
     } catch (error) {
       logger.error("Marlin Nexus overview ledger read failed:", error);
       return response.status(500).json({
-        year, rows: [], mode: "error", readOnly: true,
+        year, rows: [], mode: "error", ...retainedMetadata(ledgerService, year),
         error: "Satış özeti birleşik defterden okunamadı.",
       });
     }
@@ -386,7 +483,12 @@ export function createUnifiedLedgerRouter({
 
   router.get("/api/department-analysis", async (request, response) => {
     const year = validYear(request.query.year);
-    if (!year) return response.status(400).json({ error: "Geçersiz yıl." });
+    if (!year) {
+      return response.status(400).json({
+        error: "Geçersiz yıl.",
+        ...INVALID_METADATA,
+      });
+    }
     try {
       const [snapshot, state] = await Promise.all([
         ledgerService.get(year, { refresh: request.query.refresh === "1" }),
@@ -424,7 +526,7 @@ export function createUnifiedLedgerRouter({
       logger.error("Marlin Nexus department ledger read failed:", error);
       return response.status(500).json({
         year, departments: [], months: [], detailRows: [], pilotOrders: [],
-        mode: "error", readOnly: true,
+        mode: "error", ...retainedMetadata(ledgerService, year),
         error: "Departman analizi birleşik defterden okunamadı.",
       });
     }
@@ -432,7 +534,12 @@ export function createUnifiedLedgerRouter({
 
   router.get("/api/audit-ledger", async (request, response) => {
     const year = validYear(request.query.year);
-    if (!year) return response.status(400).json({ error: "Geçersiz yıl." });
+    if (!year) {
+      return response.status(400).json({
+        error: "Geçersiz yıl.",
+        ...INVALID_METADATA,
+      });
+    }
     try {
       const snapshot = await ledgerService.get(year, {
         refresh: request.query.refresh === "1",
@@ -461,8 +568,41 @@ export function createUnifiedLedgerRouter({
       logger.error("Marlin Nexus audit ledger read failed:", error);
       return response.status(500).json({
         year, page: 1, pageSize: 50, rows: [], summary: { totalRows: 0 },
-        mode: "error", readOnly: true,
+        mode: "error", ...retainedMetadata(ledgerService, year),
         error: "Denetim defteri birleşik defterden okunamadı.",
+      });
+    }
+  });
+
+  router.get("/api/audit-samples", async (request, response) => {
+    const year = validYear(request.query.year);
+    if (!year) {
+      return response.status(400).json({
+        error: "Geçersiz yıl.",
+        ...INVALID_METADATA,
+      });
+    }
+    try {
+      const snapshot = await ledgerService.get(year, {
+        refresh: request.query.refresh === "1",
+      });
+      if (!snapshot.value) {
+        return response.json({
+          year, rows: [], mode: "demo", ...metadata(snapshot),
+        });
+      }
+      response.setHeader("Cache-Control", "no-store");
+      return response.json({
+        year,
+        rows: buildAuditSamples(snapshot.value),
+        mode: "live",
+        ...metadata(snapshot),
+      });
+    } catch (error) {
+      logger.error("Marlin Nexus audit samples ledger read failed:", error);
+      return response.status(500).json({
+        year, rows: [], mode: "error", ...retainedMetadata(ledgerService, year),
+        error: "Kanıt örnekleri birleşik defterden okunamadı.",
       });
     }
   });

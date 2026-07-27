@@ -104,91 +104,6 @@ async function getStoredAppState() {
   }
 }
 
-const auditSamplesSql = `
-WITH incomingReturnDocuments AS (
-  SELECT DISTINCT e.EVRAKNO
-  FROM EFAGLN e
-  WHERE e.EVRAKNO IS NOT NULL
-    AND (
-      CONCAT(ISNULL(e.NOT1,''),' ',ISNULL(e.NOT2,''),' ',ISNULL(e.NOT3,'')) COLLATE Turkish_CI_AI LIKE N'%iade%'
-      OR CONCAT(ISNULL(e.NOT1,''),' ',ISNULL(e.NOT2,''),' ',ISNULL(e.NOT3,'')) COLLATE Turkish_CI_AI LIKE N'%return%'
-    )
-), sales AS (
-  SELECT h.*, k.MALAD
-  FROM STKHAR h
-  LEFT JOIN STKKRT k ON k.SIRKETNO = h.SIRKETNO AND k.MALKOD = h.MALKOD
-  WHERE h.SIRKETNO = @company
-    AND YEAR(h.EVRAKTARIH) = @year
-    AND h.EVRAKTIP IN (17,85,91)
-    AND h.KAYITDURUM = 1
-), matched AS (
-  SELECT
-    s.*,
-    priorPurchase.purchaseType AS priorType,
-    priorPurchase.purchaseNo AS priorNo,
-    priorPurchase.purchaseDate AS priorDate,
-    priorPurchase.netUnitCost AS priorUnitCost,
-    nextPurchase.purchaseType AS nextType,
-    nextPurchase.purchaseNo AS nextNo,
-    nextPurchase.purchaseDate AS nextDate,
-    nextPurchase.netUnitCost AS nextUnitCost
-  FROM sales s
-  OUTER APPLY (
-    SELECT TOP (1)
-      p.EVRAKTIP AS purchaseType, p.EVRAKNO AS purchaseNo, p.EVRAKTARIH AS purchaseDate,
-      (p.TUTAR - p.ISKONTO) / NULLIF(p.MIKTAR, 0) AS netUnitCost
-    FROM STKHAR p
-    WHERE p.SIRKETNO = s.SIRKETNO AND p.KAYITDURUM = 1
-      AND p.EVRAKTIP IN (9,609) AND p.MALKOD = s.MALKOD
-      AND p.MIKTAR > 0 AND p.TUTAR - p.ISKONTO >= 0
-      AND NOT EXISTS (SELECT 1 FROM incomingReturnDocuments r WHERE r.EVRAKNO = p.EVRAKNO)
-      AND p.EVRAKTARIH <= s.EVRAKTARIH
-    ORDER BY p.EVRAKTARIH DESC, p.ID DESC
-  ) priorPurchase
-  OUTER APPLY (
-    SELECT TOP (1)
-      p.EVRAKTIP AS purchaseType, p.EVRAKNO AS purchaseNo, p.EVRAKTARIH AS purchaseDate,
-      (p.TUTAR - p.ISKONTO) / NULLIF(p.MIKTAR, 0) AS netUnitCost
-    FROM STKHAR p
-    WHERE p.SIRKETNO = s.SIRKETNO AND p.KAYITDURUM = 1
-      AND p.EVRAKTIP IN (9,609) AND p.MALKOD = s.MALKOD
-      AND p.MIKTAR > 0 AND p.TUTAR - p.ISKONTO >= 0
-      AND NOT EXISTS (SELECT 1 FROM incomingReturnDocuments r WHERE r.EVRAKNO = p.EVRAKNO)
-      AND p.EVRAKTARIH > s.EVRAKTARIH
-    ORDER BY p.EVRAKTARIH ASC, p.ID ASC
-  ) nextPurchase
-), evidence AS (
-  SELECT
-    CASE WHEN priorUnitCost IS NOT NULL THEN 'priorPurchase' ELSE 'nextPurchase' END AS category,
-    EVRAKTIP AS saleType, EVRAKNO AS saleNo, EVRAKTARIH AS saleDate,
-    MALKOD AS cardCode, MALAD AS cardName, MIKTAR AS quantity,
-    TUTAR - ISKONTO AS netSales,
-    COALESCE(priorType, nextType) AS purchaseType,
-    COALESCE(priorNo, nextNo) AS purchaseNo,
-    COALESCE(priorDate, nextDate) AS purchaseDate,
-    COALESCE(priorUnitCost, nextUnitCost) AS unitCost,
-    MIKTAR * COALESCE(priorUnitCost, nextUnitCost) AS lineCost
-  FROM matched
-  WHERE MALKOD NOT IN ('İŞÇİLİK','SRF','TSR','YOL','BARNACLE','KOMİSYON','GD-0187','GD-0079','PDI')
-    AND COALESCE(priorUnitCost, nextUnitCost) IS NOT NULL
-  UNION ALL
-  SELECT 'configuredSrf', EVRAKTIP, EVRAKNO, EVRAKTARIH, MALKOD, MALAD, MIKTAR,
-    TUTAR - ISKONTO, NULL, NULL, NULL, NULL, NULL
-  FROM matched WHERE MALKOD = 'BARNACLE'
-  UNION ALL
-  SELECT 'excludedIncome', EVRAKTIP, EVRAKNO, EVRAKTARIH, MALKOD, MALAD, MIKTAR,
-    TUTAR - ISKONTO, NULL, NULL, NULL, NULL, NULL
-  FROM matched WHERE MALKOD IN ('KOMİSYON','GD-0187','GD-0079','PDI')
-), ranked AS (
-  SELECT *, ROW_NUMBER() OVER (PARTITION BY category ORDER BY netSales DESC, saleDate DESC) AS rn
-  FROM evidence
-)
-SELECT category, saleType, saleNo, saleDate, cardCode, cardName, quantity, netSales,
-  purchaseType, purchaseNo, purchaseDate, unitCost, lineCost
-FROM ranked
-WHERE rn <= 4
-ORDER BY CASE category WHEN 'priorPurchase' THEN 1 WHEN 'nextPurchase' THEN 2 WHEN 'configuredSrf' THEN 3 ELSE 4 END, rn;`;
-
 app.use(createUnifiedLedgerRouter({
   ledgerService,
   getAppState: getStoredAppState,
@@ -207,25 +122,6 @@ app.get("/api/health", async (_request, response) => {
     });
   } catch {
     return response.status(200).json({ connected: false, mode: "demo", readOnly: true });
-  }
-});
-
-app.get("/api/audit-samples", async (request, response) => {
-  const year = Number(request.query.year || 2026);
-  if (!Number.isInteger(year) || year < 2023 || year > 2030) {
-    return response.status(400).json({ error: "Geçersiz yıl." });
-  }
-
-  try {
-    const pool = await getPool();
-    if (!pool) return response.json({ year, rows: [], mode: "demo" });
-    const result = await pool.request()
-      .input("company", sql.VarChar(3), process.env.CPM_SQL_COMPANY || "01")
-      .input("year", sql.Int, year)
-      .query(auditSamplesSql);
-    return response.json({ year, rows: result.recordset, mode: "live", readOnly: true });
-  } catch {
-    return response.status(500).json({ year, rows: [], mode: "error", error: "Kanıt örnekleri okunamadı." });
   }
 });
 

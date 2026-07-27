@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import express from "express";
 import { createLedgerService } from "./ledgerService.mjs";
@@ -12,6 +13,24 @@ function deferred() {
     reject = rejectPromise;
   });
   return { promise, resolve, reject };
+}
+
+function nextTurn() {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
+function assertLedgerMetadata(payload, {
+  ledgerVersion,
+  generatedAt,
+  cacheStatus,
+} = {}) {
+  assert.equal(Object.hasOwn(payload, "ledgerVersion"), true);
+  assert.equal(Object.hasOwn(payload, "generatedAt"), true);
+  assert.equal(Object.hasOwn(payload, "cacheStatus"), true);
+  assert.equal(payload.readOnly, true);
+  if (ledgerVersion !== undefined) assert.equal(payload.ledgerVersion, ledgerVersion);
+  if (generatedAt !== undefined) assert.equal(payload.generatedAt, generatedAt);
+  if (cacheStatus !== undefined) assert.equal(payload.cacheStatus, cacheStatus);
 }
 
 function fixtureLedger(netSales = 100) {
@@ -366,6 +385,109 @@ test("invalidasyon sonraki okumada aynı yılı yeniden yükler", async () => {
   assert.equal(result.value.totals.netSales, 200);
 });
 
+test("ilk yükleme sırasında invalidasyon aynı yıl için ikinci eşzamanlı loader başlatmaz", async () => {
+  const loads = [deferred(), deferred()];
+  let calls = 0;
+  let activeLoads = 0;
+  let maximumActiveLoads = 0;
+  const service = createLedgerService({
+    loadYear: async () => {
+      const pending = loads[calls];
+      calls += 1;
+      activeLoads += 1;
+      maximumActiveLoads = Math.max(maximumActiveLoads, activeLoads);
+      try {
+        return await pending.promise;
+      } finally {
+        activeLoads -= 1;
+      }
+    },
+  });
+
+  let firstSettled = false;
+  const firstRead = service.get(2026).then((result) => {
+    firstSettled = true;
+    return result;
+  });
+  await nextTurn();
+  assert.equal(calls, 1);
+
+  service.invalidate(2026);
+  let secondSettled = false;
+  const secondRead = service.get(2026).then((result) => {
+    secondSettled = true;
+    return result;
+  });
+  await nextTurn();
+
+  assert.equal(calls, 1);
+  assert.equal(maximumActiveLoads, 1);
+  loads[0].resolve(fixtureLedger(100));
+  await nextTurn();
+  assert.equal(calls, 2);
+  assert.equal(firstSettled, false);
+  assert.equal(secondSettled, false);
+
+  loads[1].resolve(fixtureLedger(200));
+  const [first, second] = await Promise.all([firstRead, secondRead]);
+  assert.equal(maximumActiveLoads, 1);
+  assert.equal(first.value.totals.netSales, 200);
+  assert.equal(second.value.totals.netSales, 200);
+  assert.equal(first.ledgerVersion, second.ledgerVersion);
+});
+
+test("stale refresh sırasında invalidasyon eski generation sonucunu yayımlamaz", async () => {
+  let currentTime = 1_000;
+  const staleRefresh = deferred();
+  const replacement = deferred();
+  let calls = 0;
+  let activeLoads = 0;
+  let maximumActiveLoads = 0;
+  const service = createLedgerService({
+    ttlMs: 1_000,
+    maxStaleMs: 86_400_000,
+    now: () => currentTime,
+    loadYear: async () => {
+      calls += 1;
+      if (calls === 1) return fixtureLedger(100);
+      const pending = calls === 2 ? staleRefresh : replacement;
+      activeLoads += 1;
+      maximumActiveLoads = Math.max(maximumActiveLoads, activeLoads);
+      try {
+        return await pending.promise;
+      } finally {
+        activeLoads -= 1;
+      }
+    },
+  });
+
+  await service.get(2026);
+  currentTime += 1_500;
+  const stale = await service.get(2026);
+  assert.equal(stale.value.totals.netSales, 100);
+  assert.equal(stale.cache.status, "stale-refreshing");
+
+  service.invalidate(2026);
+  let postInvalidationSettled = false;
+  const postInvalidationRead = service.get(2026).then((result) => {
+    postInvalidationSettled = true;
+    return result;
+  });
+  await nextTurn();
+  assert.equal(calls, 2);
+  assert.equal(maximumActiveLoads, 1);
+
+  staleRefresh.resolve(fixtureLedger(200));
+  await nextTurn();
+  assert.equal(calls, 3);
+  assert.equal(postInvalidationSettled, false);
+
+  replacement.resolve(fixtureLedger(300));
+  const result = await postInvalidationRead;
+  assert.equal(maximumActiveLoads, 1);
+  assert.equal(result.value.totals.netSales, 300);
+});
+
 test("prewarm yinelenen yılları tekilleştirir ve hataları sonuçta görünür kılar", async () => {
   const calls = [];
   const service = createLedgerService({
@@ -425,6 +547,99 @@ test("eşzamanlı overview departman ve audit istekleri tek ledger sürümünü 
     ]);
     assert.equal(departments.detailRows[0].ownershipEvidence !== undefined, true);
   });
+});
+
+test("ledger API geçersiz yıl yanıtları tam metadata sözleşmesini taşır", async () => {
+  const service = createLedgerService({ loadYear: async () => apiFixtureLedger() });
+  const router = createUnifiedLedgerRouter({
+    ledgerService: service,
+    getAppState: async () => ({}),
+  });
+
+  await withApiServer(router, async (baseUrl) => {
+    for (const endpoint of [
+      "overview", "department-analysis", "audit-ledger", "audit-samples",
+    ]) {
+      const response = await fetch(`${baseUrl}/api/${endpoint}?year=invalid`);
+      const payload = await response.json();
+      assert.equal(response.status, 400);
+      assertLedgerMetadata(payload, {
+        ledgerVersion: null,
+        generatedAt: null,
+        cacheStatus: "invalid",
+      });
+    }
+  });
+});
+
+test("ilk loader hatasında ledger API uçları null metadata ile 500 döndürür", async () => {
+  const service = createLedgerService({
+    loadYear: async () => {
+      throw new Error("CPM okunamadı");
+    },
+  });
+  const router = createUnifiedLedgerRouter({
+    ledgerService: service,
+    getAppState: async () => ({}),
+    logger: { error() {} },
+  });
+
+  await withApiServer(router, async (baseUrl) => {
+    for (const endpoint of [
+      "overview", "department-analysis", "audit-ledger", "audit-samples",
+    ]) {
+      const response = await fetch(`${baseUrl}/api/${endpoint}?year=2026`);
+      const payload = await response.json();
+      assert.equal(response.status, 500);
+      assertLedgerMetadata(payload, {
+        ledgerVersion: null,
+        generatedAt: null,
+        cacheStatus: "error",
+      });
+    }
+  });
+});
+
+test("audit samples birleşik cached ledger sürümünden uyumlu kanıt satırları üretir", async () => {
+  let loads = 0;
+  const service = createLedgerService({
+    loadYear: async () => {
+      loads += 1;
+      return apiFixtureLedger();
+    },
+  });
+  const router = createUnifiedLedgerRouter({
+    ledgerService: service,
+    getAppState: async () => ({}),
+  });
+
+  await withApiServer(router, async (baseUrl) => {
+    const [overview, samples] = await Promise.all([
+      fetch(`${baseUrl}/api/overview?year=2026`).then((response) => response.json()),
+      fetch(`${baseUrl}/api/audit-samples?year=2026`).then((response) => response.json()),
+    ]);
+
+    assert.equal(loads, 1);
+    assert.equal(samples.ledgerVersion, overview.ledgerVersion);
+    assert.equal(samples.generatedAt, overview.generatedAt);
+    assertLedgerMetadata(samples);
+    assert.equal(["miss", "hit"].includes(samples.cacheStatus), true);
+    assert.equal(samples.mode, "live");
+    assert.equal(samples.rows.length, 2);
+    assert.deepEqual(Object.keys(samples.rows[0]), [
+      "category", "saleType", "saleNo", "saleDate", "cardCode", "cardName",
+      "quantity", "netSales", "purchaseType", "purchaseNo", "purchaseDate",
+      "unitCost", "lineCost",
+    ]);
+    assert.equal(samples.rows.every((row) => row.category === "priorPurchase"), true);
+    assert.equal(samples.rows.some((row) => row.saleNo === "SI-001"), false);
+  });
+});
+
+test("sunucu bağımsız audit economics SQL yolunu içermez", async () => {
+  const source = await readFile(new URL("./index.mjs", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /\bauditSamplesSql\b/);
+  assert.doesNotMatch(source, /\.query\(auditSamplesSql\)/);
 });
 
 test("audit filtreleme sayfalama ve export sözleşmesini bellekte korur", async () => {
@@ -611,10 +826,20 @@ test("API başarısız zorunlu refresh sonrasında son başarılı ledger sürü
   await withApiServer(router, async (baseUrl) => {
     const initial = await fetch(`${baseUrl}/api/overview?year=2026`).then((response) => response.json());
     currentTime += 1_500;
-    const failedResponse = await fetch(
-      `${baseUrl}/api/audit-ledger?year=2026&refresh=1`,
-    );
-    assert.equal(failedResponse.status, 500);
+    for (const endpoint of [
+      "overview", "department-analysis", "audit-ledger", "audit-samples",
+    ]) {
+      const failedResponse = await fetch(
+        `${baseUrl}/api/${endpoint}?year=2026&refresh=1`,
+      );
+      const failed = await failedResponse.json();
+      assert.equal(failedResponse.status, 500);
+      assertLedgerMetadata(failed, {
+        ledgerVersion: initial.ledgerVersion,
+        generatedAt: initial.generatedAt,
+        cacheStatus: "refresh-error",
+      });
+    }
 
     const retainedResponse = await fetch(`${baseUrl}/api/overview?year=2026`);
     const retained = await retainedResponse.json();
