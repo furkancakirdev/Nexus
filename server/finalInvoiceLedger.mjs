@@ -1,7 +1,7 @@
 import { resolveCommercialOwnership } from "./ownershipResolver.mjs";
 import {
+  excludedTestAudit,
   isExcludedTestDocument,
-  testDocumentExclusion,
 } from "./testDocumentRegistry.mjs";
 
 export const FINAL_SALE_TYPES = new Set([17, 85, 91]);
@@ -1106,63 +1106,6 @@ function priorPeriodOriginalOwnership(row, lineageRows, actorEvents, identities)
   });
   if (!ownership.ownerCode) return null;
   return { ...original, ...ownershipFields(ownership) };
-}
-
-function auditDocumentIdentity(row, matchRole) {
-  const exclusion = testDocumentExclusion(row);
-  return {
-    rootId: row?.rootId ?? null,
-    lineageId: row?.lineageId ?? row?.ancestorId ?? null,
-    headerId: row?.headerId ?? row?.recId ?? null,
-    documentType: Number(row?.documentType),
-    documentNo: text(row?.documentNo),
-    customerCode: text(row?.customerCode),
-    lineNo: row?.lineNo ?? null,
-    documentDate: row?.documentDate ?? null,
-    depth: number(row?.depth),
-    matchRole,
-    exclusionReason: exclusion?.reason || null,
-    normalizedDocumentNo: exclusion?.normalizedDocumentNo || null,
-  };
-}
-
-function excludedTestAudit(economic, lineageRows) {
-  const candidates = [
-    { row: economic, matchRole: "economic" },
-    ...lineageRows.map((row) => ({ row, matchRole: "lineage-ancestor" })),
-  ];
-  const matchedDocuments = candidates
-    .filter(({ row }) => isExcludedTestDocument(row))
-    .map(({ row, matchRole }) => auditDocumentIdentity(row, matchRole))
-    .sort((left, right) => (
-      Number(right.matchRole === "economic") - Number(left.matchRole === "economic")
-      || right.depth - left.depth
-      || left.documentNo.localeCompare(right.documentNo, "tr")
-    ));
-  if (matchedDocuments.length === 0) return null;
-
-  return {
-    rootId: economic.rootId ?? null,
-    documentType: Number(economic.documentType),
-    documentNo: text(economic.documentNo),
-    customerCode: text(economic.customerCode),
-    lineNo: economic.lineNo ?? null,
-    reviewReason: "excluded-test-document",
-    reviewStatus: "excluded",
-    economicDocument: {
-      ...auditDocumentIdentity(economic, "economic"),
-      productCode: text(economic.productCode),
-      quantity: economic.quantity ?? null,
-      grossAmount: economic.grossAmount ?? null,
-      discountAmount: economic.discountAmount ?? null,
-      netAmount: economic.netAmount ?? null,
-      vatAmount: economic.vatAmount ?? null,
-      invoiceTotalInclVat: economic.invoiceTotalInclVat ?? null,
-      lineCost: economic.lineCost ?? null,
-    },
-    matchedDocument: { ...matchedDocuments[0] },
-    matchedDocuments: matchedDocuments.map((row) => ({ ...row })),
-  };
 }
 
 /**

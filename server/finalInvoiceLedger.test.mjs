@@ -1998,6 +1998,72 @@ test("recursive SSP-00979 ancestor excludes type 85 economics before cost and ow
   assert.equal(result.excludedTestRows[0].matchedDocument.documentNo, "SSP-00979");
 });
 
+test("missing-line direct SSP source reference excludes final economics with audit evidence", () => {
+  const invoice = sale(85, "F-TEST-MISSING-DIRECT", {
+    rootId: "ROOT-TEST-MISSING-DIRECT",
+    sourceDocumentType: 14,
+    sourceDocumentNo: " ssp-00979 ",
+    sourceCustomerCode: "C-1",
+    sourceLineNo: null,
+    unitCost: 40,
+    lineCost: 40,
+  });
+
+  const result = buildFinalInvoiceLedger({ economics: [invoice] });
+
+  assert.deepEqual(result.rows, []);
+  assert.equal(result.totals.netSales, 0);
+  assert.equal(result.rows.reduce((sum, row) => sum + Number(row.lineCost || 0), 0), 0);
+  assert.equal(result.rows.some((row) => row.commercialOwner), false);
+  assert.equal(result.excludedTestRows.length, 1);
+  assert.equal(result.excludedTestRows[0].matchedDocument.matchRole, "direct-source-reference");
+  assert.equal(result.excludedTestRows[0].matchedDocument.documentNo, "ssp-00979");
+  assert.equal(result.excludedTestRows[0].matchedDocument.lineNo, null);
+  assert.equal(
+    result.excludedTestRows[0].matchedDocument.referencedByDocument.documentNo,
+    "F-TEST-MISSING-DIRECT",
+  );
+});
+
+test("missing-line recursive SSP closure excludes descendant before ownership and cost", () => {
+  const invoice = sale(85, "F-TEST-MISSING-RECURSIVE", {
+    rootId: "ROOT-TEST-MISSING-RECURSIVE",
+    unitCost: 40,
+    lineCost: 40,
+  });
+  const dispatch = {
+    rootId: "ROOT-TEST-MISSING-RECURSIVE",
+    lineageId: "LINE-DISPATCH-MISSING-RECURSIVE",
+    headerId: "HEADER-DISPATCH-MISSING-RECURSIVE",
+    documentType: 15,
+    documentNo: "IRS-TEST-MISSING-RECURSIVE",
+    customerCode: "C-1",
+    lineNo: 1,
+    documentDate: "2026-06-30T10:00:00+03:00",
+    sourceDocumentType: 14,
+    sourceDocumentNo: "SSP-00979",
+    sourceCustomerCode: "C-1",
+    sourceLineNo: "",
+    depth: 1,
+    commercialOwner: "FURKAN",
+    departmentCode: "SERVIS",
+  };
+
+  const result = buildFinalInvoiceLedger({ economics: [invoice], lineage: [dispatch] });
+
+  assert.deepEqual(result.rows, []);
+  assert.equal(result.totals.netSales, 0);
+  assert.equal(result.rows.reduce((sum, row) => sum + Number(row.lineCost || 0), 0), 0);
+  assert.equal(result.rows.some((row) => row.commercialOwner), false);
+  assert.equal(result.excludedTestRows[0].matchedDocument.matchRole, "recursive-document-closure");
+  assert.equal(result.excludedTestRows[0].matchedDocument.documentNo, "SSP-00979");
+  assert.equal(
+    result.excludedTestRows[0].matchedDocument.referencedByDocument.documentNo,
+    "IRS-TEST-MISSING-RECURSIVE",
+  );
+  assert.equal(result.reviewRequiredRows[0].reviewReason, "excluded-test-document");
+});
+
 test("economic row matching the exclusion registry is audited instead of confirmed", () => {
   const result = buildFinalInvoiceLedger({
     economics: [sale(85, "ssp-00979", { rootId: "ROOT-SELF-TEST" })],

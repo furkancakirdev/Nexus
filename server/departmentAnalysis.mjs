@@ -1,6 +1,7 @@
 import { resolveCommercialOwnership } from "./ownershipResolver.mjs";
 import {
   EXCLUDED_TEST_DOCUMENT_NUMBERS,
+  excludedTestAudit,
   isExcludedTestDocument,
 } from "./testDocumentRegistry.mjs";
 
@@ -404,20 +405,24 @@ export function buildDepartmentAnalysis({
     .filter((item) => !requireApproval || item.status === "approved")
     .map((item) => [String(item.rowId), item]));
   let excludedTestLines = 0;
+  const excludedTestRows = [];
   const normalized = [];
 
   for (const economic of economics) {
     const rootId = String(economic.rootId);
+    const evidenceRows = lineageByRoot.get(rootId) || [];
+    const exclusionAudit = excludedTestAudit(economic, evidenceRows);
+    if (exclusionAudit) {
+      excludedTestLines += 1;
+      excludedTestRows.push(exclusionAudit);
+      continue;
+    }
     const attribution = resolveAttribution(
       economic,
-      lineageByRoot.get(rootId) || [],
+      evidenceRows,
       actorEvents,
       identities,
     );
-    if (attribution.hasTestAncestor || isExcludedTestDocument(economic)) {
-      excludedTestLines += 1;
-      continue;
-    }
     const netSales = number(economic.signedNetSales);
     const override = overrides.get(rootId);
     const rate = configuredRate(economic.productCode, pilotCardCostRates);
@@ -587,6 +592,12 @@ export function buildDepartmentAnalysis({
       .slice()
       .sort((a, b) => new Date(b.documentDate) - new Date(a.documentDate) || b.netSales - a.netSales)
       .slice(0, 500),
+    excludedTestRows: excludedTestRows.map((row) => ({
+      ...row,
+      economicDocument: { ...row.economicDocument },
+      matchedDocument: { ...row.matchedDocument },
+      matchedDocuments: row.matchedDocuments.map((item) => ({ ...item })),
+    })),
     pilotOrders: realPilotOrders.slice(0, 20),
   };
 }

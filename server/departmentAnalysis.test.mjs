@@ -261,6 +261,58 @@ test("test order and every descendant are excluded", () => {
   assert.equal(result.quality.excludedTestLines, 1);
 });
 
+test("missing-line direct and recursive SSP references never contribute to legacy department totals", () => {
+  const direct = buildDepartmentAnalysis({
+    year: 2026,
+    economics: [economic({
+      rootId: "DIRECT-MISSING-LINE",
+      sourceDocumentType: 14,
+      sourceDocumentNo: "ssp-00979",
+      sourceCustomerCode: "C-1",
+      sourceLineNo: null,
+    })],
+    lineage: [evidence({
+      rootId: "DIRECT-MISSING-LINE",
+      commercialOwner: "FURKAN",
+      departmentCode: "SERVIS",
+    })],
+  });
+  const recursive = buildDepartmentAnalysis({
+    year: 2026,
+    economics: [economic({ rootId: "RECURSIVE-MISSING-LINE" })],
+    lineage: [
+      evidence({ rootId: "RECURSIVE-MISSING-LINE" }),
+      evidence({
+        rootId: "RECURSIVE-MISSING-LINE",
+        lineageId: "LINE-DISPATCH-MISSING-LINE",
+        headerId: "HEADER-DISPATCH-MISSING-LINE",
+        documentType: 15,
+        documentNo: "IRS-MISSING-LINE",
+        sourceDocumentType: 14,
+        sourceDocumentNo: "SSP-00979",
+        sourceCustomerCode: "C-1",
+        sourceLineNo: "",
+        depth: 1,
+        commercialOwner: "FURKAN",
+        departmentCode: "SERVIS",
+      }),
+    ],
+  });
+
+  for (const result of [direct, recursive]) {
+    assert.deepEqual(result.detailRows, []);
+    assert.equal(result.totals.netSales, 0);
+    assert.equal(result.totals.cost, 0);
+    assert.equal(result.totals.profit, 0);
+    assert.deepEqual(result.topOwners, []);
+    assert.equal(result.quality.excludedTestLines, 1);
+    assert.equal(result.excludedTestRows.length, 1);
+    assert.equal(result.excludedTestRows[0].matchedDocument.normalizedDocumentNo, "SSP-00979");
+  }
+  assert.equal(direct.excludedTestRows[0].matchedDocument.matchRole, "direct-source-reference");
+  assert.equal(recursive.excludedTestRows[0].matchedDocument.matchRole, "recursive-document-closure");
+});
+
 test("active standalone pilot keeps explicit service owner while test order stays excluded", () => {
   const result = buildDepartmentAnalysis({
     year: 2026,
