@@ -12,236 +12,6 @@ const MONTH_NAMES = [
 
 export const TEST_DOCUMENTS = new Set(EXCLUDED_TEST_DOCUMENT_NUMBERS);
 
-export const departmentAnalysisSql = `
-SET NOCOUNT ON;
-
-DECLARE @windowStart date = DATEFROMPARTS(@year - 1, 1, 1);
-DECLARE @windowEnd date = DATEFROMPARTS(@year + 1, 1, 1);
-
-WITH incomingReturnDocuments AS (
-  SELECT DISTINCT e.EVRAKNO
-  FROM EFAGLN e
-  WHERE e.EVRAKNO IS NOT NULL
-    AND (
-      CONCAT(ISNULL(e.NOT1,''),' ',ISNULL(e.NOT2,''),' ',ISNULL(e.NOT3,'')) COLLATE Turkish_CI_AI LIKE N'%iade%'
-      OR CONCAT(ISNULL(e.NOT1,''),' ',ISNULL(e.NOT2,''),' ',ISNULL(e.NOT3,'')) COLLATE Turkish_CI_AI LIKE N'%return%'
-    )
-), finalSales AS (
-  SELECT h.*, CAST('invoice' AS varchar(16)) AS revenueSource, CAST(1 AS bit) AS isSale
-  FROM STKHAR h
-  WHERE h.SIRKETNO = @company AND YEAR(h.EVRAKTARIH) = @year
-    AND h.EVRAKTIP IN (17,85,91) AND h.KAYITDURUM = 1
-    AND h.MALKOD NOT IN ('KOMİSYON','GD-0187','GD-0079','PDI')
-), provisionalSales AS (
-  SELECT h.*, CAST('provisional' AS varchar(16)) AS revenueSource, CAST(1 AS bit) AS isSale
-  FROM STKHAR h
-  WHERE h.SIRKETNO = @company AND YEAR(h.EVRAKTARIH) = @year
-    AND h.EVRAKTIP IN (13,14,15,64) AND h.KAYITDURUM = 1 AND h.EVRAKDURUM = 1
-    AND h.MIKTAR <> 0 AND ISNULL(h.KULLANILANMIKTAR,0) >= h.MIKTAR
-    AND h.MALKOD NOT IN ('KOMİSYON','GD-0187','GD-0079','PDI')
-    AND NOT EXISTS (
-      SELECT 1 FROM STKHAR d
-      WHERE d.SIRKETNO = h.SIRKETNO AND d.KAYITDURUM = 1
-        AND d.EVRAKTIP IN (14,15,17,64,85,91)
-        AND d.SONKAYNAKEVRAKTIP = h.EVRAKTIP AND d.SONKAYNAKEVRAKNO = h.EVRAKNO
-        AND d.SONKAYNAKHESAPKOD = h.HESAPKOD AND d.SONKAYNAKSIRANO = h.SIRANO
-    )
-), salesReturns AS (
-  SELECT h.*, CAST('return' AS varchar(16)) AS revenueSource, CAST(0 AS bit) AS isSale
-  FROM STKHAR h
-  WHERE h.SIRKETNO = @company AND YEAR(h.EVRAKTARIH) = @year
-    AND h.EVRAKTIP = 18 AND h.KAYITDURUM = 1
-    AND h.MALKOD NOT IN ('KOMİSYON','GD-0187','GD-0079','PDI')
-), movements AS (
-  SELECT * FROM finalSales UNION ALL SELECT * FROM provisionalSales UNION ALL SELECT * FROM salesReturns
-)
-SELECT
-  m.ID rootId, m.EVRAKTIP documentType, m.EVRAKNO documentNo, m.EVRAKTARIH documentDate,
-  m.HESAPKOD customerCode, c.UNVAN customerName, m.SIRANO [lineNo],
-  m.MALKOD productCode, k.MALAD productName, k.MARKAAD brandName,
-  m.MIKTAR quantity, m.TUTAR grossAmount, m.ISKONTO discountAmount,
-  m.TUTAR - m.ISKONTO netAmount, m.isSale, m.revenueSource,
-  m.DEPOKOD depotCode, m.MASRAFKOD departmentCode,
-  ownerHint.actor candidateAttributionActor, ownerHint.fieldName candidateAttributionField,
-  ownerHint.documentType candidateAttributionDocumentType, ownerHint.documentNo candidateAttributionDocumentNo,
-  ownerHint.documentDate candidateAttributionDocumentDate,
-  CASE WHEN m.isSale = 1 THEN m.TUTAR ELSE 0 END [grossSales],
-  CASE WHEN m.isSale = 0 THEN m.TUTAR - m.ISKONTO ELSE 0 END [returns],
-  CASE WHEN m.isSale = 1 THEN m.ISKONTO ELSE 0 END [discounts],
-  CASE WHEN m.isSale = 1 THEN m.TUTAR - m.ISKONTO ELSE -(m.TUTAR - m.ISKONTO) END [signedNetSales],
-  CASE
-    WHEN m.MALKOD IN ('İŞÇİLİK','SRF','TSR','YOL','BARNACLE') THEN NULL
-    WHEN m.isSale = 1 THEN m.MIKTAR * COALESCE(bulkPurchase.netUnitCost, priorPurchase.netUnitCost, nextPurchase.netUnitCost)
-    ELSE -m.MIKTAR * COALESCE(bulkPurchase.netUnitCost, priorPurchase.netUnitCost, nextPurchase.netUnitCost)
-  END [resolvedCost],
-  CASE
-    WHEN m.MALKOD = 'İŞÇİLİK' THEN 'configuredLabor'
-    WHEN m.MALKOD IN ('SRF','BARNACLE') THEN 'configuredSrf'
-    WHEN m.MALKOD = 'TSR' THEN 'configuredTsr'
-    WHEN m.MALKOD = 'YOL' THEN 'configuredRoad'
-    WHEN bulkPurchase.netUnitCost IS NOT NULL THEN 'bulkPurchase'
-    WHEN priorPurchase.netUnitCost IS NOT NULL THEN 'priorPurchase'
-    WHEN nextPurchase.netUnitCost IS NOT NULL THEN 'nextPurchase'
-    ELSE 'missingPurchase'
-  END [costMethod],
-  CAST(CASE WHEN m.EVRAKTIP = 91 AND EXISTS (
-    SELECT 1 FROM STKHAR d
-    WHERE d.SIRKETNO = m.SIRKETNO AND d.KAYITDURUM = 1 AND d.EVRAKTIP = 85
-      AND d.SONKAYNAKEVRAKTIP = 91 AND d.SONKAYNAKEVRAKNO = m.EVRAKNO
-      AND d.SONKAYNAKHESAPKOD = m.HESAPKOD AND d.SONKAYNAKSIRANO = m.SIRANO
-  ) THEN 1 ELSE 0 END AS bit) [prepaidBatchRisk]
-INTO #economics
-FROM movements m
-LEFT JOIN STKKRT k ON k.SIRKETNO = m.SIRKETNO AND k.MALKOD = m.MALKOD
-LEFT JOIN CARKRT c ON c.SIRKETNO = m.SIRKETNO AND c.HESAPKOD = m.HESAPKOD
-OUTER APPLY (
-  SELECT TOP (1) original.EVRAKTARIH
-  FROM STKHAR original
-  WHERE m.isSale = 0 AND m.SONKAYNAKEVRAKTIP IN (17,85,91)
-    AND original.SIRKETNO = m.SIRKETNO AND original.KAYITDURUM = 1
-    AND original.EVRAKTIP = m.SONKAYNAKEVRAKTIP AND original.EVRAKNO = m.SONKAYNAKEVRAKNO
-    AND original.HESAPKOD = m.SONKAYNAKHESAPKOD AND original.SIRANO = m.SONKAYNAKSIRANO
-  ORDER BY original.ID DESC
-) originalSale
-OUTER APPLY (
-  SELECT TOP (1) candidate.actor, candidate.fieldName, h2.EVRAKTIP documentType,
-    h2.EVRAKNO documentNo, h2.EVRAKTARIH documentDate
-  FROM STKHAR h2
-  JOIN EVRBAS b2 ON b2.SIRKETNO = h2.SIRKETNO AND b2.EVRAKTIP = h2.EVRAKTIP
-    AND b2.EVRAKNO = h2.EVRAKNO AND b2.HESAPKOD = h2.HESAPKOD
-  CROSS APPLY (
-    SELECT TOP (1) v.fieldName, v.actor
-    FROM (VALUES
-      ('SATICINO', b2.SATICINO),
-      ('EVRAKHAZIRLAYAN', b2.EVRAKHAZIRLAYAN),
-      ('GIRENKULLANICI', b2.GIRENKULLANICI),
-      ('DEGISTIRENKULLANICI', b2.DEGISTIRENKULLANICI)
-    ) v(fieldName, actor)
-    WHERE NULLIF(LTRIM(RTRIM(v.actor)),'') IS NOT NULL
-      AND v.actor NOT LIKE '%[0-9]%'
-      AND v.actor COLLATE Turkish_CI_AI NOT IN ('BIRCAN','SYSTEM','ADMIN','SA')
-    ORDER BY CASE v.fieldName WHEN 'SATICINO' THEN 0 WHEN 'EVRAKHAZIRLAYAN' THEN 1
-      WHEN 'GIRENKULLANICI' THEN 2 ELSE 3 END
-  ) candidate
-  WHERE h2.SIRKETNO = m.SIRKETNO AND h2.KAYITDURUM = 1 AND h2.ID <> m.ID
-    AND h2.HESAPKOD = m.HESAPKOD AND h2.MALKOD = m.MALKOD
-    AND h2.EVRAKTIP IN (13,14,15,64,17,85,91)
-    AND h2.EVRAKTARIH BETWEEN DATEADD(day,-180,m.EVRAKTARIH) AND DATEADD(day,14,m.EVRAKTARIH)
-  ORDER BY CASE WHEN h2.EVRAKTIP IN (13,14,15,64) THEN 0 ELSE 1 END,
-    CASE WHEN h2.EVRAKTARIH <= m.EVRAKTARIH THEN 0 ELSE 1 END,
-    ABS(DATEDIFF(day,h2.EVRAKTARIH,m.EVRAKTARIH)), h2.ID DESC
-) ownerHint
-OUTER APPLY (
-  SELECT TOP (1) (p.TUTAR - p.ISKONTO) / NULLIF(p.MIKTAR,0) netUnitCost
-  FROM STKHAR p
-  CROSS APPLY (
-    SELECT COUNT_BIG(*) docLineCount
-    FROM STKHAR px
-    WHERE px.SIRKETNO = p.SIRKETNO AND px.KAYITDURUM = 1
-      AND px.EVRAKTIP = p.EVRAKTIP AND px.EVRAKNO = p.EVRAKNO AND px.HESAPKOD = p.HESAPKOD
-  ) purchaseDoc
-  OUTER APPLY (
-    SELECT SUM(o.MIKTAR) consumedQuantity
-    FROM STKHAR o
-    WHERE o.SIRKETNO = p.SIRKETNO AND o.KAYITDURUM = 1 AND o.MALKOD = p.MALKOD
-      AND o.EVRAKTIP IN (17,85,91)
-      AND o.EVRAKTARIH > p.EVRAKTARIH
-      AND o.EVRAKTARIH < COALESCE(originalSale.EVRAKTARIH, m.EVRAKTARIH)
-  ) consumption
-  WHERE p.SIRKETNO = m.SIRKETNO AND p.MALKOD = m.MALKOD
-    AND p.EVRAKTIP IN (9,609) AND p.KAYITDURUM = 1 AND p.MIKTAR > 0
-    AND p.TUTAR - p.ISKONTO >= 0
-    AND NOT EXISTS (SELECT 1 FROM incomingReturnDocuments r WHERE r.EVRAKNO = p.EVRAKNO)
-    AND p.EVRAKTARIH BETWEEN DATEADD(year,-1,COALESCE(originalSale.EVRAKTARIH, m.EVRAKTARIH))
-      AND COALESCE(originalSale.EVRAKTARIH, m.EVRAKTARIH)
-    AND purchaseDoc.docLineCount >= 10
-    AND CASE WHEN p.TUTAR <> 0 THEN 100.0 * p.ISKONTO / p.TUTAR ELSE 0 END >= 15
-    AND p.MIKTAR - ISNULL(consumption.consumedQuantity,0) >= m.MIKTAR
-  ORDER BY p.EVRAKTARIH DESC, p.ID DESC
-) bulkPurchase
-OUTER APPLY (
-  SELECT TOP (1) (p.TUTAR - p.ISKONTO) / NULLIF(p.MIKTAR,0) netUnitCost
-  FROM STKHAR p
-  WHERE p.SIRKETNO = m.SIRKETNO AND p.MALKOD = m.MALKOD
-    AND p.EVRAKTIP IN (9,609) AND p.KAYITDURUM = 1 AND p.MIKTAR > 0
-    AND p.TUTAR - p.ISKONTO >= 0
-    AND NOT EXISTS (SELECT 1 FROM incomingReturnDocuments r WHERE r.EVRAKNO = p.EVRAKNO)
-    AND p.EVRAKTARIH <= COALESCE(originalSale.EVRAKTARIH, m.EVRAKTARIH)
-  ORDER BY p.EVRAKTARIH DESC, p.ID DESC
-) priorPurchase
-OUTER APPLY (
-  SELECT TOP (1) (p.TUTAR - p.ISKONTO) / NULLIF(p.MIKTAR,0) netUnitCost
-  FROM STKHAR p
-  WHERE p.SIRKETNO = m.SIRKETNO AND p.MALKOD = m.MALKOD
-    AND p.EVRAKTIP IN (9,609) AND p.KAYITDURUM = 1 AND p.MIKTAR > 0
-    AND p.TUTAR - p.ISKONTO >= 0
-    AND NOT EXISTS (SELECT 1 FROM incomingReturnDocuments r WHERE r.EVRAKNO = p.EVRAKNO)
-    AND p.EVRAKTARIH > COALESCE(originalSale.EVRAKTARIH, m.EVRAKTARIH)
-  ORDER BY p.EVRAKTARIH ASC, p.ID ASC
-) nextPurchase;
-
-CREATE UNIQUE CLUSTERED INDEX IX_nexus_department_economics ON #economics(rootId);
-
-SELECT * FROM #economics ORDER BY documentDate, rootId;
-
-;WITH lineage AS (
-  SELECT e.rootId, h.ID ancestorId, h.EVRAKTIP documentType, h.EVRAKNO documentNo,
-    h.HESAPKOD customerCode, h.SIRANO [lineNo], h.EVRAKTARIH documentDate,
-    h.MASRAFKOD departmentCode, h.DEPOKOD depotCode,
-    h.SONKAYNAKEVRAKTIP sourceDocumentType, h.SONKAYNAKEVRAKNO sourceDocumentNo,
-    h.SONKAYNAKHESAPKOD sourceCustomerCode, h.SONKAYNAKSIRANO sourceLineNo,
-    0 [depth], CAST('|' + CAST(h.ID AS varchar(24)) + '|' AS varchar(900)) visited
-  FROM #economics e
-  JOIN STKHAR h ON h.ID = e.rootId
-  UNION ALL
-  SELECT l.rootId, s.ID, s.EVRAKTIP, s.EVRAKNO, s.HESAPKOD, s.SIRANO, s.EVRAKTARIH,
-    s.MASRAFKOD, s.DEPOKOD, s.SONKAYNAKEVRAKTIP, s.SONKAYNAKEVRAKNO,
-    s.SONKAYNAKHESAPKOD, s.SONKAYNAKSIRANO, l.[depth] + 1,
-    CAST(l.visited + CAST(s.ID AS varchar(24)) + '|' AS varchar(900))
-  FROM lineage l
-  JOIN STKHAR s ON s.SIRKETNO = @company AND s.KAYITDURUM = 1
-    AND s.EVRAKTIP = l.sourceDocumentType AND s.EVRAKNO = l.sourceDocumentNo
-    AND s.HESAPKOD = COALESCE(NULLIF(l.sourceCustomerCode,''), l.customerCode)
-    AND s.SIRANO = l.sourceLineNo
-  WHERE l.[depth] < 8 AND CHARINDEX('|' + CAST(s.ID AS varchar(24)) + '|', l.visited) = 0
-)
-SELECT l.rootId, l.ancestorId, l.documentType, l.documentNo, l.customerCode, l.[lineNo],
-  l.documentDate, l.departmentCode, l.depotCode, l.[depth],
-  b.SATICINO commercialOwner, b.EVRAKHAZIRLAYAN preparerUser,
-  b.GIRENKULLANICI entryUser, b.DEGISTIRENKULLANICI modifierUser
-FROM lineage l
-OUTER APPLY (
-  SELECT TOP (1) b.SATICINO, b.EVRAKHAZIRLAYAN, b.GIRENKULLANICI, b.DEGISTIRENKULLANICI
-  FROM EVRBAS b
-  WHERE b.SIRKETNO = @company AND b.EVRAKTIP = l.documentType
-    AND b.EVRAKNO = l.documentNo AND b.HESAPKOD = l.customerCode
-  ORDER BY b.KAYITDURUM DESC, b.ID DESC
-) b
-ORDER BY l.rootId, l.[depth] DESC
-OPTION (MAXRECURSION 100);
-
-SELECT TOP (100)
-  b.EVRAKTIP documentType, b.EVRAKNO documentNo, b.HESAPKOD customerCode,
-  b.EVRAKTARIH documentDate, b.SATICINO commercialOwner,
-  b.EVRAKHAZIRLAYAN preparerUser, b.GIRENKULLANICI entryUser,
-  COUNT_BIG(*) lineCount,
-  MAX(NULLIF(LTRIM(RTRIM(h.MASRAFKOD)),'')) departmentCode,
-  MAX(NULLIF(LTRIM(RTRIM(h.DEPOKOD)),'')) depotCode,
-  CAST(1 AS bit) active,
-  CAST(CASE WHEN b.EVRAKNO = 'SSP-00979' THEN 1 ELSE 0 END AS bit) isTest
-FROM EVRBAS b
-JOIN STKHAR h ON h.SIRKETNO = b.SIRKETNO AND h.EVRAKTIP = b.EVRAKTIP
-  AND h.EVRAKNO = b.EVRAKNO AND h.HESAPKOD = b.HESAPKOD AND h.KAYITDURUM = 1
-WHERE b.SIRKETNO = @company AND b.KAYITDURUM = 1
-  AND b.EVRAKTIP = 14 AND YEAR(b.EVRAKTARIH) = @year
-  AND (NULLIF(LTRIM(RTRIM(b.SATICINO)),'') IS NOT NULL OR NULLIF(LTRIM(RTRIM(h.MASRAFKOD)),'') IS NOT NULL)
-GROUP BY b.EVRAKTIP, b.EVRAKNO, b.HESAPKOD, b.EVRAKTARIH, b.SATICINO,
-  b.EVRAKHAZIRLAYAN, b.GIRENKULLANICI
-ORDER BY b.EVRAKTARIH DESC, b.EVRAKNO DESC;
-
-DROP TABLE #economics;
-`;
-
 const DEPARTMENT_META = {
   service: { id: "service", name: "Servis", center: "Yatmarin", color: "#087f8c" },
   parts: { id: "parts", name: "Yedek Parça Satış", center: "Merkez Ofis", color: "#0a3972" },
@@ -252,6 +22,12 @@ function number(value) {
   return Number(value || 0);
 }
 
+function nullableNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function key(value) {
   return String(value || "")
     .trim()
@@ -259,6 +35,10 @@ function key(value) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^A-Z0-9]/g, "");
+}
+
+function isExcludedIncome(productCode) {
+  return ["KOMISYON", "GD0187", "GD0079", "PDI"].includes(key(productCode));
 }
 
 function normalizeDepot(value) {
@@ -314,6 +94,55 @@ function resolveAttribution(economic, evidenceRows, actorEvents, identities) {
     evidenceDocuments: resolved.evidenceDocuments,
     actorEvents: resolved.actorEvents,
     ownershipEvidence: resolved.evidence,
+  };
+}
+
+function ledgerAttribution(economic) {
+  const department = ["service", "parts"].includes(economic.department)
+    ? economic.department
+    : "review";
+  const evidenceDocuments = Array.isArray(economic.evidenceDocuments)
+    ? economic.evidenceDocuments.map((row) => ({ ...row }))
+    : [];
+  const actorEvents = Array.isArray(economic.actorEvents)
+    ? economic.actorEvents.map((row) => ({ ...row }))
+    : [];
+  const sourceOrder = evidenceDocuments.find((row) => (
+    number(row.documentType) === 14 && row.documentNo === economic.sourceOrderNo
+  ));
+  return {
+    department,
+    departmentName: DEPARTMENT_META[department].name,
+    ownerCode: economic.commercialOwner || null,
+    ownerName: economic.commercialOwnerName || "Belirsiz",
+    ownerActive: economic.ownerActive ?? null,
+    ownerLocation: economic.ownerLocation || "Belirsiz",
+    method: economic.attributionMethod || "review",
+    status: economic.attributionConfidence || "review",
+    confidence: economic.attributionConfidence || "review",
+    explicitDepartment: economic.attributionMethod === "macro-source-order",
+    explicitOwner: ["macro-source-order", "supported-source-seller"].includes(
+      economic.attributionMethod,
+    ),
+    sourceOrderNo: economic.sourceOrderNo || null,
+    sourceOrderDepth: sourceOrder ? number(sourceOrder.depth) : null,
+    candidateDocumentNo: economic.candidateDocumentNo || null,
+    candidateDocumentType: economic.candidateDocumentType || null,
+    candidateField: economic.candidateField || null,
+    fulfillmentDepot: {
+      code: economic.fulfillmentDepotCode || "—",
+      name: economic.fulfillmentDepotName || normalizeDepot(
+        economic.fulfillmentDepotCode,
+      ).name,
+    },
+    crossDepot: Boolean(economic.crossDepot),
+    hasTestAncestor: false,
+    batchRisk: Boolean(economic.prepaidBatchRisk || economic.batchRisk),
+    evidenceDocuments,
+    actorEvents,
+    ownershipEvidence: economic.ownershipEvidence
+      ? { ...economic.ownershipEvidence }
+      : {},
   };
 }
 
@@ -373,6 +202,15 @@ function configuredRate(productCode, rates) {
   return null;
 }
 
+function configuredCostMethod(productCode) {
+  const code = key(productCode);
+  if (code === key("İŞÇİLİK")) return "configuredLabor";
+  if (code === "SRF" || code === "BARNACLE") return "configuredSrf";
+  if (code === "TSR") return "configuredTsr";
+  if (code === "YOL") return "configuredRoad";
+  return null;
+}
+
 function topGroups(rows, selector, limit = 8) {
   const grouped = new Map();
   for (const row of rows) {
@@ -392,9 +230,14 @@ function topGroups(rows, selector, limit = 8) {
 }
 
 export function buildDepartmentAnalysis({
-  economics = [], lineage = [], actorEvents = [], pilotOrders = [], identities = {}, year,
+  ledger = null, economics = [], lineage = [], actorEvents = [], pilotOrders = [], identities = {}, year,
   pilotCardCostRates = {}, costOverrides = [], requireApproval = true,
 }) {
+  const usesLedger = Boolean(ledger && Array.isArray(ledger.rows));
+  const economicRows = usesLedger
+    ? ledger.rows.filter((row) => !isExcludedIncome(row.productCode))
+    : economics;
+  const sourcePilotOrders = usesLedger ? ledger.pilotOrders || [] : pilotOrders;
   const lineageByRoot = new Map();
   for (const row of lineage) {
     const rootId = String(row.rootId);
@@ -404,34 +247,38 @@ export function buildDepartmentAnalysis({
   const overrides = new Map(costOverrides
     .filter((item) => !requireApproval || item.status === "approved")
     .map((item) => [String(item.rowId), item]));
-  let excludedTestLines = 0;
-  const excludedTestRows = [];
+  let excludedTestLines = usesLedger ? number(ledger.quality?.excludedTestRows) : 0;
+  const excludedTestRows = usesLedger
+    ? (ledger.excludedTestRows || []).map((row) => ({ ...row }))
+    : [];
   const normalized = [];
 
-  for (const economic of economics) {
+  for (const economic of economicRows) {
     const rootId = String(economic.rootId);
     const evidenceRows = lineageByRoot.get(rootId) || [];
-    const exclusionAudit = excludedTestAudit(economic, evidenceRows);
-    if (exclusionAudit) {
-      excludedTestLines += 1;
-      excludedTestRows.push(exclusionAudit);
-      continue;
+    if (!usesLedger) {
+      const exclusionAudit = excludedTestAudit(economic, evidenceRows);
+      if (exclusionAudit) {
+        excludedTestLines += 1;
+        excludedTestRows.push(exclusionAudit);
+        continue;
+      }
     }
-    const attribution = resolveAttribution(
-      economic,
-      evidenceRows,
-      actorEvents,
-      identities,
-    );
+    const attribution = usesLedger
+      ? ledgerAttribution(economic)
+      : resolveAttribution(economic, evidenceRows, actorEvents, identities);
     const netSales = number(economic.signedNetSales);
     const override = overrides.get(rootId);
     const rate = configuredRate(economic.productCode, pilotCardCostRates);
+    const evidenceCost = usesLedger
+      ? nullableNumber(economic.lineCost)
+      : nullableNumber(economic.resolvedCost);
     const cost = override
       ? number(economic.quantity) * number(override.unitCost) * (economic.isSale ? 1 : -1)
       : rate == null
-        ? number(economic.resolvedCost)
+        ? number(evidenceCost)
         : netSales * rate;
-    const costCovered = Boolean(override || rate != null || economic.resolvedCost != null);
+    const costCovered = Boolean(override || rate != null || evidenceCost != null);
     const uncoveredNetSales = costCovered ? 0 : netSales;
     const documentKey = `${economic.documentType}|${economic.documentNo}|${economic.customerCode}`;
     normalized.push({
@@ -447,16 +294,24 @@ export function buildDepartmentAnalysis({
       productName: economic.productName || economic.productCode || "Belirsiz",
       brandName: economic.brandName || "—",
       quantity: number(economic.quantity),
-      grossSales: number(economic.grossSales),
-      returns: number(economic.returns),
-      discounts: number(economic.discounts),
+      grossSales: usesLedger && economic.isSale
+        ? number(economic.grossAmount)
+        : number(economic.grossSales),
+      returns: usesLedger && !economic.isSale
+        ? number(economic.netAmount)
+        : number(economic.returns),
+      discounts: usesLedger && economic.isSale
+        ? number(economic.discountAmount)
+        : number(economic.discounts),
       netSales,
       cost,
       uncoveredNetSales,
       profit: netSales - cost - uncoveredNetSales,
       costCovered,
-      costMethod: override ? "manualDecision" : economic.costMethod,
-      revenueSource: economic.revenueSource,
+      costMethod: override
+        ? "manualDecision"
+        : configuredCostMethod(economic.productCode) || economic.costMethod,
+      revenueSource: economic.revenueSource || (economic.isSale ? "invoice" : "return"),
       department: attribution.department,
       departmentName: attribution.departmentName,
       commercialOwner: attribution.ownerCode,
@@ -522,7 +377,7 @@ export function buildDepartmentAnalysis({
   const batchRiskAmount = normalized.filter((row) => row.batchRisk).reduce((sum, row) => sum + row.netSales, 0);
   const reviewAmount = normalized.filter((row) => row.attributionStatus === "review").reduce((sum, row) => sum + row.netSales, 0);
   const hintedReviewAmount = normalized.filter((row) => row.attributionMethod === "b2b-candidate-hint").reduce((sum, row) => sum + row.netSales, 0);
-  const realPilotOrders = pilotOrders
+  const realPilotOrders = sourcePilotOrders
     .filter((row) => !isExcludedTestDocument(row))
     .map((row) => {
       const attribution = resolveCommercialOwnership({
@@ -552,6 +407,7 @@ export function buildDepartmentAnalysis({
     months,
     totals: total,
     quality: {
+      ...(usesLedger ? ledger.quality || {} : {}),
       attributionCoveragePct: total.netSales ? confirmedAmount / total.netSales * 100 : 0,
       inferredCoveragePct: total.netSales ? inferredAmount / total.netSales * 100 : 0,
       inferredAmount,
@@ -594,10 +450,18 @@ export function buildDepartmentAnalysis({
       .slice(0, 500),
     excludedTestRows: excludedTestRows.map((row) => ({
       ...row,
-      economicDocument: { ...row.economicDocument },
-      matchedDocument: { ...row.matchedDocument },
-      matchedDocuments: row.matchedDocuments.map((item) => ({ ...item })),
+      economicDocument: row.economicDocument ? { ...row.economicDocument } : null,
+      matchedDocument: row.matchedDocument ? { ...row.matchedDocument } : null,
+      matchedDocuments: Array.isArray(row.matchedDocuments)
+        ? row.matchedDocuments.map((item) => ({ ...item }))
+        : [],
     })),
+    quarantinedRows: usesLedger
+      ? (ledger.quarantinedRows || []).map((row) => ({ ...row }))
+      : [],
+    reviewRequiredRows: usesLedger
+      ? (ledger.reviewRequiredRows || []).map((row) => ({ ...row }))
+      : [],
     pilotOrders: realPilotOrders.slice(0, 20),
   };
 }

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildDepartmentAnalysis, departmentAnalysisSql } from "./departmentAnalysis.mjs";
+import { buildDepartmentAnalysis } from "./departmentAnalysis.mjs";
 
 function economic(overrides = {}) {
   return {
@@ -351,16 +351,6 @@ test("active standalone pilot keeps explicit service owner while test order stay
   assert.equal(result.pilotOrders[0].department, "service");
   assert.equal(result.pilotOrders[0].depot.code, "MRK");
   assert.equal(result.pilotOrders[0].status, "ready");
-});
-
-test("pilot SQL emits only active type 14 rows with an explicit active flag", () => {
-  const pilotQuery = departmentAnalysisSql.match(
-    /SELECT TOP \(100\)[\s\S]*?ORDER BY b\.EVRAKTARIH DESC, b\.EVRAKNO DESC;/i,
-  )?.[0] || "";
-
-  assert.match(pilotQuery, /CAST\(1 AS bit\) active/i);
-  assert.match(pilotQuery, /b\.KAYITDURUM\s*=\s*1/i);
-  assert.match(pilotQuery, /b\.EVRAKTIP\s*=\s*14/i);
 });
 
 test("approved manual cost resolves uncovered profit without changing net sales", () => {
