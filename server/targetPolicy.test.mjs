@@ -96,6 +96,142 @@ test("stretch dağıtım ve rezerv oranları yüzde sıfır ile yüz sınırın�
   }
 });
 
+test("varsayılan hedef ayarları yalnız alan yokken veya undefined iken uygulanır", () => {
+  assert.equal(calculateTargetAmount(100, undefined), 110);
+  assert.equal(classifyTargetBand({
+    actual: 110,
+    target: 100,
+    stretchPct: undefined,
+  }).stretchTarget, 110);
+
+  const missing = monthlyDepartmentPool({
+    profit: 100,
+    uncoveredNetSales: 0,
+    band: "conservative",
+    settings: {},
+  });
+  const explicitUndefined = monthlyDepartmentPool({
+    profit: 100,
+    uncoveredNetSales: 0,
+    band: "conservative",
+    settings: {
+      reserveRate: undefined,
+      rates: { conservative: undefined, growth: undefined },
+    },
+  });
+
+  assert.deepEqual(explicitUndefined, missing);
+  assert.equal(missing.appliedRate, 3);
+  assert.equal(missing.reserveRate, 5);
+});
+
+test("açık null hedef oranları varsayılana düşmek yerine reddedilir", () => {
+  assert.throws(() => calculateTargetAmount(100, null), /sayı/i);
+  assert.throws(() => classifyTargetBand({
+    actual: 100,
+    target: 100,
+    stretchPct: null,
+  }), /sayı/i);
+
+  const invalidSettings = [
+    { departmentGrowthTargets: { service: null } },
+    { departmentStretchThresholds: { service: null } },
+    { rates: { conservative: null } },
+    { rates: { growth: null } },
+    { reserveRate: null },
+  ];
+
+  for (const invalid of invalidSettings) {
+    assert.throws(() => buildDepartmentTargets({
+      year: 2026,
+      currentRows: [],
+      previousRows: [],
+      settings: invalid,
+    }), /sayı/i);
+  }
+});
+
+test("iç içe hedef ayar nesneleri null array veya bozuk nesne olamaz", () => {
+  for (const field of [
+    "departmentGrowthTargets",
+    "departmentStretchThresholds",
+    "rates",
+  ]) {
+    for (const invalid of [null, [], new Number(10)]) {
+      assert.throws(() => buildDepartmentTargets({
+        year: 2026,
+        currentRows: [],
+        previousRows: [],
+        settings: { [field]: invalid },
+      }), /nesne/i);
+    }
+  }
+
+  const invalidNumericValues = [
+    { departmentGrowthTargets: { service: [] } },
+    { departmentGrowthTargets: { service: {} } },
+    { departmentStretchThresholds: { service: [] } },
+    { rates: { conservative: {} } },
+    { reserveRate: [] },
+  ];
+
+  for (const invalid of invalidNumericValues) {
+    assert.throws(() => buildDepartmentTargets({
+      year: 2026,
+      currentRows: [],
+      previousRows: [],
+      settings: invalid,
+    }), /sayı/i);
+  }
+});
+
+test("ham hedef tutarlarında yalnız missing ve undefined varsayılan kullanır", () => {
+  for (const currentRow of [
+    {
+      department: "service",
+      documentDate: "2026-01-10",
+      cost: 0,
+    },
+    {
+      department: "service",
+      documentDate: "2026-01-10",
+      netSales: undefined,
+      cost: 0,
+      uncoveredNetSales: undefined,
+    },
+  ]) {
+    const rows = buildDepartmentTargets({
+      year: 2026,
+      currentRows: [currentRow],
+      previousRows: [],
+      settings,
+    });
+    const january = rows.find((item) => (
+      item.department === "service" && item.month === 1
+    ));
+    assert.equal(january.actual, 0);
+    assert.equal(january.uncoveredNetSales, 0);
+  }
+
+  for (const invalid of [
+    { netSales: null, cost: 0, uncoveredNetSales: 0 },
+    { signedNetSales: null, cost: 0, uncoveredNetSales: 0 },
+    { actual: null, cost: 0, uncoveredNetSales: 0 },
+    { netSales: 100, cost: 0, uncoveredNetSales: null },
+  ]) {
+    assert.throws(() => buildDepartmentTargets({
+      year: 2026,
+      currentRows: [{
+        department: "service",
+        documentDate: "2026-01-10",
+        ...invalid,
+      }],
+      previousRows: [],
+      settings,
+    }), /sayı/i);
+  }
+});
+
 test("önceki yıl satışı sıfır veya eksik olan ay güvenli biçimde havuz dışı kalır", () => {
   const rows = buildDepartmentTargets({
     year: 2026,

@@ -54,7 +54,7 @@ function finiteNumber(value, fieldName) {
 }
 
 function percentage(value, fieldName, fallback) {
-  const parsed = value === undefined || value === null
+  const parsed = value === undefined
     ? fallback
     : finiteNumber(value, fieldName);
   if (parsed < 0 || parsed > 100) {
@@ -64,7 +64,7 @@ function percentage(value, fieldName, fallback) {
 }
 
 function targetChange(value, fieldName, fallback) {
-  const parsed = value === undefined || value === null
+  const parsed = value === undefined
     ? fallback
     : finiteNumber(value, fieldName);
   if (parsed < -100 || parsed > 300) {
@@ -86,8 +86,16 @@ function centsToMoney(value) {
 }
 
 function optionalRecord(value, fieldName) {
-  if (value === undefined || value === null) return {};
-  if (typeof value !== "object" || Array.isArray(value)) {
+  if (value === undefined) return {};
+  const prototype = value !== null && typeof value === "object"
+    ? Object.getPrototypeOf(value)
+    : null;
+  if (
+    value === null
+    || typeof value !== "object"
+    || Array.isArray(value)
+    || (prototype !== Object.prototype && prototype !== null)
+  ) {
     throw new TypeError(`${fieldName} nesne olmalı.`);
   }
   return value;
@@ -142,8 +150,15 @@ function yearOf(row) {
 }
 
 function rowNetSales(row) {
+  const value = row?.netSales !== undefined
+    ? row.netSales
+    : row?.signedNetSales !== undefined
+      ? row.signedNetSales
+      : row?.actual !== undefined
+        ? row.actual
+        : 0;
   return finiteNumber(
-    row?.netSales ?? row?.signedNetSales ?? row?.actual ?? 0,
+    value,
     "Nihai net satış",
   );
 }
@@ -157,13 +172,16 @@ function rowProfitBeforeCoverage(row, netSales) {
   }
   if (row?.profit !== undefined) {
     return finiteNumber(row.profit, "Kâr")
-      + finiteNumber(row.uncoveredNetSales ?? 0, "Kapsamsız net satış");
+      + finiteNumber(
+        row.uncoveredNetSales === undefined ? 0 : row.uncoveredNetSales,
+        "Kapsamsız net satış",
+      );
   }
   return netSales;
 }
 
 function rowUncoveredNetSales(row, netSales) {
-  if (row?.uncoveredNetSales !== undefined && row?.uncoveredNetSales !== null) {
+  if (row?.uncoveredNetSales !== undefined) {
     return finiteNumber(row.uncoveredNetSales, "Kapsamsız net satış");
   }
   const hasExplicitCost = row?.cost !== undefined && row?.cost !== null;

@@ -97,10 +97,22 @@ const PERCENT_TOLERANCE = 1e-9;
  */
 
 function plainObject(value, fieldName) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+  const prototype = value !== null && typeof value === "object"
+    ? Object.getPrototypeOf(value)
+    : null;
+  if (
+    value === null
+    || typeof value !== "object"
+    || Array.isArray(value)
+    || (prototype !== Object.prototype && prototype !== null)
+  ) {
     throw new TypeError(`${fieldName} nesne olmalı.`);
   }
   return value;
+}
+
+function defaultValue(value, fallback) {
+  return value === undefined ? fallback : value;
 }
 
 function finiteNumber(value, fieldName) {
@@ -144,7 +156,10 @@ function employeeIdentity(employee) {
 
 function normalizeDistributionSettings(settings = {}) {
   plainObject(settings, "Dağıtım ayarları");
-  const allocationMethod = settings.allocationMethod ?? "coefficient";
+  const allocationMethod = defaultValue(
+    settings.allocationMethod,
+    "coefficient",
+  );
   if (!["equal", "coefficient"].includes(allocationMethod)) {
     throw new RangeError("Dağıtım yöntemi eşit veya katsayı olmalı.");
   }
@@ -456,27 +471,30 @@ function legacySettings(
   settings = settings === undefined ? {} : settings;
   const { allocationMethod } = normalizeDistributionSettings(settings);
   const companyWeight = finiteNumber(
-    settings.companyWeight ?? 60,
+    defaultValue(settings.companyWeight, 60),
     "Şirket hedef ağırlığı",
   );
   const teamWeight = finiteNumber(
-    settings.teamWeight ?? 40,
+    defaultValue(settings.teamWeight, 40),
     "Departman hedef ağırlığı",
   );
+  const companyScoreValue = companyScoreOverride === undefined
+    ? defaultValue(settings.companyPerformanceScore, 100)
+    : companyScoreOverride;
   const companyScore = finiteNumber(
-    companyScoreOverride ?? settings.companyPerformanceScore ?? 100,
+    companyScoreValue,
     "Şirket gerçekleşme skoru",
   );
-  const departmentScores = departmentScoresOverride
-    ?? settings.departmentPerformanceScores
-    ?? {};
+  const departmentScores = departmentScoresOverride === undefined
+    ? defaultValue(settings.departmentPerformanceScores, {})
+    : departmentScoresOverride;
   plainObject(departmentScores, "Departman gerçekleşme skorları");
   const minimumGoalScore = finiteNumber(
-    settings.minimumGoalScore ?? 0,
+    defaultValue(settings.minimumGoalScore, 0),
     "Asgari hedef skoru",
   );
   const maximumMultiplier = finiteNumber(
-    settings.maximumMultiplier ?? 100,
+    defaultValue(settings.maximumMultiplier, 100),
     "Azami performans çarpanı",
   );
   if (maximumMultiplier < 0) {
@@ -507,10 +525,15 @@ function calculateLegacyEmployeeDistribution({
   const normalizedEmployees = employees.map(normalizeEmployee);
   assertUniqueEmployees(normalizedEmployees);
   const calculated = normalizedEmployees.map((employee) => {
+    const sourceScore = policy.departmentScores[employee.sourceDepartment];
+    const normalizedScore = policy.departmentScores[employee.department];
+    const scoreValue = sourceScore !== undefined
+      ? sourceScore
+      : normalizedScore !== undefined
+        ? normalizedScore
+        : 100;
     const departmentScore = finiteNumber(
-      policy.departmentScores[employee.sourceDepartment]
-        ?? policy.departmentScores[employee.department]
-        ?? 100,
+      scoreValue,
       "Departman gerçekleşme skoru",
     );
     const weightedScore = (

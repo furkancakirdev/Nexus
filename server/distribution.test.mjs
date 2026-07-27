@@ -716,3 +716,127 @@ test("legacy sayısal havuz adaptörünün finansal ayarları boolean değerleri
     ), /skoru/i);
   }
 });
+
+test("legacy finansal varsayılanlar missing ve undefined alanlarda korunur", () => {
+  const missing = calculateEmployeeDistribution(
+    [{ id: "service", department: "service" }],
+    {},
+    100,
+  );
+  const explicitUndefined = calculateEmployeeDistribution(
+    [{
+      id: "service",
+      department: "service",
+      salaryCoefficient: undefined,
+      fixedShareRate: undefined,
+    }],
+    {
+      allocationMethod: undefined,
+      companyWeight: undefined,
+      teamWeight: undefined,
+      companyPerformanceScore: undefined,
+      departmentPerformanceScores: undefined,
+      minimumGoalScore: undefined,
+      maximumMultiplier: undefined,
+    },
+    100,
+    undefined,
+    undefined,
+  );
+
+  assert.equal(missing[0].projectedShare, 100);
+  assert.equal(explicitUndefined[0].projectedShare, 100);
+  assert.equal(explicitUndefined[0].weightedScore, missing[0].weightedScore);
+
+  const absentPool = calculateDepartmentDistribution({
+    targetRows: [{ department: "service", month: 1 }],
+    employees: [{ id: "service", department: "service" }],
+    settings: {},
+  });
+  const undefinedPool = calculateDepartmentDistribution({
+    targetRows: [{ department: "service", month: 1, pool: undefined }],
+    employees: [{ id: "service", department: "service" }],
+    settings: { allocationMethod: undefined },
+  });
+  assert.equal(absentPool.totalPool, 0);
+  assert.equal(undefinedPool.totalPool, 0);
+});
+
+test("legacy defaultlu finansal alanlarda açık null reddedilir", () => {
+  const baseSettings = {
+    allocationMethod: "coefficient",
+    companyWeight: 60,
+    teamWeight: 40,
+    companyPerformanceScore: 100,
+    departmentPerformanceScores: { service: 100 },
+    minimumGoalScore: 0,
+    maximumMultiplier: 120,
+  };
+  const invalidSettings = [
+    { ...baseSettings, companyWeight: null },
+    { ...baseSettings, teamWeight: null },
+    { ...baseSettings, companyPerformanceScore: null },
+    { ...baseSettings, departmentPerformanceScores: null },
+    { ...baseSettings, departmentPerformanceScores: { service: null } },
+    { ...baseSettings, minimumGoalScore: null },
+    { ...baseSettings, maximumMultiplier: null },
+  ];
+
+  for (const settingsValue of invalidSettings) {
+    assert.throws(() => calculateEmployeeDistribution(
+      [{ id: "service", department: "service" }],
+      settingsValue,
+      100,
+    ), /sayı|nesne/i);
+  }
+
+  assert.throws(() => calculateEmployeeDistribution(
+    [{ id: "service", department: "service" }],
+    baseSettings,
+    100,
+    null,
+    { service: 100 },
+  ), /sayı/i);
+
+  assert.throws(() => calculateEmployeeDistribution(
+    [{ id: "service", department: "service" }],
+    baseSettings,
+    100,
+    undefined,
+    null,
+  ), /nesne/i);
+
+  assert.throws(() => calculateDepartmentDistribution({
+    targetRows: [{ department: "service", month: 1, pool: null }],
+    employees: [{ id: "service", department: "service" }],
+    settings: {},
+  }), /havuzu/i);
+});
+
+test("legacy finansal alanlar array ve nesne coercion girişlerini reddeder", () => {
+  for (const invalid of [[], {}, new Number(10)]) {
+    assert.throws(() => calculateEmployeeDistribution(
+      [{ id: "service", department: "service" }],
+      { companyWeight: invalid },
+      100,
+    ), /ağırlığı/i);
+
+    assert.throws(() => calculateDepartmentDistribution({
+      targetRows: [{ department: "service", month: 1, pool: 100 }],
+      employees: [{
+        id: "service",
+        department: "service",
+        salaryCoefficient: invalid,
+      }],
+      settings: {},
+    }), /katsayı/i);
+  }
+
+  for (const invalid of [null, [], new Number(10)]) {
+    assert.throws(() => calculateEmployeeDistribution(
+      [{ id: "service", department: "service" }],
+      { departmentPerformanceScores: invalid },
+      100,
+    ), /nesne/i);
+  }
+});
