@@ -412,3 +412,116 @@ test("bozuk hedef ayarı ve dağıtım bandı çalışma zamanı sınırında re
     },
   }), /oran/i);
 });
+
+test("hedef politikasının tüm finansal oranları primitive boolean değerleri reddeder", () => {
+  for (const value of [true, false]) {
+    const cases = [
+      {
+        ...settings,
+        reserveRate: value,
+      },
+      {
+        ...settings,
+        rates: { ...settings.rates, conservative: value },
+      },
+      {
+        ...settings,
+        rates: { ...settings.rates, growth: value },
+      },
+      {
+        ...settings,
+        departmentGrowthTargets: {
+          ...settings.departmentGrowthTargets,
+          service: value,
+        },
+      },
+      {
+        ...settings,
+        departmentStretchThresholds: {
+          ...settings.departmentStretchThresholds,
+          parts: value,
+        },
+      },
+    ];
+
+    for (const invalidSettings of cases) {
+      assert.throws(() => buildDepartmentTargets({
+        year: 2026,
+        currentRows: [],
+        previousRows: [],
+        settings: invalidSettings,
+      }), /sayı/i);
+    }
+  }
+});
+
+test("hedef finansal tutarları boolean ve sayı gibi davranan nesneleri reddeder", () => {
+  const coercibleValues = [
+    true,
+    false,
+    new Boolean(true),
+    new Number(10),
+    "10",
+    { valueOf: () => 10 },
+  ];
+
+  for (const value of coercibleValues) {
+    assert.throws(() => calculateTargetAmount(value, 10), /sayı/i);
+    assert.throws(() => calculateTargetAmount(100, value), /sayı/i);
+    assert.throws(() => classifyTargetBand({
+      actual: value,
+      target: 100,
+      stretchPct: 10,
+    }), /sayı/i);
+    assert.throws(() => classifyTargetBand({
+      actual: 100,
+      target: value,
+      stretchPct: 10,
+    }), /sayı/i);
+    assert.throws(() => monthlyDepartmentPool({
+      profit: value,
+      uncoveredNetSales: 0,
+      band: "conservative",
+      settings,
+    }), /sayı/i);
+    assert.throws(() => monthlyDepartmentPool({
+      profit: 100,
+      uncoveredNetSales: value,
+      band: "conservative",
+      settings,
+    }), /sayı/i);
+  }
+});
+
+test("hedef yılı boolean boxed veya numeric string olarak kabul edilmez", () => {
+  for (const year of [true, false, new Number(2026), "2026"]) {
+    assert.throws(() => buildDepartmentTargets({
+      year,
+      currentRows: [],
+      previousRows: [],
+      settings,
+    }), /yılı/i);
+  }
+});
+
+test("ham hedef satırındaki finansal alanlar sessiz sayı dönüşümüne girmez", () => {
+  const invalidRows = [
+    { netSales: true, cost: 10, uncoveredNetSales: 0 },
+    { netSales: 100, cost: false, uncoveredNetSales: 0 },
+    { netSales: 100, cost: 10, uncoveredNetSales: new Number(5) },
+    { netSales: "100", cost: 10, uncoveredNetSales: 0 },
+  ];
+
+  for (const invalid of invalidRows) {
+    assert.throws(() => buildDepartmentTargets({
+      year: 2026,
+      currentRows: [{
+        department: "service",
+        documentDate: "2026-01-10",
+        ...invalid,
+      }],
+      previousRows: [],
+      settings,
+    }), /sayı/i);
+  }
+});

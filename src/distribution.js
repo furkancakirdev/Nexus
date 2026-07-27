@@ -104,18 +104,10 @@ function plainObject(value, fieldName) {
 }
 
 function finiteNumber(value, fieldName) {
-  if (
-    value === null
-    || value === ""
-    || typeof value === "boolean"
-  ) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
     throw new TypeError(`${fieldName} sonlu sayı olmalı.`);
   }
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) {
-    throw new TypeError(`${fieldName} sonlu sayı olmalı.`);
-  }
-  return parsed;
+  return value;
 }
 
 function toCents(value, fieldName = "Dağıtım tutarı") {
@@ -387,7 +379,7 @@ export function calculateDepartmentDistribution({
     if (!department) {
       throw new RangeError("Hedef departmanı Servis veya Yedek Parça Satış olmalı.");
     }
-    const month = Number(row.month);
+    const month = row.month;
     if (!Number.isInteger(month) || month < 1 || month > 12) {
       throw new RangeError("Hedef ayı 1 ile 12 arasında tam sayı olmalı.");
     }

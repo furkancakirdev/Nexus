@@ -588,3 +588,131 @@ test("dağıtım sınırı bozuk ayar ve personel alanlarını reddeder", () => 
     settings: { allocationMethod: "equal" },
   }), /personel departmanı/i);
 });
+
+test("dağıtımın finansal havuz katsayı ve sabit pay alanları boolean değerleri reddeder", () => {
+  for (const value of [true, false]) {
+    assert.throws(() => calculateDepartmentDistribution({
+      targetRows: [target("service", 1, value)],
+      employees,
+      settings: { allocationMethod: "equal" },
+    }), /havuzu/i);
+
+    assert.throws(() => calculateDepartmentDistribution({
+      targetRows: [target("service", 1, 100)],
+      employees: [{
+        id: "coefficient",
+        department: "service",
+        salaryCoefficient: value,
+      }],
+      settings: { allocationMethod: "coefficient" },
+    }), /katsayı/i);
+
+    assert.throws(() => calculateDepartmentDistribution({
+      targetRows: [target("service", 1, 100)],
+      employees: [{
+        id: "fixed",
+        department: "service",
+        fixedShareRate: value,
+      }],
+      settings: { allocationMethod: "equal" },
+    }), /sabit pay/i);
+  }
+});
+
+test("dağıtım finansal doğrulayıcıları boxed ve coercible değerleri reddeder", () => {
+  const coercibleValues = [
+    new Boolean(true),
+    new Number(10),
+    "10",
+    { valueOf: () => 10 },
+  ];
+
+  for (const value of coercibleValues) {
+    assert.throws(() => calculateDepartmentDistribution({
+      targetRows: [target("service", 1, value)],
+      employees,
+      settings: { allocationMethod: "equal" },
+    }), /havuzu/i);
+
+    assert.throws(() => calculateDepartmentDistribution({
+      targetRows: [target("service", 1, 100)],
+      employees: [{
+        id: "coefficient",
+        department: "service",
+        salaryCoefficient: value,
+      }],
+      settings: { allocationMethod: "coefficient" },
+    }), /katsayı/i);
+
+    assert.throws(() => calculateDepartmentDistribution({
+      targetRows: [target("service", 1, 100)],
+      employees: [{
+        id: "fixed",
+        department: "service",
+        fixedShareRate: value,
+      }],
+      settings: { allocationMethod: "equal" },
+    }), /sabit pay/i);
+
+    assert.throws(() => calculateEmployeeDistribution(
+      employees,
+      { allocationMethod: "equal" },
+      value,
+    ), /havuzu/i);
+  }
+});
+
+test("hedef satırı ayı boolean boxed veya numeric string olarak kabul edilmez", () => {
+  for (const month of [true, false, new Number(1), "1"]) {
+    assert.throws(() => calculateDepartmentDistribution({
+      targetRows: [target("service", month, 100)],
+      employees,
+      settings: { allocationMethod: "equal" },
+    }), /ayı/i);
+  }
+});
+
+test("legacy sayısal havuz adaptörünün finansal ayarları boolean değerleri reddeder", () => {
+  const baseSettings = {
+    allocationMethod: "coefficient",
+    companyWeight: 60,
+    teamWeight: 40,
+    companyPerformanceScore: 100,
+    departmentPerformanceScores: { service: 100 },
+    minimumGoalScore: 0,
+    maximumMultiplier: 120,
+  };
+
+  for (const value of [true, false]) {
+    const settingCases = [
+      { ...baseSettings, companyWeight: value },
+      { ...baseSettings, teamWeight: value },
+      { ...baseSettings, companyPerformanceScore: value },
+      { ...baseSettings, departmentPerformanceScores: { service: value } },
+      { ...baseSettings, minimumGoalScore: value },
+      { ...baseSettings, maximumMultiplier: value },
+    ];
+
+    for (const invalidSettings of settingCases) {
+      assert.throws(() => calculateEmployeeDistribution(
+        employees,
+        invalidSettings,
+        100,
+      ), /sayı|ağırlığı|skoru|çarpanı/i);
+    }
+
+    assert.throws(() => calculateEmployeeDistribution(
+      employees,
+      baseSettings,
+      value,
+    ), /havuzu/i);
+
+    assert.throws(() => calculateEmployeeDistribution(
+      employees,
+      baseSettings,
+      100,
+      value,
+      { service: 100 },
+    ), /skoru/i);
+  }
+});

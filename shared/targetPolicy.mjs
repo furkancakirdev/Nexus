@@ -47,11 +47,10 @@ const MONTH_NAMES = Object.freeze([
  */
 
 function finiteNumber(value, fieldName) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
     throw new TypeError(`${fieldName} sonlu bir sayı olmalı.`);
   }
-  return parsed;
+  return value;
 }
 
 function percentage(value, fieldName, fallback) {
@@ -108,7 +107,7 @@ export function normalizeDepartmentId(value) {
 }
 
 function monthOf(row) {
-  const direct = Number(row?.month);
+  const direct = row?.month;
   if (Number.isInteger(direct) && direct >= 1 && direct <= 12) return direct;
   const value = row?.documentDate ?? row?.date;
   if (typeof value === "string" && /^\d{4}-\d{2}/.test(value)) {
@@ -121,7 +120,7 @@ function monthOf(row) {
 }
 
 function yearOf(row) {
-  const direct = Number(row?.year);
+  const direct = row?.year;
   if (Number.isInteger(direct)) return direct;
   const value = row?.documentDate ?? row?.date;
   if (typeof value === "string" && /^\d{4}-\d{2}/.test(value)) {
@@ -378,7 +377,7 @@ export function buildDepartmentTargets({
   previousRows,
   settings,
 }) {
-  const normalizedYear = Number(year);
+  const normalizedYear = year;
   if (!Number.isInteger(normalizedYear)) {
     throw new TypeError("Hedef yılı tam sayı olmalı.");
   }
