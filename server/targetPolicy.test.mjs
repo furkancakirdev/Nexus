@@ -54,6 +54,48 @@ test("aylık hedef önceki yıl aynı ay nihai net satışından hesaplanır", (
   assert.equal(calculateTargetAmount(1_000_000, 10), 1_100_000);
 });
 
+test("departman hedef değişimi ürün onaylı eksi yüz ile üç yüz aralığını kullanır", () => {
+  assert.equal(calculateTargetAmount(100, -10), 90);
+  assert.equal(calculateTargetAmount(100, -100), 0);
+  assert.equal(calculateTargetAmount(100, 300), 400);
+
+  for (const invalid of [-100.01, 300.01]) {
+    assert.throws(
+      () => calculateTargetAmount(100, invalid),
+      /-100 ile 300/i,
+    );
+  }
+});
+
+test("stretch dağıtım ve rezerv oranları yüzde sıfır ile yüz sınırını korur", () => {
+  for (const invalid of [-0.01, 100.01]) {
+    assert.throws(() => classifyTargetBand({
+      actual: 100,
+      target: 100,
+      stretchPct: invalid,
+    }), /0 ile 100/i);
+
+    for (const rateName of ["conservative", "growth"]) {
+      assert.throws(() => monthlyDepartmentPool({
+        profit: 100,
+        uncoveredNetSales: 0,
+        band: rateName,
+        settings: {
+          ...settings,
+          rates: { ...settings.rates, [rateName]: invalid },
+        },
+      }), /0 ile 100/i);
+    }
+
+    assert.throws(() => monthlyDepartmentPool({
+      profit: 100,
+      uncoveredNetSales: 0,
+      band: "conservative",
+      settings: { ...settings, reserveRate: invalid },
+    }), /0 ile 100/i);
+  }
+});
+
 test("önceki yıl satışı sıfır veya eksik olan ay güvenli biçimde havuz dışı kalır", () => {
   const rows = buildDepartmentTargets({
     year: 2026,

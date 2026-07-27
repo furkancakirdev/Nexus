@@ -63,6 +63,16 @@ function percentage(value, fieldName, fallback) {
   return parsed;
 }
 
+function targetChange(value, fieldName, fallback) {
+  const parsed = value === undefined || value === null
+    ? fallback
+    : finiteNumber(value, fieldName);
+  if (parsed < -100 || parsed > 300) {
+    throw new RangeError(`${fieldName} -100 ile 300 arasında olmalı.`);
+  }
+  return parsed;
+}
+
 function roundMoney(value) {
   return Math.round((finiteNumber(value, "Tutar") + Number.EPSILON) * 100) / 100;
 }
@@ -231,7 +241,7 @@ function normalizePolicySettings(settings = {}) {
     departments: Object.fromEntries(DEPARTMENTS.map(({ id }) => [
       id,
       {
-        growthPct: percentage(
+        growthPct: targetChange(
           departmentSetting(growthTargets, id, 10),
           `${id} hedef büyüme oranı`,
           10,
@@ -255,7 +265,7 @@ function normalizePolicySettings(settings = {}) {
  */
 export function calculateTargetAmount(previousNetSales, growthPct) {
   const prior = Math.max(0, finiteNumber(previousNetSales, "Önceki yıl net satış"));
-  const growth = percentage(growthPct, "Hedef büyüme oranı", 10);
+  const growth = targetChange(growthPct, "Hedef büyüme oranı", 10);
   return roundMoney(prior * (1 + growth / 100));
 }
 

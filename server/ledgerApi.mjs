@@ -598,12 +598,31 @@ export function createUnifiedLedgerRouter({
           ...analysisOptions,
         }),
       ];
-      const rows = buildDepartmentTargets({
-        year,
-        currentRows: targetSourceRows(currentAnalysis),
-        previousRows: targetSourceRows(previousAnalysis),
-        settings: state.settings || {},
-      });
+      let rows;
+      try {
+        rows = buildDepartmentTargets({
+          year,
+          currentRows: targetSourceRows(currentAnalysis),
+          previousRows: targetSourceRows(previousAnalysis),
+          settings: state.settings || {},
+        });
+      } catch (error) {
+        if (!(error instanceof TypeError || error instanceof RangeError)) {
+          throw error;
+        }
+        return response.status(400).json({
+          year,
+          previousYear: year - 1,
+          rows: [],
+          summary: { departments: [], totalPool: 0 },
+          mode: "invalid",
+          ...metadata(currentSnapshot),
+          previousLedgerVersion: previousMetadata.ledgerVersion,
+          previousGeneratedAt: previousMetadata.generatedAt,
+          previousCacheStatus: previousMetadata.cacheStatus,
+          error: "Geçersiz departman hedef ayarı.",
+        });
+      }
       response.setHeader("Cache-Control", "no-store");
       return response.json({
         year,
