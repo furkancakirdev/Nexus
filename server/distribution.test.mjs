@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   calculateDepartmentDistribution,
+  calculateEmployeeDistribution,
 } from "../src/distribution.js";
 import { buildDepartmentTargets } from "../shared/targetPolicy.mjs";
 
@@ -330,4 +331,260 @@ test("nihai satırdan hedefe ve dağıtıma akış hedef altını sıfır tutup 
   );
   assert.equal(result.employees.find((item) => item.id === "departed").projectedShare, 0);
   assert.equal(result.difference, 0);
+});
+
+test("üç parametreli sayısal havuz çağrısı mevcut ekran alanlarını ve havuzu korur", () => {
+  const legacySettings = {
+    allocationMethod: "equal",
+    companyWeight: 60,
+    teamWeight: 40,
+    companyPerformanceScore: 100,
+    departmentPerformanceScores: {
+      "Atölye Teknik": 100,
+      "Ofis": 100,
+    },
+    minimumGoalScore: 80,
+    maximumMultiplier: 120,
+  };
+  const result = calculateEmployeeDistribution([
+    {
+      id: "workshop",
+      department: "Atölye Teknik",
+      included: true,
+      status: "employee",
+    },
+    {
+      id: "office",
+      department: "Ofis",
+      included: true,
+      status: "employee",
+    },
+  ], legacySettings, 100);
+
+  assert.equal(result.reduce((sum, employee) => sum + employee.projectedShare, 0), 100);
+  assert.deepEqual(
+    result.map((employee) => employee.department),
+    ["Atölye Teknik", "Ofis"],
+  );
+  for (const employee of result) {
+    assert.equal(employee.projectedShare, 50);
+    assert.equal(employee.departmentScore, 100);
+    assert.equal(employee.weightedScore, 100);
+    assert.equal(employee.performanceMultiplier, 1);
+    assert.equal(employee.eligible, true);
+  }
+});
+
+test("beş parametreli Goals çağrısı skor geçersiz kılmalarını korur", () => {
+  const result = calculateEmployeeDistribution([
+    {
+      id: "workshop",
+      department: "Atölye Teknik",
+      included: true,
+      status: "employee",
+      salaryCoefficient: 1,
+    },
+    {
+      id: "office",
+      department: "Ofis",
+      included: true,
+      status: "employee",
+      salaryCoefficient: 1,
+    },
+  ], {
+    allocationMethod: "coefficient",
+    companyWeight: 60,
+    teamWeight: 40,
+    companyPerformanceScore: 100,
+    departmentPerformanceScores: {},
+    minimumGoalScore: 0,
+    maximumMultiplier: 120,
+  }, 100, 80, {
+    "Atölye Teknik": 120,
+    "Ofis": 80,
+  });
+
+  const workshop = result.find((employee) => employee.id === "workshop");
+  const office = result.find((employee) => employee.id === "office");
+  assert.equal(workshop.departmentScore, 120);
+  assert.equal(workshop.weightedScore, 96);
+  assert.equal(office.departmentScore, 80);
+  assert.equal(office.weightedScore, 80);
+  assert.equal(workshop.projectedShare > office.projectedShare, true);
+  assert.equal(result.reduce((sum, employee) => sum + employee.projectedShare, 0), 100);
+});
+
+test("hedef satırı adaptör çağrısı yeni departman politikasını kullanır", () => {
+  const result = calculateEmployeeDistribution([
+    {
+      id: "service",
+      department: "service",
+      included: true,
+      status: "employee",
+    },
+    {
+      id: "parts",
+      department: "parts",
+      included: true,
+      status: "employee",
+    },
+  ], {
+    allocationMethod: "equal",
+  }, [
+    target("service", 1, 30),
+    target("parts", 1, 70),
+  ]);
+
+  assert.deepEqual(
+    result.map((employee) => [employee.id, employee.projectedShare]),
+    [["service", 30], ["parts", 70]],
+  );
+  assert.equal(Object.hasOwn(result[0], "weightedScore"), false);
+});
+
+test("katsayı modunda pozitif ağırlık yoksa havuz incelemeye açık kalır", () => {
+  const result = calculateDepartmentDistribution({
+    targetRows: [target("service", 1, 10)],
+    employees: [
+      {
+        id: "zero",
+        department: "service",
+        salaryCoefficient: 0,
+      },
+      {
+        id: "negative",
+        department: "service",
+        salaryCoefficient: -1,
+      },
+    ],
+    settings: { allocationMethod: "coefficient" },
+  });
+
+  assert.deepEqual(
+    result.employees.map((employee) => employee.projectedShare),
+    [0, 0],
+  );
+  assert.equal(result.allocatedPool, 0);
+  assert.equal(result.unallocatedPool, 10);
+  assert.equal(result.reviewRequired, true);
+  assert.equal(
+    result.departments.find((item) => item.department === "service").allocationStatus,
+    "review-required",
+  );
+});
+
+test("normalize edilmiş CPM kimliği iki departmandan çift pay alamaz", () => {
+  assert.throws(() => calculateDepartmentDistribution({
+    targetRows: [
+      target("service", 1, 50),
+      target("parts", 1, 50),
+    ],
+    employees: [
+      { id: "FURKAN", department: "service" },
+      { id: " furkan ", department: "parts" },
+    ],
+    settings: { allocationMethod: "equal" },
+  }), /personel kimliği/i);
+
+  assert.throws(() => calculateDepartmentDistribution({
+    targetRows: [target("service", 1, 50)],
+    employees: [
+      { id: "TSEMİZ", department: "service" },
+      { id: "tsemiz", department: "service" },
+    ],
+    settings: { allocationMethod: "equal" },
+  }), /personel kimliği/i);
+
+  assert.throws(() => calculateDepartmentDistribution({
+    targetRows: [
+      target("service", 1, 50),
+      target("parts", 1, 50),
+    ],
+    employees: [
+      { id: "pilot-1", code: "FURKAN", department: "service" },
+      { id: "pilot-2", code: " furkan ", department: "parts" },
+    ],
+    settings: { allocationMethod: "equal" },
+  }), /personel kimliği/i);
+});
+
+test("inaktif veya active false personel sıfır pay alır", () => {
+  const result = calculateDepartmentDistribution({
+    targetRows: [target("service", 1, 100)],
+    employees: [
+      {
+        id: "inactive-status",
+        department: "service",
+        status: "inactive",
+      },
+      {
+        id: "inactive-flag",
+        department: "service",
+        status: "employee",
+        active: false,
+      },
+      {
+        id: "active",
+        department: "service",
+        status: "employee",
+        active: true,
+      },
+    ],
+    settings: { allocationMethod: "equal" },
+  });
+
+  assert.deepEqual(
+    result.employees.map((employee) => employee.projectedShare),
+    [0, 0, 100],
+  );
+});
+
+test("dağıtım sınırı bozuk ayar ve personel alanlarını reddeder", () => {
+  assert.throws(() => calculateDepartmentDistribution({
+    targetRows: [target("service", 1, 100)],
+    employees,
+    settings: "coefficient",
+  }), /ayarları nesne/i);
+
+  assert.throws(() => calculateDepartmentDistribution({
+    targetRows: [target("service", 1, 100)],
+    employees: [{ id: "fixed", department: "service", fixedShareRate: 100.01 }],
+    settings: { allocationMethod: "equal" },
+  }), /sabit pay/i);
+
+  assert.throws(() => calculateDepartmentDistribution({
+    targetRows: [target("service", 1, 100)],
+    employees: [{ id: "coefficient", department: "service", salaryCoefficient: Infinity }],
+    settings: { allocationMethod: "coefficient" },
+  }), /katsayı/i);
+
+  assert.throws(() => calculateDepartmentDistribution({
+    targetRows: [target("service", 1, 100)],
+    employees: [{ id: "null-coefficient", department: "service", salaryCoefficient: null }],
+    settings: { allocationMethod: "coefficient" },
+  }), /katsayı/i);
+
+  assert.throws(() => calculateDepartmentDistribution({
+    targetRows: [target("service", 1, 100)],
+    employees: [{ id: "null-fixed", department: "service", fixedShareRate: null }],
+    settings: { allocationMethod: "equal" },
+  }), /sabit pay/i);
+
+  assert.throws(() => calculateDepartmentDistribution({
+    targetRows: [target("service", 1, 100)],
+    employees: [{ id: "status", department: "service", status: "unknown" }],
+    settings: { allocationMethod: "equal" },
+  }), /personel durumu/i);
+
+  assert.throws(() => calculateDepartmentDistribution({
+    targetRows: [target("service", 1, 100)],
+    employees: [{ id: "included", department: "service", included: "false" }],
+    settings: { allocationMethod: "equal" },
+  }), /dahil/i);
+
+  assert.throws(() => calculateDepartmentDistribution({
+    targetRows: [target("service", 1, 100)],
+    employees: [{ id: "department", department: "other" }],
+    settings: { allocationMethod: "equal" },
+  }), /personel departmanı/i);
 });

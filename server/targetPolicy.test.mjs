@@ -4,6 +4,7 @@ import {
   buildDepartmentTargets,
   calculateTargetAmount,
   classifyTargetBand,
+  monthlyDepartmentPool,
 } from "../shared/targetPolicy.mjs";
 
 const settings = {
@@ -297,6 +298,90 @@ test("ham nihai ledger satırında null maliyet kapsamsız satış olarak havuzd
   assert.equal(march.pool, 0);
 });
 
+test("rezerv ve havuz kuruşları rezerv öncesi tutarla tam uzlaşır", () => {
+  const result = monthlyDepartmentPool({
+    profit: 10,
+    uncoveredNetSales: 0,
+    band: "conservative",
+    settings: {
+      ...settings,
+      rates: { conservative: 3, growth: 8 },
+      reserveRate: 5,
+    },
+  });
+
+  assert.equal(result.reserve, 0.01);
+  assert.equal(result.pool, 0.29);
+  assert.equal(result.reserve + result.pool, 0.3);
+});
+
+test("maliyetsiz satış ve iadeyi satır bazında netleyip toplu yolla aynı sonucu üretir", () => {
+  const previousRows = [{
+    department: "service",
+    documentDate: "2025-05-10T10:00:00.000Z",
+    signedNetSales: 100,
+    lineCost: 50,
+  }];
+  const rawRows = [
+    {
+      department: "service",
+      documentDate: "2026-05-10T10:00:00.000Z",
+      signedNetSales: 100,
+      lineCost: 50,
+    },
+    {
+      department: "service",
+      documentDate: "2026-05-11T10:00:00.000Z",
+      signedNetSales: 100,
+      lineCost: null,
+    },
+    {
+      department: "service",
+      documentDate: "2026-05-12T10:00:00.000Z",
+      signedNetSales: -20,
+      lineCost: null,
+    },
+  ];
+  const aggregateRows = [{
+    department: "service",
+    month: 5,
+    netSales: 180,
+    cost: 50,
+    uncoveredNetSales: 80,
+  }];
+  const raw = buildDepartmentTargets({
+    year: 2026,
+    previousRows,
+    currentRows: rawRows,
+    settings,
+  }).find((item) => item.department === "service" && item.month === 5);
+  const aggregate = buildDepartmentTargets({
+    year: 2026,
+    previousRows,
+    currentRows: aggregateRows,
+    settings,
+  }).find((item) => item.department === "service" && item.month === 5);
+
+  assert.equal(raw.uncoveredNetSales, 80);
+  assert.equal(raw.eligibleProfit, 50);
+  assert.deepEqual(
+    {
+      profit: raw.profit,
+      uncoveredNetSales: raw.uncoveredNetSales,
+      eligibleProfit: raw.eligibleProfit,
+      reserve: raw.reserve,
+      pool: raw.pool,
+    },
+    {
+      profit: aggregate.profit,
+      uncoveredNetSales: aggregate.uncoveredNetSales,
+      eligibleProfit: aggregate.eligibleProfit,
+      reserve: aggregate.reserve,
+      pool: aggregate.pool,
+    },
+  );
+});
+
 test("geçersiz hedef ayarı çalışma zamanı doğrulamasında reddedilir", () => {
   assert.throws(() => buildDepartmentTargets({
     year: 2026,
@@ -307,4 +392,23 @@ test("geçersiz hedef ayarı çalışma zamanı doğrulamasında reddedilir", ()
       reserveRate: 101,
     },
   }), /rezerv/i);
+});
+
+test("bozuk hedef ayarı ve dağıtım bandı çalışma zamanı sınırında reddedilir", () => {
+  assert.throws(() => monthlyDepartmentPool({
+    profit: 100,
+    uncoveredNetSales: 0,
+    band: "unknown",
+    settings,
+  }), /dağıtım bandı/i);
+
+  assert.throws(() => buildDepartmentTargets({
+    year: 2026,
+    currentRows: [],
+    previousRows: [],
+    settings: {
+      ...settings,
+      rates: "invalid",
+    },
+  }), /oran/i);
 });

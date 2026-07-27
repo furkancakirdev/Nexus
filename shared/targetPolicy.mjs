@@ -8,6 +8,44 @@ const MONTH_NAMES = Object.freeze([
   "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık",
 ]);
 
+/**
+ * @typedef {"service"|"parts"} DepartmentId
+ */
+
+/**
+ * @typedef {Object} TargetPolicySettings
+ * @property {number} [reserveRate]
+ * @property {{conservative?:number,growth?:number}} [rates]
+ * @property {Object<string, number>} [departmentGrowthTargets]
+ * @property {Object<string, number>} [departmentStretchThresholds]
+ */
+
+/**
+ * @typedef {Object} TargetSourceRow
+ * @property {DepartmentId|string} department
+ * @property {number} [year]
+ * @property {number} [month]
+ * @property {string|Date} [documentDate]
+ * @property {string|Date} [date]
+ * @property {number} [netSales]
+ * @property {number} [signedNetSales]
+ * @property {number} [actual]
+ * @property {number|null} [cost]
+ * @property {number|null} [lineCost]
+ * @property {number} [profit]
+ * @property {number} [profitBeforeCoverage]
+ * @property {number} [uncoveredNetSales]
+ */
+
+/**
+ * @typedef {Object} MonthlyDepartmentPool
+ * @property {number} eligibleProfit
+ * @property {number} appliedRate
+ * @property {number} reserveRate
+ * @property {number} reserve
+ * @property {number} pool
+ */
+
 function finiteNumber(value, fieldName) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
@@ -28,6 +66,22 @@ function percentage(value, fieldName, fallback) {
 
 function roundMoney(value) {
   return Math.round((finiteNumber(value, "Tutar") + Number.EPSILON) * 100) / 100;
+}
+
+function moneyToCents(value, fieldName = "Tutar") {
+  return Math.round((finiteNumber(value, fieldName) + Number.EPSILON) * 100);
+}
+
+function centsToMoney(value) {
+  return value / 100;
+}
+
+function optionalRecord(value, fieldName) {
+  if (value === undefined || value === null) return {};
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError(`${fieldName} nesne olmalı.`);
+  }
+  return value;
 }
 
 function normalizedText(value) {
@@ -94,21 +148,18 @@ function rowProfitBeforeCoverage(row, netSales) {
   }
   if (row?.profit !== undefined) {
     return finiteNumber(row.profit, "Kâr")
-      + Math.max(0, finiteNumber(row.uncoveredNetSales ?? 0, "Kapsamsız net satış"));
+      + finiteNumber(row.uncoveredNetSales ?? 0, "Kapsamsız net satış");
   }
   return netSales;
 }
 
 function rowUncoveredNetSales(row, netSales) {
   if (row?.uncoveredNetSales !== undefined && row?.uncoveredNetSales !== null) {
-    return Math.max(
-      0,
-      finiteNumber(row.uncoveredNetSales, "Kapsamsız net satış"),
-    );
+    return finiteNumber(row.uncoveredNetSales, "Kapsamsız net satış");
   }
   const hasExplicitCost = row?.cost !== undefined && row?.cost !== null;
   const hasLedgerCost = row?.lineCost !== undefined && row?.lineCost !== null;
-  return hasExplicitCost || hasLedgerCost ? 0 : Math.max(0, netSales);
+  return hasExplicitCost || hasLedgerCost ? 0 : netSales;
 }
 
 function emptyMetric() {
@@ -141,7 +192,7 @@ function aggregateRows(rows, { includeProfit, expectedYear }) {
 }
 
 function departmentSetting(map, department, fallback) {
-  const values = map && typeof map === "object" ? map : {};
+  const values = map;
   const aliases = department === "service"
     ? ["service", "Servis", "Atölye Teknik"]
     : ["parts", "Yedek Parça Satış", "Ofis"];
@@ -155,14 +206,23 @@ function normalizePolicySettings(settings = {}) {
   if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
     throw new TypeError("Hedef ayarları nesne olmalı.");
   }
+  const rates = optionalRecord(settings.rates, "Dağıtım oranları");
+  const growthTargets = optionalRecord(
+    settings.departmentGrowthTargets,
+    "Departman hedef büyüme oranları",
+  );
+  const stretchThresholds = optionalRecord(
+    settings.departmentStretchThresholds,
+    "Departman hedef üstü eşikleri",
+  );
   const reserveRate = percentage(settings.reserveRate, "Risk rezervi", 5);
   const conservativeRate = percentage(
-    settings.rates?.conservative,
+    rates.conservative,
     "Temkinli dağıtım oranı",
     3,
   );
   const growthRate = percentage(
-    settings.rates?.growth,
+    rates.growth,
     "Büyüme dağıtım oranı",
     8,
   );
@@ -173,12 +233,12 @@ function normalizePolicySettings(settings = {}) {
       id,
       {
         growthPct: percentage(
-          departmentSetting(settings.departmentGrowthTargets, id, 10),
+          departmentSetting(growthTargets, id, 10),
           `${id} hedef büyüme oranı`,
           10,
         ),
         stretchPct: percentage(
-          departmentSetting(settings.departmentStretchThresholds, id, 10),
+          departmentSetting(stretchThresholds, id, 10),
           `${id} hedef üstü eşik oranı`,
           10,
         ),
@@ -231,7 +291,13 @@ export function classifyTargetBand({ actual, target, stretchPct }) {
 /**
  * Maliyeti doğrulanmış kârı seçilen oran ve rezervle aylık havuza çevirir.
  *
- * @param {Object} input
+ * @param {{
+ *   profit:number,
+ *   uncoveredNetSales:number,
+ *   band:"none"|"conservative"|"growth",
+ *   settings:TargetPolicySettings
+ * }} input
+ * @returns {MonthlyDepartmentPool}
  */
 export function monthlyDepartmentPool({
   profit,
@@ -240,6 +306,9 @@ export function monthlyDepartmentPool({
   settings,
 }) {
   const normalized = normalizePolicySettings(settings);
+  if (!["none", "conservative", "growth"].includes(band)) {
+    throw new RangeError("Dağıtım bandı none, conservative veya growth olmalı.");
+  }
   const grossProfit = finiteNumber(profit, "Kâr");
   const uncovered = Math.max(
     0,
@@ -251,14 +320,20 @@ export function monthlyDepartmentPool({
     : band === "conservative"
       ? normalized.rates.conservative
       : 0;
-  const preReservePool = eligibleProfit * appliedRate / 100;
-  const reserve = preReservePool * normalized.reserveRate / 100;
+  const eligibleProfitCents = moneyToCents(eligibleProfit, "Uygun kâr");
+  const preReserveCents = Math.round(
+    eligibleProfitCents * appliedRate / 100,
+  );
+  const poolCents = Math.round(
+    preReserveCents * (1 - normalized.reserveRate / 100),
+  );
+  const reserveCents = preReserveCents - poolCents;
   return {
-    eligibleProfit: roundMoney(eligibleProfit),
+    eligibleProfit: centsToMoney(eligibleProfitCents),
     appliedRate,
     reserveRate: normalized.reserveRate,
-    reserve: roundMoney(reserve),
-    pool: roundMoney(preReservePool - reserve),
+    reserve: centsToMoney(reserveCents),
+    pool: centsToMoney(poolCents),
   };
 }
 
@@ -284,13 +359,17 @@ export function monthlyDepartmentPool({
  */
 
 /**
+ * @typedef {Object} BuildDepartmentTargetsInput
+ * @property {number} year
+ * @property {TargetSourceRow[]} currentRows
+ * @property {TargetSourceRow[]} previousRows
+ * @property {TargetPolicySettings} settings
+ */
+
+/**
  * İki yılın nihai ledger satırlarından 12 ay x 2 departman hedef tablosu üretir.
  *
- * @param {Object} input
- * @param {number} input.year
- * @param {Array<Object>} input.currentRows
- * @param {Array<Object>} input.previousRows
- * @param {Object} input.settings
+ * @param {BuildDepartmentTargetsInput} input
  * @returns {DepartmentTargetRow[]}
  */
 export function buildDepartmentTargets({
@@ -331,7 +410,9 @@ export function buildDepartmentTargets({
         stretchPct: departmentPolicy.stretchPct,
       });
       const profit = roundMoney(currentMetric.profit);
-      const uncoveredNetSales = roundMoney(currentMetric.uncoveredNetSales);
+      const uncoveredNetSales = roundMoney(
+        Math.max(0, currentMetric.uncoveredNetSales),
+      );
       const pool = monthlyDepartmentPool({
         profit,
         uncoveredNetSales,
