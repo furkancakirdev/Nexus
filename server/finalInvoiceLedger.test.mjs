@@ -1674,7 +1674,7 @@ test("final invoice SQL exposes four read-only recordsets with separate invoice 
   assert.match(finalInvoiceLedgerSql, /finalCandidateCount/i);
   assert.match(finalInvoiceLedgerSql, /ambiguousRetailConsumption/i);
   assert.match(finalInvoiceLedgerSql, /excludedRetailConsumption/i);
-  assert.match(finalInvoiceLedgerSql, /sourceLineNo\s*=\s*lineage\.lineNo\s+OR\s+downstream\.sourceLineNo\s+IS\s+NULL/i);
+  assert.match(finalInvoiceLedgerSql, /sourceLineNo\s*=\s*lineage\.\[lineNo\]\s+OR\s+downstream\.sourceLineNo\s+IS\s+NULL/i);
   assert.match(finalInvoiceLedgerSql, /originalSale\.originalQuantity/i);
   assert.doesNotMatch(finalInvoiceLedgerSql, /purchaseQuantity\s*-\s*ISNULL\(consumption\.consumedQuantity,\s*0\)\s*>=\s*ABS\(h\.MIKTAR\)/i);
   assert.match(finalInvoiceLedgerSql, /PARTITION BY[\s\S]{0,240}p\.EVRAKTARIH/i);
@@ -1702,10 +1702,10 @@ test("final invoice SQL exposes four read-only recordsets with separate invoice 
   assert.match(finalInvoiceLedgerSql, /EVRAKTIP\s*=\s*14/i);
   assert.match(finalInvoiceLedgerSql, /downstream\.SONKAYNAKEVRAKTIP\s*=\s*l\.documentType/i);
   assert.match(finalInvoiceLedgerSql, /source\.SIRANO\s*=\s*l\.sourceLineNo/i);
-  assert.match(finalInvoiceLedgerSql, /downstream\.SONKAYNAKSIRANO\s*=\s*l\.lineNo/i);
+  assert.match(finalInvoiceLedgerSql, /downstream\.SONKAYNAKSIRANO\s*=\s*l\.\[lineNo\]/i);
   assert.doesNotMatch(
     finalInvoiceLedgerSql,
-    /(?:source\.SIRANO\s*=\s*l\.sourceLineNo|downstream\.SONKAYNAKSIRANO\s*=\s*l\.lineNo)\s+OR\b/i,
+    /(?:source\.SIRANO\s*=\s*l\.sourceLineNo|downstream\.SONKAYNAKSIRANO\s*=\s*l\.\[lineNo\])\s+OR\b/i,
   );
   assert.match(
     finalInvoiceLedgerSql,
@@ -1757,6 +1757,14 @@ test("SQL and JavaScript expose the same auditable purchase evidence fields", ()
   assert.equal(result.rows[0].purchaseType, 609);
   assert.equal(result.rows[0].purchaseNetAmount, 360);
   assert.equal(result.rows[0].costValidationReason, "Dogrulandi.");
+});
+
+test("canlı SQL ayrılmış LINENO anahtar kelimesini sütun adı olarak kaçırır", () => {
+  const withoutEscapedLineNumber = finalInvoiceLedgerSql.replaceAll("[lineNo]", "");
+
+  assert.doesNotMatch(withoutEscapedLineNumber, /\blineNo\b/i);
+  assert.match(finalInvoiceLedgerSql, /SIRANO \[lineNo\]/);
+  assert.match(finalInvoiceLedgerSql, /\.\[lineNo\]/);
 });
 
 test("actor history is scoped through the selected active company header id", () => {

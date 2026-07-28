@@ -1373,7 +1373,7 @@ CREATE INDEX IX_nexus_purchase_candidates
     movement.EVRAKTIP documentType,
     movement.EVRAKNO documentNo,
     movement.HESAPKOD customerCode,
-    movement.SIRANO lineNo,
+    movement.SIRANO [lineNo],
     movement.EVRAKTARIH documentDate,
     movement.MALKOD productCode,
     CAST(movement.MIKTAR AS decimal(28, 4)) quantity,
@@ -1394,7 +1394,7 @@ CREATE INDEX IX_nexus_purchase_candidates
     retail.documentType,
     retail.documentNo,
     retail.customerCode,
-    retail.lineNo,
+    retail.[lineNo],
     retail.documentDate,
     retail.productCode,
     retail.quantity,
@@ -1415,7 +1415,7 @@ CREATE INDEX IX_nexus_purchase_candidates
     downstream.documentType,
     downstream.documentNo,
     downstream.customerCode,
-    downstream.lineNo,
+    downstream.[lineNo],
     downstream.documentDate,
     downstream.productCode,
     downstream.quantity,
@@ -1433,7 +1433,7 @@ CREATE INDEX IX_nexus_purchase_candidates
     ON downstream.sourceDocumentType = lineage.documentType
     AND downstream.sourceDocumentNo = lineage.documentNo
     AND COALESCE(NULLIF(downstream.sourceCustomerCode, ''), downstream.customerCode) = lineage.customerCode
-    AND (downstream.sourceLineNo = lineage.lineNo OR downstream.sourceLineNo IS NULL)
+    AND (downstream.sourceLineNo = lineage.[lineNo] OR downstream.sourceLineNo IS NULL)
   WHERE lineage.depth < 8
     AND CHARINDEX('|' + CAST(downstream.movementId AS varchar(24)) + '|', lineage.visited) = 0
 ), retailFinalEvidence AS (
@@ -1513,7 +1513,7 @@ CREATE INDEX IX_nexus_purchase_candidates
     movement.EVRAKTIP documentType,
     movement.EVRAKNO documentNo,
     movement.HESAPKOD customerCode,
-    movement.SIRANO lineNo,
+    movement.SIRANO [lineNo],
     movement.EVRAKTARIH documentDate,
     movement.MALKOD productCode,
     CAST(movement.MIKTAR AS decimal(28, 4)) quantity,
@@ -1530,7 +1530,7 @@ CREATE INDEX IX_nexus_purchase_candidates
       )
     )
 )
-SELECT movementId, documentType, documentNo, customerCode, lineNo, documentDate, productCode, quantity
+SELECT movementId, documentType, documentNo, customerCode, [lineNo], documentDate, productCode, quantity
 INTO #terminalSales
 FROM rankedTerminalSales
 WHERE identityRank = 1
@@ -1547,7 +1547,7 @@ CREATE INDEX IX_nexus_terminal_sales_consumption ON #terminalSales(productCode, 
     h.EVRAKNO documentNo,
     h.EVRAKTARIH documentDate,
     h.HESAPKOD customerCode,
-    h.SIRANO lineNo,
+    h.SIRANO [lineNo],
     h.MALKOD productCode,
     h.MIKTAR quantity,
     h.SONKAYNAKEVRAKTIP sourceDocumentType,
@@ -1590,7 +1590,7 @@ CREATE INDEX IX_nexus_terminal_sales_consumption ON #terminalSales(productCode, 
     AND CHARINDEX('|' + CAST(source.ID AS varchar(24)) + '|', lineage.visited) = 0
 ), returnFinalCandidates AS (
   SELECT DISTINCT rootId, lineageId, documentType, documentNo, documentDate, customerCode,
-    lineNo, productCode, quantity, depth
+    [lineNo], productCode, quantity, depth
   FROM returnLineage
   WHERE documentType IN (17,85,91)
 ), nearestReturnDepth AS (
@@ -1605,7 +1605,7 @@ CREATE INDEX IX_nexus_terminal_sales_consumption ON #terminalSales(productCode, 
     candidate.documentNo originalDocumentNo,
     candidate.documentDate originalSaleDate,
     candidate.customerCode originalCustomerCode,
-    candidate.lineNo originalLineNo,
+    candidate.[lineNo] originalLineNo,
     candidate.productCode originalProductCode,
     candidate.quantity originalQuantity,
     COUNT_BIG(*) OVER (PARTITION BY candidate.rootId) originalCandidateCount,
@@ -1630,7 +1630,7 @@ SELECT
   h.EVRAKTARIH documentDate,
   h.HESAPKOD customerCode,
   c.UNVAN customerName,
-  h.SIRANO lineNo,
+  h.SIRANO [lineNo],
   h.MALKOD productCode,
   k.MALAD productName,
   k.MARKAAD brandName,
@@ -1862,7 +1862,7 @@ SELECT * FROM #economics ORDER BY documentDate, rootId;
     h.EVRAKTIP documentType,
     h.EVRAKNO documentNo,
     h.HESAPKOD customerCode,
-    h.SIRANO lineNo,
+    h.SIRANO [lineNo],
     h.EVRAKTARIH documentDate,
     h.DEPOKOD depotCode,
     h.MASRAFKOD departmentCode,
@@ -1925,7 +1925,7 @@ SELECT * FROM #economics ORDER BY documentDate, rootId;
     AND downstream.SONKAYNAKEVRAKTIP = l.documentType
     AND downstream.SONKAYNAKEVRAKNO = l.documentNo
     AND COALESCE(NULLIF(downstream.SONKAYNAKHESAPKOD, ''), downstream.HESAPKOD) = l.customerCode
-    AND downstream.SONKAYNAKSIRANO = l.lineNo
+    AND downstream.SONKAYNAKSIRANO = l.[lineNo]
   WHERE l.depth < 8
     AND CHARINDEX('|' + CAST(downstream.ID AS varchar(24)) + '|', l.visited) = 0
 )
@@ -1965,7 +1965,7 @@ SELECT
   l.documentType,
   l.documentNo,
   l.customerCode,
-  l.lineNo,
+  l.[lineNo],
   l.documentDate,
   l.depotCode,
   l.departmentCode,
