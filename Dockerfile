@@ -11,6 +11,7 @@ ENV NODE_ENV=production HOST=0.0.0.0 PORT=4318
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/server ./server
+COPY --from=build /app/shared ./shared
 COPY --from=build /app/dist ./dist
 RUN mkdir -p /app/data && chown node:node /app/data
 USER node
