@@ -56,6 +56,31 @@ function normalizedActorCode(value) {
     .replace(/[^A-Z0-9]/g, "");
 }
 
+function selectedOwnerEvidenceDate(row) {
+  const ownerCode = normalizedActorCode(row?.commercialOwner);
+  const selectedDocumentKey = String(
+    row?.ownershipEvidence?.selected?.documentKey || "",
+  ).trim();
+  if (!ownerCode || !selectedDocumentKey) return null;
+
+  const matchingEvents = (Array.isArray(row?.actorEvents) ? row.actorEvents : [])
+    .filter((event) => (
+      String(event?.documentKey || "").trim() === selectedDocumentKey
+      && normalizedActorCode(event?.actorCode) === ownerCode
+      && event?.actorRole === "history-entry"
+    ))
+    .map((event) => String(event?.firstSeen || "").slice(0, 10))
+    .filter(Boolean)
+    .sort();
+
+  return matchingEvents[0] || null;
+}
+
+function commercialOwnershipDate(row) {
+  return selectedOwnerEvidenceDate(row)
+    || String(row?.documentDate || "").slice(0, 10);
+}
+
 function isConvertedRetail(row) {
   return Number(row?.documentType) === 91 && Boolean(
     row?.convertedRetail
@@ -164,7 +189,7 @@ export function validateYearPayloads(year, payloads) {
   );
   const formerServiceRows = ownershipRows.filter((row) => (
     normalizedActorCode(row.commercialOwner) === "OGENCOGLU"
-    && String(row.documentDate || "").slice(0, 10) > FORMER_SERVICE_END
+    && commercialOwnershipDate(row) > FORMER_SERVICE_END
   ));
   invariant(
     formerServiceRows.length === 0,

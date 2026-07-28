@@ -118,6 +118,31 @@ test("ticari olmayan veya tarih sınırı dışındaki sahipliği reddeder", () 
   );
 });
 
+test("eski personelin ayrılış öncesi ticari kanıtıyla sonradan faturalanan işi korur", () => {
+  const historicalChain = validPayloads();
+  historicalChain.departments.detailRows[0] = {
+    commercialOwner: "OGENCOGLU",
+    documentDate: "2024-12-26",
+    ownershipEvidence: {
+      selected: { documentKey: "13|TF003947|A2610" },
+    },
+    actorEvents: [{
+      documentKey: "13|TF003947|A2610",
+      actorCode: "OGENCOGLU",
+      actorRole: "history-entry",
+      firstSeen: "2024-03-04",
+    }],
+  };
+
+  assert.doesNotThrow(() => validateYearPayloads(2024, historicalChain));
+
+  historicalChain.departments.detailRows[0].actorEvents[0].firstSeen = "2024-07-01";
+  assert.throws(
+    () => validateYearPayloads(2024, historicalChain),
+    /OGENCOGLU/,
+  );
+});
+
 test("geçici veya nihai faturaya dönüşmüş perakende ekonomisini reddeder", () => {
   const provisional = validPayloads();
   provisional.overview.rows[0].provisionalLineCount = 1;
