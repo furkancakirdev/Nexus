@@ -12,6 +12,7 @@ import {
 import { createLedgerService } from "./ledgerService.mjs";
 import { createApprovalRouter } from "./approvalApi.mjs";
 import { createStateStore } from "./stateStore.mjs";
+import { executeSqlReadWithDeadlockRetry } from "./sqlReadRetry.mjs";
 import { serializeSettings } from "../shared/settingsPolicy.mjs";
 
 const app = express();
@@ -88,10 +89,10 @@ async function getSalesCaseModel(year, forceRefresh = false) {
 async function loadFinalInvoiceLedger(year) {
   const pool = await getPool();
   if (!pool) return null;
-  const result = await pool.request()
+  const result = await executeSqlReadWithDeadlockRetry(() => pool.request()
     .input("company", sql.VarChar(3), process.env.CPM_SQL_COMPANY || "01")
     .input("year", sql.Int, year)
-    .query(finalInvoiceLedgerSql);
+    .query(finalInvoiceLedgerSql));
   return buildFinalInvoiceLedger({
     economics: result.recordsets[0] || [],
     lineage: result.recordsets[1] || [],
