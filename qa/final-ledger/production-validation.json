@@ -1,0 +1,88 @@
+{
+  "generatedAt": "2026-07-28T17:59:04.494Z",
+  "base": "http://192.168.12.11:4318",
+  "health": {
+    "connected": true,
+    "mode": "live",
+    "readOnly": true,
+    "database": "Marlin_Uyg"
+  },
+  "years": [
+    {
+      "year": 2024,
+      "ledgerVersion": "2024:1785261434484:3",
+      "overviewNetSales": 152936676.03,
+      "departmentNetSales": 152936676.03,
+      "targetActualNetSales": 152717337.11,
+      "auditNetSales": 152936676.03,
+      "attributionNetSales": 152936676.03,
+      "unassignedReviewNetSales": 219338.92,
+      "provisionalEconomicRows": 0,
+      "convertedRetailEconomicRows": 0,
+      "accountantOwnerRows": 0,
+      "customerLikeOwnerRows": 0,
+      "formerServiceAfterDepartureRows": 0,
+      "auditRows": 25789,
+      "targetRows": 24,
+      "approvalMonths": 0,
+      "totalPool": 4047722.77,
+      "differences": {
+        "overviewToDepartment": 0,
+        "overviewToAudit": 0,
+        "targetsToAssignedDepartments": 0,
+        "monthlyPoolToSummary": 0
+      }
+    },
+    {
+      "year": 2025,
+      "ledgerVersion": "2025:1785261338994:2",
+      "overviewNetSales": 238357967.21,
+      "departmentNetSales": 238357967.21,
+      "targetActualNetSales": 238155493.57,
+      "auditNetSales": 238357967.21,
+      "attributionNetSales": 238357967.21,
+      "unassignedReviewNetSales": 202473.64,
+      "provisionalEconomicRows": 0,
+      "convertedRetailEconomicRows": 0,
+      "accountantOwnerRows": 0,
+      "customerLikeOwnerRows": 0,
+      "formerServiceAfterDepartureRows": 0,
+      "auditRows": 29834,
+      "targetRows": 24,
+      "approvalMonths": 0,
+      "totalPool": 6145014,
+      "differences": {
+        "overviewToDepartment": 0,
+        "overviewToAudit": 0,
+        "targetsToAssignedDepartments": 0,
+        "monthlyPoolToSummary": 0
+      }
+    },
+    {
+      "year": 2026,
+      "ledgerVersion": "2026:1785261239814:1",
+      "overviewNetSales": 193089413.13,
+      "departmentNetSales": 193089413.13,
+      "targetActualNetSales": 192871169.73,
+      "auditNetSales": 193089413.13,
+      "attributionNetSales": 193089413.13,
+      "unassignedReviewNetSales": 218243.4,
+      "provisionalEconomicRows": 0,
+      "convertedRetailEconomicRows": 0,
+      "accountantOwnerRows": 0,
+      "customerLikeOwnerRows": 0,
+      "formerServiceAfterDepartureRows": 0,
+      "auditRows": 19232,
+      "targetRows": 24,
+      "approvalMonths": 0,
+      "totalPool": 5276366.52,
+      "differences": {
+        "overviewToDepartment": 0,
+        "overviewToAudit": 0,
+        "targetsToAssignedDepartments": 0,
+        "monthlyPoolToSummary": 0
+      }
+    }
+  ],
+  "status": "pass"
+}

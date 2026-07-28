@@ -1,0 +1,60 @@
+{
+  "generatedAt": "2026-07-28T18:04:27.226Z",
+  "base": "http://192.168.12.11:4318",
+  "years": [
+    2024,
+    2025,
+    2026
+  ],
+  "iterations": 5,
+  "cold": [
+    {
+      "year": 2024,
+      "elapsedMs": 93727.53
+    },
+    {
+      "year": 2025,
+      "elapsedMs": 95129.53
+    },
+    {
+      "year": 2026,
+      "elapsedMs": 77569.03
+    }
+  ],
+  "warm": {
+    "overview": {
+      "samples": 15,
+      "averageMs": 92.47,
+      "p95Ms": 126.75,
+      "maximumMs": 126.75
+    },
+    "departments": {
+      "samples": 15,
+      "averageMs": 231.07,
+      "p95Ms": 249.97,
+      "maximumMs": 249.97
+    },
+    "targets": {
+      "samples": 15,
+      "averageMs": 44.51,
+      "p95Ms": 53.17,
+      "maximumMs": 53.17
+    },
+    "audit": {
+      "samples": 15,
+      "averageMs": 111.72,
+      "p95Ms": 144.01,
+      "maximumMs": 144.01
+    }
+  },
+  "aggregateWarm": {
+    "samples": 60,
+    "averageMs": 119.94,
+    "p95Ms": 241.61,
+    "maximumMs": 249.97
+  },
+  "thresholdMs": 1000,
+  "targetMs": 250,
+  "targetMet": true,
+  "status": "pass"
+}

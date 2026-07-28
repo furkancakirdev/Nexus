@@ -1,4 +1,82 @@
-# CPM dönüşüm analizi doğrulama notu
+# Marlin Nexus doğrulama kaydı
+
+## Birleşik nihai fatura defteri · 28 Temmuz 2026
+
+Dağıtım durumu: **Üretimde ve doğrulandı**.
+
+- Üretim adresi: `http://192.168.12.11:4318`
+- Dağıtılan commit: `13e0606`
+- Üretim imajı: `sha256:355e7ec79febf67443e97cd6485a2882880b2cefbe89f8c8239dd2caa8758224`
+- Geri dönüş imajı: `marlin-nexus-rollback:20260728-155832-7b8dba1`
+- CPM bağlantısı: `live`, `readOnly: true`, `Marlin_Uyg`
+
+### Finansal uzlaşı
+
+Canlı üretim doğrulaması `qa/final-ledger/production-validation.json` dosyasına
+kaydedildi. Özet, departman, denetim defteri ve atıf toplamları üç yılın
+tamamında kuruş seviyesinde uzlaştı:
+
+| Yıl | KDV hariç net satış | Hedefe atanan satış | İnceleme gerekli | Denetim satırı |
+| --- | ---: | ---: | ---: | ---: |
+| 2024 | 152.936.676,03 TL | 152.717.337,11 TL | 219.338,92 TL | 25.789 |
+| 2025 | 238.357.967,21 TL | 238.155.493,57 TL | 202.473,64 TL | 29.834 |
+| 2026 | 193.089.413,13 TL | 192.871.169,73 TL | 218.243,40 TL | 19.232 |
+
+- Özet → departman, özet → denetim, hedef → atanmış departman ve aylık havuz
+  → özet farkları her yıl `0,00 TL`.
+- Geçici ekonomik satır, dönüştürülmüş perakende ekonomik satırı, Bircan
+  sahipliği, müşteri-kartı sahipliği ve ayrılış sonrası Özlenen Gençoğlu
+  sahipliği sayıları `0`.
+- İnceleme gerekli satışlar hedef gerçekleşmesine zorla atanmadı; görünür
+  inceleme tutarı toplam satış uzlaşısının içinde korunuyor.
+- `SSP-00979` dışlama işareti korunuyor.
+
+### Performans
+
+Canlı üretim sonucu `qa/final-ledger/production-performance.json` dosyasındadır.
+Her yılın SQL defterini zorla yenileyen soğuk ölçümler `77,6–95,1 saniye`
+aralığındadır. Kullanıcının normal ekran akışını temsil eden sıcak önbellek
+ölçümleri:
+
+| Uç | p95 |
+| --- | ---: |
+| Özet | 126,75 ms |
+| Departman analizi | 249,97 ms |
+| Hedefler | 53,17 ms |
+| Denetim defteri | 144,01 ms |
+| Birleşik sıcak p95 | 241,61 ms |
+
+Tüm sıcak uçlar `1.000 ms` kabul sınırının altında ve birleşik ölçüm `250 ms`
+yönetim hedefini karşılıyor. İlk konteyner açılışındaki 2025/2026 ön ısıtması
+yaklaşık 182 saniye sürdü; bu ilk yükleme süresidir, sıcak ekran gecikmesi
+değildir.
+
+### Arayüz doğrulaması
+
+Staging üzerinde Özet, Satışlar, Departmanlar, Veri Denetimi, Hedef Takibi,
+Ayarlar ve Onay & Kapanış sayfaları `1440×900`, `768×1024` ve `390×844`
+boyutlarında doğrulandı. Toplam 21 görünümde sayfa yatay taşması, üst başlık
+çakışması, kontrolsüz içerik taşması veya yüklemede takılma görülmedi.
+
+- Üretim Ticari Sorumlular listesinde `S001`, `DBS003` ve `A3149` gibi cari
+  kartlar yok.
+- Mehmet Kara, Furkan Çakır ve Burak Çetinel tam adlarıyla Servis
+  departmanında gösteriliyor.
+- Veri Denetimi ilk görünümünde Belge, Stok/Hizmet, Satış Net, Satır
+  Maliyeti, Brüt Kâr ve Doğrulama sütunlarının tamamı görünür.
+- Üretim tarayıcı konsolunda hata veya uyarı oluşmadı.
+
+### Operasyon notları
+
+- Üretim öncesi kaynak, uygulama durumu ve eski imaj yedekleri korundu.
+- Staging konteyneri, ara Nexus imajları ve geçici yükleme dizinleri dağıtım
+  sonrasında kaldırıldı.
+- Sunucu disk kullanımı `%94` seviyesinden `%90` seviyesine indirildi; doğrulama
+  sonunda yaklaşık `4,0 GB` boş alan vardı.
+- CPM yalnızca okunur veri kaynağıdır; doğrulama ve dağıtım sırasında CPM'e
+  yazma yapılmadı.
+
+## Önceki CPM dönüşüm analizi notu
 
 ## Değerlendirme
 
