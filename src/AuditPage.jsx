@@ -4,11 +4,12 @@ import {
   IconCircleCheck, IconDatabase, IconDownload, IconFileInvoice, IconFilter, IconSearch,
   IconSettings, IconShieldCheck, IconX, IconEdit, IconCheck,
 } from "@tabler/icons-react";
+import { DOCUMENT_TYPE_LABELS } from "./departmentEvidencePresentation.js";
 
 const money = new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 2 });
 const integer = new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 0 });
 const months = ["Tümü", "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
-const documentTypes = { 13: "Teklif", 14: "Satış siparişi", 15: "Satış irsaliyesi", 17: "Satış faturası", 18: "Satış iadesi", 64: "Sipariş onay", 85: "İrsaliyesiz fatura", 91: "Perakende satış" };
+const documentTypes = DOCUMENT_TYPE_LABELS;
 const methodLabels = {
   bulkPurchase: "Toplu alım stoku",
   priorPurchase: "İade hariç önceki son alım", nextPurchase: "İade hariç sonraki ilk alım",
@@ -191,39 +192,34 @@ export function AuditPage({ year, mode, pilotCardCostRates, settings, costOverri
       </div>
 
       <div className="table-scroll audit-table-wrap"><table className="audit-table"><thead><tr>
-        <th /><th>Belge</th><th>Kaynak</th><th>Stok / hizmet</th><th>Miktar</th>
-        <th>Satış brüt<small>KDV hariç</small></th><th>Satış iskontosu</th><th>Satış net<small>KDV hariç</small></th>
-        <th>Satış KDV</th><th>Fatura toplamı<small>KDV dahil</small></th><th>Maliyet belgesi</th>
-        <th>Satır maliyeti<small>KDV hariç</small></th><th>Brüt kâr<small>KDV hariç</small></th><th>Doğrulama</th>
+        <th aria-label="Detay" /><th>Belge</th><th>Stok / hizmet</th>
+        <th>Satış net<small>KDV hariç</small></th>
+        <th>Satır maliyeti<small>KDV hariç</small></th>
+        <th className="audit-table__profit">Brüt kâr<small>KDV hariç</small></th>
+        <th className="audit-table__validation">Doğrulama</th>
       </tr></thead><tbody>
         {rows.map((row)=><Fragment key={row.id}>
           <tr className={expanded===row.id?"is-expanded":""}>
-            <td><button className="row-action" onClick={()=>setExpanded(expanded===row.id?null:row.id)} aria-label="Detayı aç">{expanded===row.id?<IconChevronUp size={17}/>:<IconChevronDown size={17}/>}</button></td>
+            <td><button className="row-action" onClick={()=>setExpanded(expanded===row.id?null:row.id)} aria-label={expanded===row.id?"Detayı kapat":"Detayı aç"} aria-expanded={expanded===row.id} aria-controls={`audit-detail-${row.id}`}>{expanded===row.id?<IconChevronUp size={17}/>:<IconChevronDown size={17}/>}</button></td>
             <th><strong>{row.documentType}/{row.documentNo}</strong><small>{new Date(row.documentDate).toLocaleDateString("tr-TR")}</small></th>
-            <td>{sourceLabels[row.revenueSource]||row.revenueSource}</td>
             <td><strong>{row.cardCode}</strong><small>{row.cardName||"—"}</small></td>
-            <td>{money.format(row.quantity||0)}</td>
-            <td>{formatMoney(signed(row.grossAmount,row.isSale))}</td>
-            <td>{formatMoney(signed(row.discountAmount,row.isSale))}<small>%{money.format(row.discountPct||0)}</small></td>
-            <td className={row.isSale?"positive":"negative"}>{formatMoney(row.netSigned)}</td>
-            <td>{formatMoney(signed(row.vatAmount,row.isSale))}</td>
-            <td>{formatMoney(signed(row.invoiceTotalInclVat,row.isSale))}</td>
-            <td className="audit-purchase-cell"><strong>{row.purchaseNo?`${row.purchaseType}/${row.purchaseNo}`:row.configuredRate!=null?`Oran %${money.format(row.configuredRate)}`:"—"}</strong><small>{row.purchasePartyName||row.override?.reference||methodLabels[row.costMethod]}</small></td>
+            <td className={row.isSale?"positive":"negative"}><strong>{formatMoney(row.netSigned)}</strong></td>
             <td>{row.calculatedCost==null?"—":formatMoney(row.calculatedCost)}</td>
-            <td className={row.grossProfit==null?"":row.grossProfit>=0?"positive":"negative"}>{row.grossProfit==null?"—":formatMoney(row.grossProfit)}</td>
-            <td><span className={`audit-status audit-status--${row.override?.status === "approved" ? "verified" : row.override ? "review" : row.verificationStatus}`}>{row.override?.status === "approved" ? "Manuel · onaylı" : row.override ? "Yönetim onayı bekliyor" : verificationLabels[row.verificationStatus]}</span>{row.returnRisk&&<span className="audit-return-flag">İade ayıklandı</span>}</td>
+            <td className={`audit-table__profit ${row.grossProfit==null?"":row.grossProfit>=0?"positive":"negative"}`}>{row.grossProfit==null?"—":formatMoney(row.grossProfit)}</td>
+            <td className="audit-table__validation"><span className={`audit-status audit-status--${row.override?.status === "approved" ? "verified" : row.override ? "review" : row.verificationStatus}`}>{row.override?.status === "approved" ? "Manuel · onaylı" : row.override ? "Yönetim onayı bekliyor" : verificationLabels[row.verificationStatus]}</span>{row.returnRisk&&<span className="audit-return-flag">İade ayıklandı</span>}</td>
           </tr>
-          {expanded===row.id&&<tr className="audit-detail-row"><td colSpan="14"><div className="audit-detail-grid">
-            <div><small>Satış hesabı · KDV hariç</small><strong>{money.format(row.grossAmount||0)} − {money.format(row.discountAmount||0)} = {money.format(row.netAmount||0)} TL</strong><p>İskonto %{money.format(row.discountPct||0)} · CPM satır kimliği {row.id}</p></div>
+          {expanded===row.id&&<tr className="audit-detail-row" id={`audit-detail-${row.id}`}><td colSpan="7"><div className="audit-detail-grid">
+            <div><small>Belge bağlamı</small><strong>{sourceLabels[row.revenueSource]||row.revenueSource} · {money.format(row.quantity||0)} {row.unitName||"miktar"}</strong><p>Cari {row.customerCode||"—"} · stok kartı {row.cardCode} · CPM satır kimliği {row.id}</p></div>
+            <div><small>Satış hesabı · KDV hariç</small><strong>{money.format(row.grossAmount||0)} − {money.format(row.discountAmount||0)} = {money.format(row.netAmount||0)} TL</strong><p>İskonto %{money.format(row.discountPct||0)}</p></div>
             <div><small>KDV ve fatura toplamı</small><strong>{money.format(row.netAmount||0)} + {money.format(row.vatAmount||0)} = {money.format(row.invoiceTotalInclVat||0)} TL</strong><p>KDV %{money.format(row.vatRate||0)} · toplam KDV dahil</p></div>
             <div><small>Kaynak evrak</small><strong>{row.sourceDocumentNo?`${row.sourceDocumentType}/${row.sourceDocumentNo}`:"Doğrudan oluşturulmuş"}</strong><p>{sourceLabels[row.revenueSource]}{row.originalSaleNo?` · Orijinal satış ${row.originalSaleType}/${row.originalSaleNo}`:""}</p></div>
             <div><small>Seçilen maliyet belgesi</small><strong>{row.purchaseNo?`${row.purchaseType}/${row.purchaseNo}`:row.configuredRate!=null?`Yönetim oranı %${money.format(row.configuredRate)}`:"Alım faturası yok"}</strong><p>{row.purchasePartyName||evidenceClassLabels[row.costEvidenceClass]||"CPM kontrolü gerekli"}{row.purchaseDate?` · ${new Date(row.purchaseDate).toLocaleDateString("tr-TR")}`:""}</p></div>
             <div><small>Alım faturası · KDV hariç</small><strong>{row.purchaseNo?`${money.format(row.purchaseGrossAmount||0)} − ${money.format(row.purchaseDiscountAmount||0)} = ${money.format(row.purchaseNetAmount||0)} TL`:"Belge tutarı yok"}</strong><p>{row.purchaseNo?`%${money.format(row.purchaseDiscountRate1||0)} + %${money.format(row.purchaseDiscountRate2||0)} → efektif %${money.format(row.purchaseEffectiveDiscountPct||0)} · KDV ${money.format(row.purchaseVatAmount||0)} TL`:"Pilot kart veya manuel maliyet"}</p></div>
-            <div><small>Maliyet ve brüt kâr · KDV hariç</small><strong>{row.override?`${money.format(row.quantity||0)} × ${money.format(row.override.unitCost)} = ${money.format(Math.abs(row.calculatedCost||0))} TL`:row.unitCost!=null?`${money.format(row.quantity||0)} × ${money.format(row.unitCost)} = ${money.format(Math.abs(row.calculatedCost||0))} TL`:row.configuredRate!=null?`${money.format(row.netAmount||0)} × %${row.configuredRate} = ${money.format(Math.abs(row.calculatedCost||0))} TL`:"Hesaba alınmadı"}</strong><p>{row.costValidationReason} KDV maliyete dahil değildir.</p>{(row.verificationStatus === "review" || row.override) && <div className="table-actions"><button className="secondary-button" onClick={() => openCostEditor(row)}><IconEdit size={16}/> {row.override ? "Kararı düzenle" : "Maliyet gir"}</button>{row.override?.status === "pending" && <button className="primary-action" onClick={() => approveManualCost(row)}><IconCheck size={16}/> Yönetim onayı ver</button>}</div>}</div>
+            <div><small>Maliyet doğrulama ve brüt kâr · KDV hariç</small><strong>{row.override?`${money.format(row.quantity||0)} × ${money.format(row.override.unitCost)} = ${money.format(Math.abs(row.calculatedCost||0))} TL`:row.unitCost!=null?`${money.format(row.quantity||0)} × ${money.format(row.unitCost)} = ${money.format(Math.abs(row.calculatedCost||0))} TL`:row.configuredRate!=null?`${money.format(row.netAmount||0)} × %${row.configuredRate} = ${money.format(Math.abs(row.calculatedCost||0))} TL`:"Hesaba alınmadı"}</strong><p>{row.costValidationReason} KDV maliyete dahil değildir.</p>{(row.verificationStatus === "review" || row.override) && <div className="table-actions"><button className="secondary-button" onClick={() => openCostEditor(row)}><IconEdit size={16}/> {row.override ? "Kararı düzenle" : "Maliyet gir"}</button>{row.override?.status === "pending" && <button className="primary-action" onClick={() => approveManualCost(row)}><IconCheck size={16}/> Yönetim onayı ver</button>}</div>}</div>
             {row.returnRisk&&<div className="audit-return-evidence"><small>Maliyetten çıkarılan müşteri iadesi</small><strong>{row.rejectedReturnType}/{row.rejectedReturnNo}</strong><p>{row.rejectedReturnPartyName||row.rejectedReturnAccountCode||"—"}{row.rejectedReturnDate?` · ${new Date(row.rejectedReturnDate).toLocaleDateString("tr-TR")}`:""} · EFAGLN açıklamasında iade kanıtı bulundu.</p></div>}
           </div></td></tr>}
         </Fragment>)}
-        {!loading&&!rows.length&&<tr><td colSpan="14" className="empty-state">Bu filtrelere uygun CPM kaydı bulunamadı.</td></tr>}
+        {!loading&&!rows.length&&<tr><td colSpan="7" className="empty-state">Bu filtrelere uygun CPM kaydı bulunamadı.</td></tr>}
       </tbody></table></div>
       <div className="audit-pagination"><label>Sayfa boyutu <select value={pageSize} onChange={(event)=>{setPageSize(Number(event.target.value));setPage(1);}}>{[25,50,100].map((size)=><option key={size}>{size}</option>)}</select></label><span>{integer.format((page-1)*pageSize+Math.min(rows.length?1:0,1))}–{integer.format((page-1)*pageSize+rows.length)} / {integer.format(data.summary?.totalRows||0)}</span><div><button disabled={page<=1} onClick={()=>setPage((value)=>value-1)}><IconChevronLeft size={17}/> Önceki</button><button disabled={page>=totalPages} onClick={()=>setPage((value)=>value+1)}>Sonraki <IconChevronRight size={17}/></button></div></div>
     </section>

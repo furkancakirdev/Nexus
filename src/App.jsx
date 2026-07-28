@@ -32,7 +32,6 @@ import { SummaryPage } from "./SummaryPage";
 import { SalesPage } from "./SalesPage";
 import { DepartmentAnalysisPage } from "./DepartmentAnalysisPage";
 import { AuditPage } from "./AuditPage";
-import { PerformancePage } from "./PerformancePage";
 import {
   DEFAULT_SETTINGS,
   normalizeSettings,
@@ -51,13 +50,23 @@ const NAV_ITEMS = [
   { page: "audit", label: "Veri Denetimi" },
   { page: "ledger", label: "Havuz" },
   { page: "goals", label: "Hedef Takibi" },
-  { page: "performance", label: "Katkı & Performans" },
   { page: "reports", label: "Raporlar" },
   { page: "approval", label: "Onay & Kapanış" },
   { page: "settings", label: "Ayarlar" },
 ];
 
 const DEFAULT_APPEARANCE = { theme: "light", density: "comfortable", highContrast: false, reducedMotion: false, defaultPage: "summary" };
+
+function normalizeAppearance(value = {}) {
+  const appearance = { ...DEFAULT_APPEARANCE, ...value };
+  const availablePages = new Set(NAV_ITEMS.map((item) => item.page));
+  return {
+    ...appearance,
+    defaultPage: availablePages.has(appearance.defaultPage)
+      ? appearance.defaultPage
+      : DEFAULT_APPEARANCE.defaultPage,
+  };
+}
 
 const fallbackRows = [
   [1, "Ocak", 168_520_000, 4_210_000, 6_180_000, 100_845_000, 83.8],
@@ -113,12 +122,16 @@ async function fetchDepartmentTargetState(year) {
 }
 
 export function App() {
-  const [appearance, setAppearance] = useState(()=>{ try{return {...DEFAULT_APPEARANCE,...JSON.parse(localStorage.getItem("marlin-appearance")||"{}")};}catch{return DEFAULT_APPEARANCE;} });
+  const [appearance, setAppearance] = useState(()=>{ try{return normalizeAppearance(JSON.parse(localStorage.getItem("marlin-appearance")||"{}"));}catch{return DEFAULT_APPEARANCE;} });
   const [appearanceOpen,setAppearanceOpen]=useState(false);
   const [activePage, setActivePage] = useState(() => {
     const requestedPage = new URLSearchParams(window.location.search).get("page");
     const availablePages = new Set(NAV_ITEMS.map((item) => item.page));
-    return availablePages.has(requestedPage) ? requestedPage : (appearance.defaultPage || "summary");
+    return availablePages.has(requestedPage)
+      ? requestedPage
+      : availablePages.has(appearance.defaultPage)
+        ? appearance.defaultPage
+        : DEFAULT_APPEARANCE.defaultPage;
   });
   const [employees, setEmployees] = useState(() => {
     try {
@@ -411,7 +424,7 @@ export function App() {
         <button className="icon-button" onClick={()=>setAppearanceOpen(true)} aria-label="Görünüm ayarları"><IconAdjustmentsHorizontal size={19} /></button>
       </header>
 
-      {appearanceOpen&&<div className="appearance-backdrop" onMouseDown={(event)=>event.target===event.currentTarget&&setAppearanceOpen(false)}><aside className="appearance-drawer" role="dialog" aria-modal="true" aria-labelledby="appearance-title"><div className="appearance-drawer__head"><div><p className="eyebrow">Arayüz tercihleri</p><h2 id="appearance-title">Görünüm Ayarları</h2></div><button className="modal-close" onClick={()=>setAppearanceOpen(false)} aria-label="Kapat"><IconX size={20}/></button></div><div className="appearance-fields"><label><span>Tema</span><select value={appearance.theme} onChange={(event)=>setAppearance({...appearance,theme:event.target.value})}><option value="light">Açık</option><option value="dark">Koyu</option></select></label><label><span>Ekran yoğunluğu</span><select value={appearance.density} onChange={(event)=>setAppearance({...appearance,density:event.target.value})}><option value="comfortable">Rahat</option><option value="compact">Kompakt</option></select></label><label><span>Başlangıç sayfası</span><select value={appearance.defaultPage} onChange={(event)=>setAppearance({...appearance,defaultPage:event.target.value})}><option value="summary">Özet</option><option value="ledger">Havuz</option><option value="sales">Satışlar</option><option value="departments">Departman Analizi</option><option value="performance">Katkı &amp; Performans</option><option value="reports">Raporlar</option><option value="audit">Veri Denetimi</option></select></label><label className="appearance-check"><span><strong>Yüksek kontrast</strong><small>Metin ve sınır ayrımını güçlendirir.</small></span><input type="checkbox" checked={appearance.highContrast} onChange={(event)=>setAppearance({...appearance,highContrast:event.checked})}/></label><label className="appearance-check"><span><strong>Hareketi azalt</strong><small>Grafik ve geçiş animasyonlarını kapatır.</small></span><input type="checkbox" checked={appearance.reducedMotion} onChange={(event)=>setAppearance({...appearance,reducedMotion:event.checked})}/></label></div><div className="employee-modal__actions"><button className="secondary-button" onClick={()=>setAppearance(DEFAULT_APPEARANCE)}>Varsayılana dön</button><button className="primary-action" onClick={()=>setAppearanceOpen(false)}><IconCheck size={17}/> Tamam</button></div></aside></div>}
+      {appearanceOpen&&<div className="appearance-backdrop" onMouseDown={(event)=>event.target===event.currentTarget&&setAppearanceOpen(false)}><aside className="appearance-drawer" role="dialog" aria-modal="true" aria-labelledby="appearance-title"><div className="appearance-drawer__head"><div><p className="eyebrow">Arayüz tercihleri</p><h2 id="appearance-title">Görünüm Ayarları</h2></div><button className="modal-close" onClick={()=>setAppearanceOpen(false)} aria-label="Kapat"><IconX size={20}/></button></div><div className="appearance-fields"><label><span>Tema</span><select value={appearance.theme} onChange={(event)=>setAppearance({...appearance,theme:event.target.value})}><option value="light">Açık</option><option value="dark">Koyu</option></select></label><label><span>Ekran yoğunluğu</span><select value={appearance.density} onChange={(event)=>setAppearance({...appearance,density:event.target.value})}><option value="comfortable">Rahat</option><option value="compact">Kompakt</option></select></label><label><span>Başlangıç sayfası</span><select value={appearance.defaultPage} onChange={(event)=>setAppearance({...appearance,defaultPage:event.target.value})}><option value="summary">Özet</option><option value="ledger">Havuz</option><option value="sales">Satışlar</option><option value="departments">Departman Analizi</option><option value="reports">Raporlar</option><option value="audit">Veri Denetimi</option></select></label><label className="appearance-check"><span><strong>Yüksek kontrast</strong><small>Metin ve sınır ayrımını güçlendirir.</small></span><input type="checkbox" checked={appearance.highContrast} onChange={(event)=>setAppearance({...appearance,highContrast:event.checked})}/></label><label className="appearance-check"><span><strong>Hareketi azalt</strong><small>Grafik ve geçiş animasyonlarını kapatır.</small></span><input type="checkbox" checked={appearance.reducedMotion} onChange={(event)=>setAppearance({...appearance,reducedMotion:event.checked})}/></label></div><div className="employee-modal__actions"><button className="secondary-button" onClick={()=>setAppearance(DEFAULT_APPEARANCE)}>Varsayılana dön</button><button className="primary-action" onClick={()=>setAppearanceOpen(false)}><IconCheck size={17}/> Tamam</button></div></aside></div>}
 
       {activePage === "summary" ? (
         <SummaryPage
@@ -452,8 +465,6 @@ export function App() {
           year={year}
           onBack={() => setActivePage("ledger")}
         />
-      ) : activePage === "performance" ? (
-        <PerformancePage year={year} mode={mode} onNavigate={setActivePage} />
       ) : activePage === "approval" ? (
         <ApprovalPage
           rows={enrichedRows}

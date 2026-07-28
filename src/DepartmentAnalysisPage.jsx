@@ -9,6 +9,11 @@ import {
   IconFilter, IconHierarchy, IconPackage, IconRefresh, IconSearch,
   IconShieldCheck, IconTool, IconTrendingUp, IconUsers,
 } from "@tabler/icons-react";
+import {
+  actorDisplayName,
+  documentTypeLabel,
+  normalizeActorCode,
+} from "./departmentEvidencePresentation.js";
 
 const money = new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 0 });
 const compact = new Intl.NumberFormat("tr-TR", { notation: "compact", maximumFractionDigits: 1 });
@@ -234,12 +239,245 @@ export function DepartmentAnalysisPage({ year, mode: appMode, consolidatedRows =
   </main>;
 }
 
+const ATTRIBUTION_LABELS = {
+  "macro-source-order": "Kaynak siparişteki açık atıf",
+  "supported-source-seller": "Kaynak evrak ve işlem geçmişi",
+  "retail-history": "Perakende satış işlem geçmişi",
+  "upstream-history": "İlk ticari işlem geçmişi",
+  "same-department-consensus": "Aynı departman aktör uzlaşısı",
+  "b2b-candidate-hint": "Yakın B2B belge aday ipucu",
+  "depot-fallback": "Yalnız depo ipucu, inceleme gerekli",
+  "original-sale-owner": "Bağlı ilk satışın ticari sahibi",
+  "review-required": "Ticari sahiplik kanıtı bulunamadı",
+  "macro-conflict": "Kaynak sipariş atıfları çelişkili",
+};
+
+const COST_LABELS = {
+  bulkPurchase: "Toplu alım stoku",
+  priorPurchase: "Önceki nihai alım faturası",
+  nextPurchase: "Sonraki nihai alım faturası",
+  originalSaleCost: "İlk satışın maliyet kanıtı",
+  configuredLabor: "İşçilik oranı",
+  configuredSrf: "SRF oranı",
+  configuredTsr: "TSR oranı",
+  configuredRoad: "Yol oranı",
+  manualDecision: "Yönetim maliyet kararı",
+  missingPurchase: "Maliyet kanıtı eksik",
+};
+
+const ACTOR_ROLE_LABELS = {
+  "history-entry": "İlk kayıt",
+  "history-change": "Değişiklik / muhasebe işlemi",
+};
+
+const EXCLUSION_LABELS = {
+  "customer-like-code": "Cari kart kodu, personel değil",
+  "non-commercial-user": "Ticari olmayan / muhasebe aktörü",
+  "outside-employment-period": "Çalışma dönemi dışında",
+  "invalid-event-date": "İşlem tarihi doğrulanamadı",
+  "seller-without-stable-entry-event": "İlk ticari işlemle doğrulanamadı",
+};
+
+function actorName(code, row) {
+  const preferredName = normalizeActorCode(code) === normalizeActorCode(row.commercialOwner)
+    ? row.commercialOwnerName
+    : null;
+  return actorDisplayName(code, preferredName);
+}
+
+function documentIdentity(document) {
+  return document.headerId
+    || document.lineageId
+    || `${document.documentType}|${document.documentNo}|${document.customerCode || ""}`;
+}
+
+function orderedDocuments(row) {
+  const unique = new Map();
+  for (const document of row.evidenceDocuments || []) {
+    if (!document?.documentNo) continue;
+    unique.set(documentIdentity(document), document);
+  }
+  return [...unique.values()].sort((left, right) => (
+    Number(right.depth || 0) - Number(left.depth || 0)
+    || String(left.documentDate || "").localeCompare(String(right.documentDate || ""))
+    || Number(left.documentType || 0) - Number(right.documentType || 0)
+  ));
+}
+
+function orderedActors(row) {
+  return [...(row.actorEvents || [])].sort((left, right) => (
+    String(left.firstSeen || "").localeCompare(String(right.firstSeen || ""))
+    || String(left.actorCode || "").localeCompare(String(right.actorCode || ""), "tr")
+  ));
+}
+
 function FragmentRow({ row, expanded, onToggle }) {
   const margin = row.netSales ? row.profit / row.netSales * 100 : 0;
-  const methodLabels = { "explicit-department": "Departman alanı", "source-owner": "Kaynak sipariş sorumlusu", "document-owner": "Belge sorumlusu", "user-fallback": "Kullanıcı eşlemesi", "nearby-document-hint": "Yakın belge aday ipucu", review: "İnceleme gerekli" };
-  const costLabels = { bulkPurchase: "Toplu alım stoku", priorPurchase: "Önceki alım", nextPurchase: "Sonraki alım", configuredLabor: "İşçilik oranı", configuredSrf: "SRF oranı", configuredTsr: "TSR oranı", configuredRoad: "Yol oranı", manualDecision: "Yönetim kararı", missingPurchase: "Maliyet eksik" };
+  const documents = orderedDocuments(row);
+  const actors = orderedActors(row);
+  const excludedActors = row.ownershipEvidence?.excludedActors || [];
+
   return <>
-    <tr className={expanded ? "expanded" : ""}><td><button className="row-toggle" onClick={onToggle} aria-label={expanded ? "Detayı kapat" : "Detayı aç"}>{expanded ? <IconChevronDown size={16} /> : <IconChevronRight size={16} />}</button></td><th><strong>{row.documentType}/{row.documentNo}</strong><small>{formatDate(row.documentDate)}</small></th><td><DepartmentBadge department={row.department} /></td><td><strong>{row.commercialOwnerName}</strong><small>{row.commercialOwner || "Kod yok"}</small></td><td><strong>{row.customerName}</strong><small>{row.customerCode}</small></td><td><strong>{row.productName}</strong><small>{row.productCode}</small></td><td><strong>{formatMoney(row.netSales)}</strong></td><td>{row.costCovered ? formatMoney(row.cost) : <span className="negative">Eksik</span>}</td><td className={row.profit >= 0 ? "positive" : "negative"}><strong>{formatMoney(row.profit)}</strong><small>{percent(margin)}</small></td><td><strong>{row.fulfillmentDepotName}</strong>{row.crossDepot && <small className="cross-depot-label">Çapraz depo</small>}</td><td><span className={`evidence-pill evidence-pill--${row.attributionStatus}`}>{row.attributionStatus === "confirmed" ? "Teyitli" : row.attributionStatus === "inferred" ? "Eşleme" : "İncele"}</span></td></tr>
-    {expanded && <tr className="department-ledger-detail"><td colSpan="11"><div><span><small>Atıf dayanağı</small><strong>{methodLabels[row.attributionMethod] || row.attributionMethod}</strong></span><span><small>Kaynak sipariş</small><strong>{row.sourceOrderNo || "Bağlantı yok"}</strong></span><span><small>Aday belge</small><strong>{row.candidateDocumentNo ? `${row.candidateDocumentType}/${row.candidateDocumentNo}` : "Yok"}</strong></span><span><small>Maliyet kanıtı</small><strong>{costLabels[row.costMethod] || row.costMethod}</strong></span><span><small>Çalışma merkezi</small><strong>{row.ownerLocation}</strong></span><span><small>Kaynak türü</small><strong>{row.revenueSource === "invoice" ? "Nihai belge" : row.revenueSource === "return" ? "Satış iadesi" : "Doğrulanmış geçici"}</strong></span><span><small>Kontrol</small><strong>{row.batchRisk ? "91→85 toplu işlem uyarısı" : "Standart akış"}</strong></span></div></td></tr>}
+    <tr className={expanded ? "expanded" : ""}>
+      <td>
+        <button
+          className="row-toggle"
+          onClick={onToggle}
+          aria-label={expanded ? "Detayı kapat" : "Detayı aç"}
+          aria-expanded={expanded}
+          aria-controls={`department-detail-${row.id}`}
+        >
+          {expanded
+            ? <IconChevronDown size={16} />
+            : <IconChevronRight size={16} />}
+        </button>
+      </td>
+      <th>
+        <strong>{row.documentType}/{row.documentNo}</strong>
+        <small>{formatDate(row.documentDate)}</small>
+      </th>
+      <td><DepartmentBadge department={row.department} /></td>
+      <td>
+        <strong>{row.commercialOwnerName || "Belirsiz"}</strong>
+        <small>{row.commercialOwner || "Kod yok"}</small>
+      </td>
+      <td><strong>{row.customerName}</strong><small>{row.customerCode}</small></td>
+      <td><strong>{row.productName}</strong><small>{row.productCode}</small></td>
+      <td><strong>{formatMoney(row.netSales)}</strong></td>
+      <td>{row.costCovered
+        ? formatMoney(row.cost)
+        : <span className="negative">Eksik</span>}
+      </td>
+      <td className={row.profit >= 0 ? "positive" : "negative"}>
+        <strong>{formatMoney(row.profit)}</strong><small>{percent(margin)}</small>
+      </td>
+      <td>
+        <strong>{row.fulfillmentDepotName}</strong>
+        {row.crossDepot && <small className="cross-depot-label">Çapraz depo</small>}
+      </td>
+      <td>
+        <span className={`evidence-pill evidence-pill--${row.attributionStatus}`}>
+          {row.attributionStatus === "confirmed"
+            ? "Teyitli"
+            : row.attributionStatus === "inferred" ? "Eşleme" : "İncele"}
+        </span>
+      </td>
+    </tr>
+    {expanded && (
+      <tr className="department-ledger-detail" id={`department-detail-${row.id}`}>
+        <td colSpan="11">
+          <div className="department-evidence-summary">
+            <span>
+              <small>Atıf dayanağı</small>
+              <strong>
+                {ATTRIBUTION_LABELS[row.attributionMethod]
+                  || row.attributionMethod
+                  || "İnceleme gerekli"}
+              </strong>
+            </span>
+            <span>
+              <small>Ticari sorumlu</small>
+              <strong>
+                {row.commercialOwnerName || "Belirsiz"}
+                {row.commercialOwner ? ` (${row.commercialOwner})` : ""}
+              </strong>
+            </span>
+            <span>
+              <small>Kaynak sipariş</small>
+              <strong>{row.sourceOrderNo || "Bağlantı yok"}</strong>
+            </span>
+            <span>
+              <small>Teslimat bağlamı</small>
+              <strong>
+                {row.fulfillmentDepotName}
+                {row.crossDepot ? " · çapraz depo" : ""}
+              </strong>
+            </span>
+            <span>
+              <small>Maliyet kanıtı</small>
+              <strong>{COST_LABELS[row.costMethod] || row.costMethod || "Eksik"}</strong>
+            </span>
+            <span>
+              <small>Kontrol</small>
+              <strong>
+                {row.batchRisk
+                  ? "91→85 toplu işlem uyarısı"
+                  : row.candidateDocumentNo
+                    ? `Aday ${row.candidateDocumentType}/${row.candidateDocumentNo}`
+                    : "Standart akış"}
+              </strong>
+            </span>
+          </div>
+
+          <div className="department-evidence-sections">
+            <section>
+              <h3>Evrak zinciri</h3>
+              <div className="evidence-timeline">
+                {documents.map((document) => (
+                  <div key={documentIdentity(document)}>
+                    <i />
+                    <span>
+                      <small>
+                        {documentTypeLabel(document.documentType)}
+                      </small>
+                      <strong>{document.documentType}/{document.documentNo}</strong>
+                      <em>
+                        {formatDate(document.documentDate)}
+                        {Number(document.depth || 0) > 0
+                          ? ` · kaynak derinliği ${document.depth}`
+                          : " · sonuç belgesi"}
+                      </em>
+                    </span>
+                  </div>
+                ))}
+                {!documents.length && <p>Bağlı evrak kanıtı bulunamadı.</p>}
+              </div>
+            </section>
+
+            <section>
+              <h3>Aktör geçmişi</h3>
+              <div className="actor-history">
+                {actors.map((actor, index) => (
+                  <div key={`${actor.actorCode}-${actor.firstSeen}-${index}`}>
+                    <span>
+                      <strong>{actorName(actor.actorCode, row)}</strong>
+                      <small>{normalizeActorCode(actor.actorCode) || "Kod yok"}</small>
+                    </span>
+                    <span>
+                      <strong>
+                        {ACTOR_ROLE_LABELS[actor.actorRole]
+                          || actor.actorRole
+                          || "CPM işlemi"}
+                      </strong>
+                      <small>{formatDate(actor.firstSeen)}</small>
+                    </span>
+                  </div>
+                ))}
+                {!actors.length && <p>Aktör geçmişi bulunamadı.</p>}
+              </div>
+            </section>
+
+            <section>
+              <h3>Dışlanan aktörler</h3>
+              <div className="excluded-actors">
+                {excludedActors.map((actor, index) => (
+                  <div key={`${actor.code}-${actor.reason}-${index}`}>
+                    <strong>{actorName(actor.code, row)}</strong>
+                    <small>
+                      {normalizeActorCode(actor.code)}
+                      {" · "}
+                      {EXCLUSION_LABELS[actor.reason] || actor.reason}
+                    </small>
+                  </div>
+                ))}
+                {!excludedActors.length && (
+                  <p>Ticari sahiplikten dışlanan aktör bulunmuyor.</p>
+                )}
+              </div>
+            </section>
+          </div>
+        </td>
+      </tr>
+    )}
   </>;
 }
