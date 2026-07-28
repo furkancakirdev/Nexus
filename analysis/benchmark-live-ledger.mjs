@@ -82,6 +82,15 @@ async function timedJson(base, path) {
   return { elapsedMs, payload };
 }
 
+async function primeWarmEndpoints(base, year) {
+  for (const endpoint of ENDPOINTS) {
+    await timedJson(
+      base,
+      `${endpoint.path}?year=${year}${endpoint.suffix || ""}`,
+    );
+  }
+}
+
 export async function benchmarkRemoteLedger({
   base,
   years = DEFAULT_YEARS,
@@ -94,6 +103,7 @@ export async function benchmarkRemoteLedger({
   for (const year of years) {
     const coldRead = await timedJson(base, `/api/overview?year=${year}&refresh=1`);
     cold.push({ year, elapsedMs: Number(coldRead.elapsedMs.toFixed(2)) });
+    await primeWarmEndpoints(base, year);
     for (let iteration = 0; iteration < iterations; iteration += 1) {
       for (const endpoint of ENDPOINTS) {
         const result = await timedJson(
