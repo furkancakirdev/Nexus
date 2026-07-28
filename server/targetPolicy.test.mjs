@@ -185,6 +185,37 @@ test("iç içe hedef ayar nesneleri null array veya bozuk nesne olamaz", () => {
   }
 });
 
+test("kök hedef ayarı yalnız plain record veya undefined olabilir", () => {
+  class CustomSettings {
+    constructor() {
+      this.reserveRate = 5;
+    }
+  }
+
+  assert.doesNotThrow(() => buildDepartmentTargets({
+    year: 2026,
+    currentRows: [],
+    previousRows: [],
+    settings: undefined,
+  }));
+
+  for (const invalid of [
+    null,
+    [],
+    new Number(10),
+    new Date("2026-01-01"),
+    new CustomSettings(),
+    () => ({}),
+  ]) {
+    assert.throws(() => buildDepartmentTargets({
+      year: 2026,
+      currentRows: [],
+      previousRows: [],
+      settings: invalid,
+    }), /ayarları nesne/i);
+  }
+});
+
 test("ham hedef tutarlarında yalnız missing ve undefined varsayılan kullanır", () => {
   for (const currentRow of [
     {

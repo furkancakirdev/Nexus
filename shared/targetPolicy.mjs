@@ -229,20 +229,18 @@ function departmentSetting(map, department, fallback) {
   return fallback;
 }
 
-function normalizePolicySettings(settings = {}) {
-  if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
-    throw new TypeError("Hedef ayarları nesne olmalı.");
-  }
-  const rates = optionalRecord(settings.rates, "Dağıtım oranları");
+function normalizePolicySettings(settings) {
+  const rootSettings = optionalRecord(settings, "Hedef ayarları");
+  const rates = optionalRecord(rootSettings.rates, "Dağıtım oranları");
   const growthTargets = optionalRecord(
-    settings.departmentGrowthTargets,
+    rootSettings.departmentGrowthTargets,
     "Departman hedef büyüme oranları",
   );
   const stretchThresholds = optionalRecord(
-    settings.departmentStretchThresholds,
+    rootSettings.departmentStretchThresholds,
     "Departman hedef üstü eşikleri",
   );
-  const reserveRate = percentage(settings.reserveRate, "Risk rezervi", 5);
+  const reserveRate = percentage(rootSettings.reserveRate, "Risk rezervi", 5);
   const conservativeRate = percentage(
     rates.conservative,
     "Temkinli dağıtım oranı",

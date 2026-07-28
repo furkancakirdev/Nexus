@@ -1040,6 +1040,69 @@ test("departman hedef API açık null ve bozuk nested ayarları 400 metadata ile
   });
 });
 
+test("departman hedef API kök ayar konteynerini doğrular ve yalnız missing değeri varsayar", async () => {
+  let appState = {};
+  const service = createLedgerService({
+    loadYear: async (year) => {
+      const ledger = apiFixtureLedger();
+      ledger.rows = ledger.rows.map((row) => ({
+        ...row,
+        documentDate: row.documentDate.replace(/^2026/, String(year)),
+      }));
+      return ledger;
+    },
+  });
+  const router = createUnifiedLedgerRouter({
+    ledgerService: service,
+    getAppState: async () => appState,
+    logger: { error() {} },
+  });
+
+  class CustomSettings {
+    constructor() {
+      this.reserveRate = 5;
+    }
+  }
+
+  await withApiServer(router, async (baseUrl) => {
+    for (const validState of [{}, { settings: undefined }]) {
+      appState = validState;
+      const response = await fetch(
+        `${baseUrl}/api/department-targets?year=2026`,
+      );
+      const payload = await response.json();
+
+      assert.equal(response.status, 200);
+      assert.equal(payload.mode, "live");
+      assert.equal(payload.rows.length, 24);
+      assertLedgerMetadata(payload);
+    }
+
+    for (const invalid of [
+      null,
+      [],
+      new Number(10),
+      new Date("2026-01-01"),
+      new CustomSettings(),
+      () => ({}),
+    ]) {
+      appState = { settings: invalid };
+      const response = await fetch(
+        `${baseUrl}/api/department-targets?year=2026`,
+      );
+      const payload = await response.json();
+
+      assert.equal(response.status, 400);
+      assert.equal(payload.mode, "invalid");
+      assert.deepEqual(payload.rows, []);
+      assertLedgerMetadata(payload);
+      assert.equal(typeof payload.previousLedgerVersion, "string");
+      assert.equal(typeof payload.previousGeneratedAt, "string");
+      assert.equal(typeof payload.previousCacheStatus, "string");
+    }
+  });
+});
+
 test("departman hedef API ekran ayrıntısının 500 satır sınırından etkilenmez", async () => {
   const service = createLedgerService({
     loadYear: async (year) => {

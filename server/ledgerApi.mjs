@@ -604,7 +604,7 @@ export function createUnifiedLedgerRouter({
           year,
           currentRows: targetSourceRows(currentAnalysis),
           previousRows: targetSourceRows(previousAnalysis),
-          settings: state.settings || {},
+          settings: state.settings,
         });
       } catch (error) {
         if (!(error instanceof TypeError || error instanceof RangeError)) {
