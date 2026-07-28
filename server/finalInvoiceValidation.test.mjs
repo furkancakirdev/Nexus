@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
@@ -56,6 +57,8 @@ function validPayloads() {
         filteredNetAmount: 600,
         analysisNetAmount: 100,
         excludedNetAmount: 500,
+        provisionalEconomicRows: 0,
+        convertedRetailEconomicRows: 0,
       },
       rows: [{
         documentType: 85,
@@ -152,15 +155,23 @@ test("geçici veya nihai faturaya dönüşmüş perakende ekonomisini reddeder",
   );
 
   const convertedRetail = validPayloads();
-  convertedRetail.audit.rows[0] = {
-    documentType: 91,
-    revenueSource: "invoice",
-    convertedToFinal: true,
-  };
+  convertedRetail.audit.rows = [];
+  convertedRetail.audit.summary.convertedRetailEconomicRows = 1;
   assert.throws(
     () => validateYearPayloads(2026, convertedRetail),
     /dönüşmüş perakende/,
   );
+});
+
+test("uzak doğrulama tam audit defteri yerine sunucu özet sayımlarını kullanır", async () => {
+  const validationSource = await readFile(
+    new URL("../analysis/validate-final-invoice-ledger.mjs", import.meta.url),
+    "utf8",
+  );
+
+  assert.doesNotMatch(validationSource, /audit-ledger\?\$\{query\}&export=1/);
+  assert.match(validationSource, /audit\.summary\?\.provisionalEconomicRows/);
+  assert.match(validationSource, /audit\.summary\?\.convertedRetailEconomicRows/);
 });
 
 test("departman ve aylık havuz toplamı sapmalarını reddeder", () => {

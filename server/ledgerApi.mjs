@@ -201,6 +201,15 @@ function costEvidenceClass(row) {
   return "missing";
 }
 
+function isConvertedRetail(row) {
+  return Number(row?.documentType) === 91 && Boolean(
+    row?.convertedRetail
+    || row?.convertedToFinal
+    || row?.retailConverted
+    || row?.isConvertedRetail,
+  );
+}
+
 function auditRow(row) {
   const netAmount = number(row.netAmount);
   const grossAmount = number(row.grossAmount);
@@ -221,6 +230,7 @@ function auditRow(row) {
     [AUDIT_SORT_TIME]: Date.parse(row.documentDate) || 0,
     id: row.rootId,
     revenueSource: row.isSale ? "invoice" : "return",
+    provisionalEconomic: row.revenueSource === "provisional" || row.provisional === true,
     customerCode: row.customerCode || "",
     cardCode: row.productCode || "",
     cardName: row.productName || row.productCode || "",
@@ -304,6 +314,8 @@ export function filterAuditLedger(ledger, query = {}) {
     filteredNetAmount: 0,
     analysisNetAmount: 0,
     excludedNetAmount: 0,
+    provisionalEconomicRows: 0,
+    convertedRetailEconomicRows: 0,
   };
   for (const row of filteredRows) {
     if (row.verificationStatus === "verified") summary.verifiedRows += 1;
@@ -311,6 +323,8 @@ export function filterAuditLedger(ledger, query = {}) {
     else if (row.verificationStatus === "review") summary.reviewRows += 1;
     else if (row.verificationStatus === "excluded") summary.excludedRows += 1;
     if (row.returnRisk) summary.returnRiskRows += 1;
+    if (row.provisionalEconomic) summary.provisionalEconomicRows += 1;
+    if (isConvertedRetail(row)) summary.convertedRetailEconomicRows += 1;
     const signedNetAmount = row.isSale ? number(row.netAmount) : -number(row.netAmount);
     summary.filteredNetAmount += signedNetAmount;
     if (row.verificationStatus === "excluded") {

@@ -81,15 +81,6 @@ function commercialOwnershipDate(row) {
     || String(row?.documentDate || "").slice(0, 10);
 }
 
-function isConvertedRetail(row) {
-  return Number(row?.documentType) === 91 && Boolean(
-    row?.convertedRetail
-    || row?.convertedToFinal
-    || row?.retailConverted
-    || row?.isConvertedRetail,
-  );
-}
-
 function assertLivePayload(name, payload) {
   invariant(payload && typeof payload === "object", `${name} yanıtı yok.`);
   invariant(payload.mode === "live", `${name} canlı modda değil: ${payload.mode || "yok"}.`);
@@ -158,13 +149,15 @@ export function validateYearPayloads(year, payloads) {
 
   const provisionalEconomicRows = (overview.rows || [])
     .reduce((sum, row) => sum + number(row.provisionalLineCount || 0), 0)
-    + (audit.rows || []).filter((row) => row.revenueSource === "provisional").length;
+    + number(audit.summary?.provisionalEconomicRows ?? 0);
   invariant(
     provisionalEconomicRows === 0,
     `${year} için ${provisionalEconomicRows} geçici ekonomik satır bulundu.`,
   );
 
-  const convertedRetailEconomicRows = (audit.rows || []).filter(isConvertedRetail).length;
+  const convertedRetailEconomicRows = number(
+    audit.summary?.convertedRetailEconomicRows ?? 0,
+  );
   invariant(
     convertedRetailEconomicRows === 0,
     `${year} için ${convertedRetailEconomicRows} nihai faturaya dönüşmüş perakende satırı ekonomide kaldı.`,
@@ -270,13 +263,9 @@ async function loadYearPayloads(base, year) {
     fetchJson(base, `/api/overview?${query}`),
     fetchJson(base, `/api/department-analysis?${query}`),
     fetchJson(base, `/api/department-targets?${query}`),
-    fetchJson(base, `/api/audit-ledger?${query}&export=1`),
+    fetchJson(base, `/api/audit-ledger?${query}&pageSize=10`),
     fetchJson(base, `/api/approvals?${query}`),
   ]);
-  invariant(
-    audit.rows?.length === audit.summary?.totalRows,
-    `${year} denetim dışa aktarımı eksik: ${audit.rows?.length || 0}/${audit.summary?.totalRows || 0}.`,
-  );
   return { overview, departments, targets, audit, approvals };
 }
 

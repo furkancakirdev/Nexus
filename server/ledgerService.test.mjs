@@ -1235,6 +1235,38 @@ test("audit filtreleme sayfalama ve export sözleşmesini bellekte korur", async
   });
 });
 
+test("audit özeti geçici ve dönüşmüş perakende ekonomik satırlarını sayar", async () => {
+  const ledger = apiFixtureLedger();
+  ledger.rows = [
+    {
+      ...ledger.rows[0],
+      rootId: 41,
+      provisional: true,
+    },
+    {
+      ...ledger.rows[0],
+      rootId: 42,
+      documentType: 91,
+      convertedToFinal: true,
+    },
+  ];
+  ledger.totals = { ...ledger.totals, rowCount: 2, netSales: 200 };
+  const service = createLedgerService({ loadYear: async () => ledger });
+  const router = createUnifiedLedgerRouter({
+    ledgerService: service,
+    getAppState: async () => ({}),
+  });
+
+  await withApiServer(router, async (baseUrl) => {
+    const audit = await fetch(
+      `${baseUrl}/api/audit-ledger?year=2026&pageSize=10`,
+    ).then((response) => response.json());
+
+    assert.equal(audit.summary.provisionalEconomicRows, 1);
+    assert.equal(audit.summary.convertedRetailEconomicRows, 1);
+  });
+});
+
 test("ledger pilot kartları audit ve departmanda yönetilen maliyet yöntemiyle görünür", async () => {
   const ledger = apiFixtureLedger();
   ledger.rows = [{
