@@ -43,6 +43,13 @@ export function createLedgerService({
 
   const states = new Map();
   let versionSequence = 0;
+  let loadQueue = Promise.resolve();
+
+  function enqueueLoad(year) {
+    const queued = loadQueue.then(() => loadYear(year));
+    loadQueue = queued.catch(() => {});
+    return queued;
+  }
 
   function stateFor(year) {
     if (!states.has(year)) {
@@ -68,7 +75,7 @@ export function createLedgerService({
         const generation = state.generation;
         let value;
         try {
-          value = await loadYear(year);
+          value = await enqueueLoad(year);
         } catch (error) {
           if (generation !== state.generation) continue;
           state.error = error instanceof Error ? error : new Error(String(error));

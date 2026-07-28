@@ -507,6 +507,41 @@ test("prewarm yinelenen yılları tekilleştirir ve hataları sonuçta görünü
   assert.match(results.find((item) => item.year === 2025).reason.message, /okunamadı/);
 });
 
+test("farklı yılların defter yüklemelerini CPM üzerinde sıraya alır", async () => {
+  const firstLoad = deferred();
+  const secondLoad = deferred();
+  const calls = [];
+  let activeLoads = 0;
+  let maximumActiveLoads = 0;
+  const service = createLedgerService({
+    loadYear: async (year) => {
+      calls.push(year);
+      activeLoads += 1;
+      maximumActiveLoads = Math.max(maximumActiveLoads, activeLoads);
+      try {
+        return await (year === 2026 ? firstLoad.promise : secondLoad.promise);
+      } finally {
+        activeLoads -= 1;
+      }
+    },
+  });
+
+  const currentYear = service.get(2026);
+  const priorYear = service.get(2025);
+  await nextTurn();
+
+  assert.deepEqual(calls, [2026]);
+  assert.equal(maximumActiveLoads, 1);
+
+  firstLoad.resolve(fixtureLedger(2026));
+  await nextTurn();
+  assert.deepEqual(calls, [2026, 2025]);
+
+  secondLoad.resolve(fixtureLedger(2025));
+  await Promise.all([currentYear, priorYear]);
+  assert.equal(maximumActiveLoads, 1);
+});
+
 test("eşzamanlı overview departman ve audit istekleri tek ledger sürümünü paylaşır", async () => {
   let loads = 0;
   const service = createLedgerService({
