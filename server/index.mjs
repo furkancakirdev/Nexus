@@ -1,12 +1,17 @@
 import express from "express";
 import sql from "mssql";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildSalesCaseModel, filterSalesCases, salesCaseSql } from "./salesCases.mjs";
 import { buildFinalInvoiceLedger, finalInvoiceLedgerSql } from "./finalInvoiceLedger.mjs";
-import { createUnifiedLedgerRouter } from "./ledgerApi.mjs";
+import {
+  createDepartmentTargetLoader,
+  createUnifiedLedgerRouter,
+} from "./ledgerApi.mjs";
 import { createLedgerService } from "./ledgerService.mjs";
+import { createApprovalRouter } from "./approvalApi.mjs";
+import { createStateStore } from "./stateStore.mjs";
 import { serializeSettings } from "../shared/settingsPolicy.mjs";
 
 const app = express();
@@ -14,6 +19,7 @@ const port = Number(process.env.PORT || 4318);
 const host = process.env.HOST || "127.0.0.1";
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dataFile = process.env.APP_STATE_FILE || path.join(rootDir, "data", "app-state.json");
+const stateStore = createStateStore(dataFile);
 app.use(express.json({ limit: "1mb" }));
 
 let poolPromise;
@@ -97,17 +103,32 @@ async function loadFinalInvoiceLedger(year) {
 const ledgerService = createLedgerService({ loadYear: loadFinalInvoiceLedger });
 
 async function getStoredAppState() {
-  try {
-    return JSON.parse(await readFile(dataFile, "utf8"));
-  } catch (error) {
-    if (error.code === "ENOENT") return {};
-    throw error;
-  }
+  return stateStore.read();
 }
+
+const departmentTargetLoader = createDepartmentTargetLoader({
+  ledgerService,
+  getAppState: getStoredAppState,
+});
 
 app.use(createUnifiedLedgerRouter({
   ledgerService,
   getAppState: getStoredAppState,
+  departmentTargetLoader,
+}));
+app.use(createApprovalRouter({
+  store: stateStore,
+  loadDepartmentTargets: async (year, options) => {
+    const result = await departmentTargetLoader(year, options);
+    if (result.status !== 200) {
+      const error = new Error(
+        result.payload.error || "Departman hedefleri yüklenemedi.",
+      );
+      error.statusCode = result.status;
+      throw error;
+    }
+    return result.payload;
+  },
 }));
 
 app.get("/api/health", async (_request, response) => {
@@ -164,7 +185,7 @@ app.get("/api/sales-cases", async (request, response) => {
 
 app.get("/api/app-state", async (_request, response) => {
   try {
-    const state = JSON.parse(await readFile(dataFile, "utf8"));
+    const state = await stateStore.read();
     return response.json({
       settings: state.settings || null,
       employees: Array.isArray(state.employees) ? state.employees : null,
@@ -183,16 +204,12 @@ app.put("/api/app-state", async (request, response) => {
     return response.status(400).json({ error: "Geçersiz uygulama ayarı." });
   }
   try {
-    await mkdir(path.dirname(dataFile), { recursive: true });
-    const state = {
+    const state = await stateStore.update((current) => ({
+      ...current,
       settings: serializeSettings(settings),
       employees,
       costOverrides,
-      savedAt: new Date().toISOString(),
-    };
-    const tempFile = `${dataFile}.tmp`;
-    await writeFile(tempFile, JSON.stringify(state, null, 2), "utf8");
-    await rename(tempFile, dataFile);
+    }));
     return response.json({ saved: true, savedAt: state.savedAt });
   } catch (error) {
     if (error instanceof TypeError || error instanceof RangeError) {

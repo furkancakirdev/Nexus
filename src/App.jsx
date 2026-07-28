@@ -456,8 +456,10 @@ export function App() {
         <PerformancePage year={year} mode={mode} onNavigate={setActivePage} />
       ) : activePage === "approval" ? (
         <ApprovalPage
-          settings={appSettings}
           rows={enrichedRows}
+          targetRows={targetState.rows}
+          targetMode={targetState.mode}
+          targetError={targetState.error}
           annualPool={annualPool}
           year={year}
           connection={connection}

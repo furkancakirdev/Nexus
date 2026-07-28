@@ -442,9 +442,9 @@ function targetSourceRows(analysis) {
 }
 
 /**
- * Aynı ledger snapshot'ını kullanan salt-okunur Nexus API uçlarını oluşturur.
+ * Hedef API'si ve yönetim onayları için aynı nihai-defter sonucunu üretir.
  */
-export function createUnifiedLedgerRouter({
+export function createDepartmentTargetLoader({
   ledgerService,
   getAppState = async () => ({}),
   logger = console,
@@ -452,7 +452,144 @@ export function createUnifiedLedgerRouter({
   if (!ledgerService || typeof ledgerService.get !== "function") {
     throw new TypeError("ledgerService zorunludur.");
   }
+  return async function loadDepartmentTargets(yearValue, { refresh = false } = {}) {
+    const year = validYear(yearValue);
+    if (!year) {
+      return {
+        status: 400,
+        payload: {
+          error: "Geçersiz yıl.",
+          ...INVALID_METADATA,
+          previousLedgerVersion: null,
+          previousGeneratedAt: null,
+          previousCacheStatus: "invalid",
+        },
+      };
+    }
+    try {
+      const [currentSnapshot, previousSnapshot, state] = await Promise.all([
+        ledgerService.get(year, { refresh }),
+        ledgerService.get(year - 1, { refresh }),
+        getAppState(),
+      ]);
+      const previousMetadata = metadata(previousSnapshot);
+      if (!currentSnapshot.value || !previousSnapshot.value) {
+        return {
+          status: 503,
+          payload: {
+            year,
+            previousYear: year - 1,
+            rows: [],
+            summary: { departments: [], totalPool: 0 },
+            mode: "unavailable",
+            ...metadata(currentSnapshot),
+            previousLedgerVersion: previousMetadata.ledgerVersion,
+            previousGeneratedAt: previousMetadata.generatedAt,
+            previousCacheStatus: previousMetadata.cacheStatus,
+            error: "Cari veya önceki yıl nihai defteri hazır olmadığı için hedefler üretilemedi.",
+          },
+        };
+      }
+      const analysisOptions = {
+        pilotCardCostRates: state.settings?.pilotCardCostRates || {},
+        costOverrides: Array.isArray(state.costOverrides)
+          ? state.costOverrides
+          : [],
+        requireApproval:
+          state.settings?.requireManagementApprovalForManualCost !== false,
+      };
+      const [currentAnalysis, previousAnalysis] = [
+        buildDepartmentAnalysis({
+          ledger: currentSnapshot.value,
+          year,
+          ...analysisOptions,
+        }),
+        buildDepartmentAnalysis({
+          ledger: previousSnapshot.value,
+          year: year - 1,
+          ...analysisOptions,
+        }),
+      ];
+      let rows;
+      try {
+        rows = buildDepartmentTargets({
+          year,
+          currentRows: targetSourceRows(currentAnalysis),
+          previousRows: targetSourceRows(previousAnalysis),
+          settings: state.settings,
+        });
+      } catch (error) {
+        if (!(error instanceof TypeError || error instanceof RangeError)) {
+          throw error;
+        }
+        return {
+          status: 400,
+          payload: {
+            year,
+            previousYear: year - 1,
+            rows: [],
+            summary: { departments: [], totalPool: 0 },
+            mode: "invalid",
+            ...metadata(currentSnapshot),
+            previousLedgerVersion: previousMetadata.ledgerVersion,
+            previousGeneratedAt: previousMetadata.generatedAt,
+            previousCacheStatus: previousMetadata.cacheStatus,
+            error: "Geçersiz departman hedef ayarı.",
+          },
+        };
+      }
+      return {
+        status: 200,
+        payload: {
+          year,
+          previousYear: year - 1,
+          rows,
+          summary: summarizeDepartmentTargets(rows),
+          mode: "live",
+          ...metadata(currentSnapshot),
+          previousLedgerVersion: previousMetadata.ledgerVersion,
+          previousGeneratedAt: previousMetadata.generatedAt,
+          previousCacheStatus: previousMetadata.cacheStatus,
+          source: "CPM salt okunur nihai fatura defteri + Nexus hedef kuralları",
+        },
+      };
+    } catch (error) {
+      logger.error("Marlin Nexus department target read failed:", error);
+      const previousMetadata = retainedMetadata(ledgerService, year - 1);
+      return {
+        status: 500,
+        payload: {
+          year,
+          previousYear: year - 1,
+          rows: [],
+          summary: { departments: [], totalPool: 0 },
+          mode: "error",
+          ...retainedMetadata(ledgerService, year),
+          previousLedgerVersion: previousMetadata.ledgerVersion,
+          previousGeneratedAt: previousMetadata.generatedAt,
+          previousCacheStatus: previousMetadata.cacheStatus,
+          error: "Departman hedefleri birleşik defterden üretilemedi.",
+        },
+      };
+    }
+  };
+}
+
+/**
+ * Aynı ledger snapshot'ını kullanan salt-okunur Nexus API uçlarını oluşturur.
+ */
+export function createUnifiedLedgerRouter({
+  ledgerService,
+  getAppState = async () => ({}),
+  departmentTargetLoader,
+  logger = console,
+} = {}) {
+  if (!ledgerService || typeof ledgerService.get !== "function") {
+    throw new TypeError("ledgerService zorunludur.");
+  }
   const router = express.Router();
+  const loadDepartmentTargets = departmentTargetLoader
+    || createDepartmentTargetLoader({ ledgerService, getAppState, logger });
 
   router.get("/api/overview", async (request, response) => {
     const year = validYear(request.query.year);
@@ -549,109 +686,11 @@ export function createUnifiedLedgerRouter({
   });
 
   router.get("/api/department-targets", async (request, response) => {
-    const year = validYear(request.query.year);
-    if (!year) {
-      return response.status(400).json({
-        error: "Geçersiz yıl.",
-        ...INVALID_METADATA,
-        previousLedgerVersion: null,
-        previousGeneratedAt: null,
-        previousCacheStatus: "invalid",
-      });
-    }
-    try {
-      const refresh = request.query.refresh === "1";
-      const [currentSnapshot, previousSnapshot, state] = await Promise.all([
-        ledgerService.get(year, { refresh }),
-        ledgerService.get(year - 1, { refresh }),
-        getAppState(),
-      ]);
-      const previousMetadata = metadata(previousSnapshot);
-      if (!currentSnapshot.value || !previousSnapshot.value) {
-        return response.status(503).json({
-          year,
-          previousYear: year - 1,
-          rows: [],
-          summary: { departments: [], totalPool: 0 },
-          mode: "unavailable",
-          ...metadata(currentSnapshot),
-          previousLedgerVersion: previousMetadata.ledgerVersion,
-          previousGeneratedAt: previousMetadata.generatedAt,
-          previousCacheStatus: previousMetadata.cacheStatus,
-          error: "Cari veya önceki yıl nihai defteri hazır olmadığı için hedefler üretilemedi.",
-        });
-      }
-      const analysisOptions = {
-        pilotCardCostRates: state.settings?.pilotCardCostRates || {},
-        costOverrides: Array.isArray(state.costOverrides) ? state.costOverrides : [],
-        requireApproval: state.settings?.requireManagementApprovalForManualCost !== false,
-      };
-      const [currentAnalysis, previousAnalysis] = [
-        buildDepartmentAnalysis({
-          ledger: currentSnapshot.value,
-          year,
-          ...analysisOptions,
-        }),
-        buildDepartmentAnalysis({
-          ledger: previousSnapshot.value,
-          year: year - 1,
-          ...analysisOptions,
-        }),
-      ];
-      let rows;
-      try {
-        rows = buildDepartmentTargets({
-          year,
-          currentRows: targetSourceRows(currentAnalysis),
-          previousRows: targetSourceRows(previousAnalysis),
-          settings: state.settings,
-        });
-      } catch (error) {
-        if (!(error instanceof TypeError || error instanceof RangeError)) {
-          throw error;
-        }
-        return response.status(400).json({
-          year,
-          previousYear: year - 1,
-          rows: [],
-          summary: { departments: [], totalPool: 0 },
-          mode: "invalid",
-          ...metadata(currentSnapshot),
-          previousLedgerVersion: previousMetadata.ledgerVersion,
-          previousGeneratedAt: previousMetadata.generatedAt,
-          previousCacheStatus: previousMetadata.cacheStatus,
-          error: "Geçersiz departman hedef ayarı.",
-        });
-      }
-      response.setHeader("Cache-Control", "no-store");
-      return response.json({
-        year,
-        previousYear: year - 1,
-        rows,
-        summary: summarizeDepartmentTargets(rows),
-        mode: "live",
-        ...metadata(currentSnapshot),
-        previousLedgerVersion: previousMetadata.ledgerVersion,
-        previousGeneratedAt: previousMetadata.generatedAt,
-        previousCacheStatus: previousMetadata.cacheStatus,
-        source: "CPM salt okunur nihai fatura defteri + Nexus hedef kuralları",
-      });
-    } catch (error) {
-      logger.error("Marlin Nexus department target read failed:", error);
-      const previousMetadata = retainedMetadata(ledgerService, year - 1);
-      return response.status(500).json({
-        year,
-        previousYear: year - 1,
-        rows: [],
-        summary: { departments: [], totalPool: 0 },
-        mode: "error",
-        ...retainedMetadata(ledgerService, year),
-        previousLedgerVersion: previousMetadata.ledgerVersion,
-        previousGeneratedAt: previousMetadata.generatedAt,
-        previousCacheStatus: previousMetadata.cacheStatus,
-        error: "Departman hedefleri birleşik defterden üretilemedi.",
-      });
-    }
+    const result = await loadDepartmentTargets(request.query.year, {
+      refresh: request.query.refresh === "1",
+    });
+    response.setHeader("Cache-Control", "no-store");
+    return response.status(result.status).json(result.payload);
   });
 
   router.get("/api/audit-ledger", async (request, response) => {

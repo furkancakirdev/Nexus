@@ -575,6 +575,10 @@ tfoot { font-weight: 700; background: #f7f9fc; }
 .approval-values div:last-child { border-bottom: 0; }
 .approval-values dt { color: var(--muted); }
 .approval-values dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+.approval-departments { margin-top: 12px; display: grid; gap: 7px; }
+.approval-departments > div { padding: 10px 11px; display: grid; grid-template-columns: minmax(125px,1.3fr) repeat(3,minmax(0,1fr)); align-items: center; gap: 7px; border: 1px solid var(--line); border-radius: 6px; background: #fff; font-size: 10px; }
+.approval-departments strong { color: var(--ink); font-size: 11px; }
+.approval-departments span { color: var(--muted); font-variant-numeric: tabular-nums; }
 .approval-blocker, .approval-empty { margin: 12px 0; padding: 12px; display: flex; align-items: start; gap: 9px; border-radius: 7px; }
 .approval-blocker { color: #a52b34; border: 1px solid #efc8cb; background: #fff3f4; }
 .approval-empty { color: #52677d; border: 1px solid #d4dde8; background: #f5f7fa; }
@@ -594,6 +598,7 @@ tfoot { font-weight: 700; background: #f7f9fc; }
 .approval-history p { margin: 0; display: grid; font-size: 11px; }
 .approval-history small { margin-top: 2px; color: var(--muted); font-size: 9px; }
 .approval-history .history-empty { color: var(--muted); }
+.approval-audit { margin: 12px 0; padding: 9px 10px; display: flex; align-items: center; gap: 7px; color: #52677d; border: 1px solid var(--line); border-radius: 6px; background: #fff; font-size: 10px; }
 .approval-detail .back-to-ledger { min-height: 40px; display: flex; align-items: center; justify-content: center; gap: 5px; }
 
 /* Management reports */
@@ -749,6 +754,7 @@ tfoot { font-weight: 700; background: #f7f9fc; }
   .approval-kpis { grid-template-columns: 1fr; }
   .approval-detail { padding: 14px; }
   .approval-actions { grid-template-columns: 1fr; }
+  .approval-departments > div { grid-template-columns: 1fr 1fr; }
   .report-meta { align-items: start; flex-direction: column; gap: 7px; }
   .report-kpis { grid-template-columns: 1fr; }
   .report-actions > * { flex: 1 1 100%; }
