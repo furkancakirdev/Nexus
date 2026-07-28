@@ -19,6 +19,7 @@ const AUDIT_SOURCES = new Set(["invoice", "provisional", "return"]);
 const EXCLUDED_INCOME_CODES = new Set(["KOMISYON", "GD-0187", "GD-0079", "PDI"]);
 const overviewRowsCache = new WeakMap();
 const auditRowsCache = new WeakMap();
+const departmentAnalysisCache = new WeakMap();
 const AUDIT_SORT_TIME = Symbol("auditSortTime");
 
 function number(value) {
@@ -463,6 +464,42 @@ function targetSourceRows(analysis) {
   ));
 }
 
+export function buildCachedDepartmentAnalysis(options = {}) {
+  const {
+    ledger,
+    year,
+    pilotCardCostRates = {},
+    costOverrides = [],
+    requireApproval = true,
+  } = options;
+  if (!ledger || typeof ledger !== "object") {
+    return buildDepartmentAnalysis(options);
+  }
+
+  let variants = departmentAnalysisCache.get(ledger);
+  if (!variants) {
+    variants = new Map();
+    departmentAnalysisCache.set(ledger, variants);
+  }
+  const policyKey = JSON.stringify([
+    year,
+    pilotCardCostRates,
+    costOverrides,
+    requireApproval,
+  ]);
+  if (variants.has(policyKey)) return variants.get(policyKey);
+
+  const analysis = buildDepartmentAnalysis({
+    ...options,
+    pilotCardCostRates,
+    costOverrides,
+    requireApproval,
+  });
+  if (variants.size >= 8) variants.clear();
+  variants.set(policyKey, analysis);
+  return analysis;
+}
+
 /**
  * Hedef API'si ve yönetim onayları için aynı nihai-defter sonucunu üretir.
  */
@@ -521,12 +558,12 @@ export function createDepartmentTargetLoader({
           state.settings?.requireManagementApprovalForManualCost !== false,
       };
       const [currentAnalysis, previousAnalysis] = [
-        buildDepartmentAnalysis({
+        buildCachedDepartmentAnalysis({
           ledger: currentSnapshot.value,
           year,
           ...analysisOptions,
         }),
-        buildDepartmentAnalysis({
+        buildCachedDepartmentAnalysis({
           ledger: previousSnapshot.value,
           year: year - 1,
           ...analysisOptions,
@@ -676,7 +713,7 @@ export function createUnifiedLedgerRouter({
           error: "Gerçek CPM bağlantısı yapılandırılmadığı için departman analizi üretilemedi.",
         });
       }
-      const analysis = buildDepartmentAnalysis({
+      const analysis = buildCachedDepartmentAnalysis({
         ledger: snapshot.value,
         year,
         pilotCardCostRates: state.settings?.pilotCardCostRates || {},
