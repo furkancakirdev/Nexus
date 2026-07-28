@@ -20,41 +20,13 @@ import {
   IconX,
   IconUsers,
 } from "@tabler/icons-react";
-
-export const DEFAULT_SETTINGS = {
-  rates: { conservative: 20, base: 30, growth: 35 },
-  reserveRate: 5,
-  minimumProfit: 0,
-  negativeRule: "annual",
-  distributionMonth: 2,
-  costMethod: "lastPurchase",
-  pilotCardCostRates: { labor: 0, srf: 100, tsr: 100, road: 100 },
-  minimumCoverage: 85,
-  exchangeRateRule: "document",
-  requireManagementApprovalForManualCost: true,
-  allocationMethod: "coefficient",
-  companyWeight: 60,
-  teamWeight: 40,
-  companyGrowthTarget: 10,
-  departmentGrowthTargets: { "Atölye Teknik": 10, "Ofis": 10 },
-  companyPerformanceScore: 100,
-  departmentPerformanceScores: { "Atölye Teknik": 100, "Ofis": 100 },
-  minimumGoalScore: 80,
-  maximumMultiplier: 120,
-  scoreScale: 5,
-  monthlyCloseDay: 10,
-  boardApproval: true,
-  lockAfterApproval: true,
-  auditLog: true,
-  monthlyNotifications: true,
-  employeeVisibility: "summary",
-};
+import { DEFAULT_SETTINGS } from "../shared/settingsPolicy.mjs";
 
 const tabs = [
   { id: "people", label: "Personel & Paylar", description: "Katsayı ve dağıtım", icon: IconUsers },
   { id: "policy", label: "Politika & Havuz", description: "Oranlar ve dönem kuralları", icon: IconBuildingBank },
   { id: "cost", label: "Maliyet & Veri", description: "Kapsam ve doğrulama", icon: IconDatabase },
-  { id: "goals", label: "Hedef Modeli", description: "Ağırlıklar ve puanlama", icon: IconTargetArrow },
+  { id: "goals", label: "Hedefler & Dağıtım", description: "Departman hedef ve oranları", icon: IconTargetArrow },
   { id: "approval", label: "Onay & Yetki", description: "Kapanış ve erişim", icon: IconShieldCheck },
 ];
 
@@ -95,26 +67,45 @@ export function SettingsPage({ settings, onSave, connection, mode, annualProfit,
   useEffect(() => setDraft(settings), [settings]);
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(settings);
-  const weightsTotal = draft.companyWeight + draft.teamWeight;
-  const projectedPool = Math.max(0, annualProfit * (draft.rates.base / 100) * (1 - draft.reserveRate / 100));
+  const projectedPool = annualPool;
+  const targetValues = Object.values(draft.departmentTargets || {}).flatMap(
+    (target) => [target?.growthPct, target?.stretchPct],
+  );
 
   const validation = useMemo(() => ({
-    weights: weightsTotal === 100,
-    rateOrder: draft.rates.conservative <= draft.rates.base && draft.rates.base <= draft.rates.growth,
+    rateOrder: draft.rates.conservative <= draft.rates.growth,
     coverage: draft.minimumCoverage >= 60 && draft.minimumCoverage <= 100,
     pilotRates: Object.values(draft.pilotCardCostRates || {}).every((rate) => Number(rate) >= 0 && Number(rate) <= 100),
-  }), [draft, weightsTotal]);
+    targets: targetValues.every((value, index) => (
+      Number.isFinite(value)
+      && (index % 2 === 0 ? value >= -100 && value <= 300 : value >= 0 && value <= 100)
+    )),
+  }), [draft, targetValues]);
   const valid = Object.values(validation).every(Boolean);
   const fixedShareTotal = employees.reduce((sum, employee) => sum + Number(employee.fixedShareRate || 0), 0);
 
   const set = (key, value) => setDraft((current) => ({ ...current, [key]: value }));
   const setRate = (key, value) => setDraft((current) => ({ ...current, rates: { ...current.rates, [key]: value } }));
   const setPilotRate = (key, value) => setDraft((current) => ({ ...current, pilotCardCostRates: { ...current.pilotCardCostRates, [key]: value } }));
+  const setDepartmentTarget = (department, key, value) => setDraft((current) => ({
+    ...current,
+    departmentTargets: {
+      ...current.departmentTargets,
+      [department]: {
+        ...current.departmentTargets[department],
+        [key]: value,
+      },
+    },
+  }));
 
-  const save = () => {
+  const save = async () => {
     if (!valid) { setMessage("Kaydetmeden önce işaretli doğrulama hatalarını düzeltin."); return; }
-    onSave(draft);
-    setMessage("Ayarlar güvenli uygulama taslağına kaydedildi. CPM verisine dokunulmadı.");
+    try {
+      await onSave(draft);
+      setMessage("Ayarlar Marlin Nexus'a kaydedildi. CPM verisine dokunulmadı.");
+    } catch {
+      setMessage("Ayarlar kaydedilemedi. Bağlantıyı kontrol edip yeniden deneyin.");
+    }
   };
 
   const reset = () => {
@@ -186,13 +177,13 @@ export function SettingsPage({ settings, onSave, connection, mode, annualProfit,
         <section className="settings-content">
           {activeTab === "people" && (
             <div className="settings-section">
-              <div className="settings-section__title"><IconUsers /><div><h2>Personel, Katsayı ve Paylar</h2><p>Dağıtıma katılımı, ücret katsayısını, performans puanlarını ve varsa sabit payı yönetin.</p></div></div>
+              <div className="settings-section__title"><IconUsers /><div><h2>Personel, Katsayı ve Paylar</h2><p>Dağıtıma katılımı, ücret katsayısını ve varsa sabit payı yönetin.</p></div></div>
               <div className="people-toolbar">
                 <div className="people-metrics">
                   <span><small>Personel</small><strong>{employees.length}</strong></span>
                   <span><small>Dağıtıma dahil</small><strong>{employees.filter((employee) => employee.included !== false).length}</strong></span>
                   <span className={fixedShareTotal > 100 ? "bad" : ""}><small>Sabit pay toplamı</small><strong>%{fixedShareTotal.toLocaleString("tr-TR")}</strong></span>
-                  <span><small>Dağıtılabilir havuz</small><strong>{new Intl.NumberFormat("tr-TR", { notation: "compact", maximumFractionDigits: 1 }).format(annualPool || projectedPool)} TL</strong></span>
+                  <span><small>Dağıtılabilir havuz</small><strong>{new Intl.NumberFormat("tr-TR", { notation: "compact", maximumFractionDigits: 1 }).format(annualPool)} TL</strong></span>
                 </div>
                 <button className="primary-action" onClick={() => openEmployee(EMPTY_EMPLOYEE, -1)}><IconUserPlus size={17} /> Yeni personel</button>
               </div>
@@ -234,23 +225,15 @@ export function SettingsPage({ settings, onSave, connection, mode, annualProfit,
             <div className="settings-section">
               <div className="settings-section__title"><IconBuildingBank /><div><h2>Politika ve Havuz</h2><p>Dağıtım oranlarını, rezervi ve dönem kurallarını tanımlayın.</p></div></div>
               <div className="settings-card">
-                <h3>Senaryo dağıtım oranları</h3>
-                <p className="settings-card__intro">Bu oranlar dağıtıma esas kârın ne kadarının havuza aktarılacağını farklı işletme koşullarında karşılaştırır. Temkinli oran düşük nakit ayırır; Temel normal planı, Büyüme ise güçlü sonuç dönemini gösterir.</p>
-                <div className="form-grid form-grid--3">
-                  <Field label="Temkinli"><NumberInput value={draft.rates.conservative} onChange={(v) => setRate("conservative", v)} max={100} suffix="%" /></Field>
-                  <Field label="Temel"><NumberInput value={draft.rates.base} onChange={(v) => setRate("base", v)} max={100} suffix="%" /></Field>
-                  <Field label="Büyüme"><NumberInput value={draft.rates.growth} onChange={(v) => setRate("growth", v)} max={100} suffix="%" /></Field>
-                </div>
-                {!validation.rateOrder && <p className="field-error"><IconAlertTriangle size={15} /> Oranlar Temkinli ≤ Temel ≤ Büyüme sırasını izlemeli.</p>}
+                <h3>Otomatik hedef bandı</h3>
+                <p className="settings-card__intro">Aylık dağıtım oranı departmanın gerçekleşmesine göre otomatik seçilir. Hedef altı aylar havuz üretmez.</p>
+                <div className="readonly-banner"><IconTargetArrow /><div><strong>Hedef altı → Muaf · Hedef → Temkinli · Hedef üstü → Büyüme</strong><p>Oranlar ve departman eşikleri Hedefler &amp; Dağıtım bölümünde yönetilir.</p></div><span>Otomatik</span></div>
               </div>
               <div className="settings-card">
-                <h3>Havuz kuralları</h3>
-                <p className="settings-card__intro">Önce dağıtıma esas yıllık kâr bulunur. Asgari kâr koşulu sağlanırsa seçilen senaryo oranı uygulanır; risk rezervi dağıtılmayıp havuzda bırakılır. Zararların yıl sonunda mahsup edilmesi, yalnız kârlı ayların ödüllendirilmesini önler.</p>
-                <div className="form-grid form-grid--3">
-                  <Field label="Risk rezervi" help="Dağıtımdan önce havuzda bırakılır."><NumberInput value={draft.reserveRate} onChange={(v) => set("reserveRate", v)} max={50} suffix="%" /></Field>
-                  <Field label="Asgari yıllık kâr" help="Bu tutarın altında havuz oluşmaz."><NumberInput value={draft.minimumProfit} onChange={(v) => set("minimumProfit", v)} suffix="TL" /></Field>
+                <h3>Dağıtım zamanlaması</h3>
+                <p className="settings-card__intro">Yıllık net havuz, aylık departman hedef bantlarının toplamıdır. Bu bölüm yalnız ödeme takvimini belirler.</p>
+                <div className="form-grid form-grid--2">
                   <Field label="Ödeme ayı"><select value={draft.distributionMonth} onChange={(e) => set("distributionMonth", Number(e.target.value))}>{[1,2,3,4].map(m => <option key={m} value={m}>{["Ocak","Şubat","Mart","Nisan"][m-1]}</option>)}</select></Field>
-                  <Field label="Negatif dönem davranışı"><select value={draft.negativeRule} onChange={(e) => set("negativeRule", e.target.value)}><option value="zero">Aylık katkıyı sıfırla</option><option value="carry">Zararı sonraki aya devret</option><option value="annual">Yalnızca yıl sonunda mahsup et</option></select></Field>
                 </div>
               </div>
             </div>
@@ -292,33 +275,34 @@ export function SettingsPage({ settings, onSave, connection, mode, annualProfit,
 
           {activeTab === "goals" && (
             <div className="settings-section">
-              <div className="settings-section__title"><IconTargetArrow /><div><h2>Hedef ve Puanlama Modeli</h2><p>Şirket ve iki departmanın ortak hedeflerini yönetin; bireysel hedef kullanılmaz.</p></div></div>
+              <div className="settings-section__title"><IconTargetArrow /><div><h2>Departman Hedefleri ve Dağıtım</h2><p>Servis ve Yedek Parça Satış için aylık hedef politikasını yönetin.</p></div></div>
               <div className="settings-card">
-                <h3>Hedef ağırlıkları</h3>
-                <div className="weight-grid">
-                  <Field label="Şirket sonucu" help="Tüm personelin ortak şirket performansından ne kadar etkileneceğini belirler."><NumberInput value={draft.companyWeight} onChange={(v) => set("companyWeight", v)} max={100} suffix="%" /></Field>
-                  <Field label="Departman sonucu" help="Atölye Teknik veya Ofis ortak sonucunun etkisidir; departmandaki herkes aynıdır."><NumberInput value={draft.teamWeight} onChange={(v) => set("teamWeight", v)} max={100} suffix="%" /></Field>
-                  <div className={validation.weights ? "weight-total valid" : "weight-total invalid"}><span>Toplam</span><strong>%{weightsTotal}</strong></div>
+                <h3>Geçen yılın aynı ayına göre departman hedefleri</h3>
+                <p className="settings-card__intro">Hedef büyümesi önceki yılın aynı ay net satışına uygulanır. Hedef üstü eşik, büyüme dağıtım bandını açar.</p>
+                <div className="department-target-settings">
+                  {[
+                    ["service", "Servis"],
+                    ["parts", "Yedek Parça Satış"],
+                  ].map(([id, label]) => (
+                    <div className="department-target-row" key={id}>
+                      <strong>{label}</strong>
+                      <Field label="Hedef büyümesi"><NumberInput value={draft.departmentTargets[id].growthPct} onChange={(value) => setDepartmentTarget(id, "growthPct", value)} min={-100} max={300} suffix="%" /></Field>
+                      <Field label="Hedef üstü eşik"><NumberInput value={draft.departmentTargets[id].stretchPct} onChange={(value) => setDepartmentTarget(id, "stretchPct", value)} min={0} max={100} suffix="%" /></Field>
+                    </div>
+                  ))}
                 </div>
-                {!validation.weights && <p className="field-error"><IconAlertTriangle size={15} /> Hedef ağırlıklarının toplamı tam %100 olmalı.</p>}
+                {!validation.targets && <p className="field-error"><IconAlertTriangle size={15} /> Hedef büyümesi %-100–%300, hedef üstü eşik %0–%100 aralığında olmalı.</p>}
               </div>
               <div className="settings-card">
-                <h3>Geçen yılın aynı ayına göre hedef değişimi</h3>
-                <p className="settings-card__intro">Örneğin %10 girildiğinde hedef tutarı, geçen yılın aynı ayındaki gerçekleşmenin 1,10 katı olur. Eksi değer hedeflenen kontrollü azalışı ifade eder.</p>
+                <h3>Havuz dağıtım oranları</h3>
                 <div className="form-grid form-grid--3">
-                  <Field label="Şirket hedef değişimi"><NumberInput value={draft.companyGrowthTarget} onChange={(value)=>set("companyGrowthTarget",value)} min={-100} max={300} suffix="%" /></Field>
-                  <Field label="Atölye Teknik hedef değişimi"><NumberInput value={draft.departmentGrowthTargets?.["Atölye Teknik"] ?? 10} onChange={(value)=>set("departmentGrowthTargets",{...(draft.departmentGrowthTargets||{}),"Atölye Teknik":value})} min={-100} max={300} suffix="%" /></Field>
-                  <Field label="Ofis hedef değişimi"><NumberInput value={draft.departmentGrowthTargets?.Ofis ?? 10} onChange={(value)=>set("departmentGrowthTargets",{...(draft.departmentGrowthTargets||{}),Ofis:value})} min={-100} max={300} suffix="%" /></Field>
+                  <Field label="Temkinli oran" help="Hedefe ulaşan fakat hedef üstü eşiği geçmeyen aylar."><NumberInput value={draft.rates.conservative} onChange={(value) => setRate("conservative", value)} min={0} max={100} suffix="%" /></Field>
+                  <Field label="Büyüme oranı" help="Hedef üstü eşiğe ulaşan aylar."><NumberInput value={draft.rates.growth} onChange={(value) => setRate("growth", value)} min={0} max={100} suffix="%" /></Field>
+                  <Field label="Risk rezervi" help="Hesaplanan aylık havuzdan ayrılır."><NumberInput value={draft.reserveRate} onChange={(value) => set("reserveRate", value)} min={0} max={100} suffix="%" /></Field>
                 </div>
+                {!validation.rateOrder && <p className="field-error"><IconAlertTriangle size={15} /> Büyüme oranı temkinli orandan düşük olamaz.</p>}
               </div>
-              <div className="settings-card">
-                <div className="form-grid form-grid--3">
-                  <Field label="Asgari birleşik hedef puanı" help="Şirket ve departman sonucunun birleşik alt sınırıdır."><NumberInput value={draft.minimumGoalScore} onChange={(v) => set("minimumGoalScore", v)} max={100} suffix="puan" /></Field>
-                  <Field label="Azami performans çarpanı"><NumberInput value={draft.maximumMultiplier} onChange={(v) => set("maximumMultiplier", v)} min={100} max={200} suffix="%" /></Field>
-                  <Field label="Yönetici değerlendirme ölçeği"><select value={draft.scoreScale} onChange={(e) => set("scoreScale", Number(e.target.value))}><option value="5">1–5 ölçeği</option><option value="10">1–10 ölçeği</option><option value="100">0–100 puan</option></select></Field>
-                </div>
-              </div>
-              <div className="formula-card"><IconScale /><div><strong>Birleşik hedef formülü</strong><p>Personel skoru = Şirket gerçekleşmesi × şirket ağırlığı + bağlı olduğu departmanın gerçekleşmesi × departman ağırlığı. Bireysel hedef ve süre çarpanı yoktur.</p></div></div>
+              <div className="formula-card"><IconScale /><div><strong>Departman bazlı otomatik formül</strong><p>Hedef = önceki yıl aynı ay net satışı × (1 + büyüme). Hedef tutmayan ay dağıtımdan muaftır; kişi hedefi veya performans puanı kullanılmaz.</p></div></div>
             </div>
           )}
 
@@ -346,13 +330,13 @@ export function SettingsPage({ settings, onSave, connection, mode, annualProfit,
           <div className="settings-summary__head"><IconSettings size={20} /><strong>Canlı Önizleme</strong></div>
           <dl>
             <div><dt>Dağıtıma esas kâr</dt><dd>{new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 0 }).format(annualProfit)} TL</dd></div>
-            <div><dt>Temel havuz oranı</dt><dd>%{draft.rates.base}</dd></div>
+            <div><dt>Temkinli / büyüme</dt><dd>%{draft.rates.conservative} / %{draft.rates.growth}</dd></div>
             <div><dt>Risk rezervi</dt><dd>%{draft.reserveRate}</dd></div>
             <div className="summary-emphasis"><dt>Tahmini net havuz</dt><dd>{new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 0 }).format(projectedPool)} TL</dd></div>
           </dl>
           <div className="summary-checks">
-            <span className={validation.rateOrder ? "ok" : "bad"}>{validation.rateOrder ? <IconCheck /> : <IconAlertTriangle />} Senaryo oranları</span>
-            <span className={validation.weights ? "ok" : "bad"}>{validation.weights ? <IconCheck /> : <IconAlertTriangle />} Hedef ağırlıkları</span>
+            <span className={validation.rateOrder ? "ok" : "bad"}>{validation.rateOrder ? <IconCheck /> : <IconAlertTriangle />} Dağıtım oranları</span>
+            <span className={validation.targets ? "ok" : "bad"}>{validation.targets ? <IconCheck /> : <IconAlertTriangle />} Departman hedefleri</span>
             <span className={validation.coverage ? "ok" : "bad"}>{validation.coverage ? <IconCheck /> : <IconAlertTriangle />} Maliyet eşiği</span>
           </div>
           <div className="audit-preview"><IconHistory /><div><strong>Son kayıt</strong><p>{localStorage.getItem("marlin-settings-saved-at") || "Henüz kayıt yapılmadı"}</p></div></div>

@@ -21,7 +21,7 @@
 
 body {
   margin: 0;
-  min-width: 320px;
+  min-width: 0;
   min-height: 100vh;
   background: #f6f8fb;
   -webkit-font-smoothing: antialiased;
@@ -237,20 +237,6 @@ h2 { margin-bottom: 4px; font-size: 20px; line-height: 1.25; }
 .orange-dot, .green-dot { width: 8px; height: 8px; border-radius: 50%; }
 .orange-dot { background: var(--amber); }
 .green-dot { background: var(--green); }
-
-.scenario-select {
-  min-width: 194px;
-  height: 48px;
-  padding: 5px 38px 5px 12px;
-  position: relative;
-  display: grid;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: #fff;
-}
-
-.scenario-select span { color: #78869a; font-size: 10px; }
-.scenario-select select { border: 0; outline: 0; color: var(--ink); background: transparent; font-weight: 600; cursor: pointer; }
 
 .menu-wrap { position: relative; }
 .action-menu {
@@ -484,6 +470,12 @@ tfoot { font-weight: 700; background: #f7f9fc; }
 .goal-workspace { padding: 0; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
 .goal-workspace__top { padding: 17px 18px; display: flex; align-items: center; justify-content: space-between; gap: 20px; border-bottom: 1px solid var(--line); }
 .goal-workspace__top p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+.goal-department-tabs { padding: 10px 18px; display: flex; gap: 6px; border-bottom: 1px solid var(--line); background: #fafbfd; }
+.goal-department-tabs button { min-height: 36px; padding: 0 13px; border: 1px solid #d4dce7; border-radius: 6px; color: #40536c; background: #fff; font-weight: 700; cursor: pointer; }
+.goal-department-tabs button.active { border-color: #8cb8eb; color: #075fc9; background: #edf5ff; }
+.department-target-settings { display: grid; gap: 10px; }
+.department-target-row { padding: 12px; display: grid; grid-template-columns: minmax(150px, .8fr) repeat(2, minmax(0,1fr)); align-items: end; gap: 12px; border: 1px solid #dfe6ef; border-radius: 7px; background: #fafbfd; }
+.department-target-row > strong { align-self: center; color: #263c56; }
 .company-score { display: flex; align-items: center; gap: 10px; color: #50647d; font-size: 12px; font-weight: 600; }
 .company-score > span:last-child { width: 84px; height: 38px; padding: 0 9px; display: flex; align-items: center; border: 1px solid #cfd8e4; border-radius: 6px; }
 .company-score input { min-width: 0; width: 100%; border: 0; outline: 0; font-weight: 700; }
@@ -686,7 +678,6 @@ tfoot { font-weight: 700; background: #f7f9fc; }
   .page { padding: 16px; }
   .page-heading { align-items: start; flex-direction: column; }
   .toolbar { width: 100%; flex-wrap: wrap; }
-  .scenario-select { flex: 1; }
   .content-grid { grid-template-columns: 1fr; }
   .primary-column { border-right: 0; }
   .details-panel { border-top: 1px solid var(--line); }
@@ -700,6 +691,8 @@ tfoot { font-weight: 700; background: #f7f9fc; }
   .weight-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
   .goals-heading { align-items: start; }
   .goal-filters { flex-wrap: wrap; }
+  .department-target-row { grid-template-columns: 1fr 1fr; }
+  .department-target-row > strong { grid-column: 1 / -1; }
   .goal-search { flex: 1 1 100%; }
   .approval-heading { align-items: start; }
   .approval-layout { grid-template-columns: 1fr; }
@@ -722,7 +715,6 @@ tfoot { font-weight: 700; background: #f7f9fc; }
   .policy-button { flex: 1; }
   .segmented { width: 100%; order: 3; }
   .segmented button { flex: 1; justify-content: center; }
-  .scenario-select { min-width: 210px; }
   .panel { padding: 14px; }
   .waterfall-layout { gap: 8px; }
   .summary-list { display: block; }
@@ -741,6 +733,10 @@ tfoot { font-weight: 700; background: #f7f9fc; }
   .role-table { overflow-x: auto; }
   .role-table > div { min-width: 520px; }
   .goal-kpis { grid-template-columns: 1fr; }
+  .goal-department-tabs { overflow-x: auto; }
+  .goal-department-tabs button { flex: 0 0 auto; }
+  .department-target-row { grid-template-columns: 1fr; }
+  .department-target-row > strong { grid-column: auto; }
   .goal-workspace__top { align-items: start; flex-direction: column; }
   .company-score { width: 100%; justify-content: space-between; }
   .goal-filters label { min-width: 0; flex: 1 1 140px; }
@@ -1280,7 +1276,13 @@ tfoot { font-weight: 700; background: #f7f9fc; }
   .brand__copy small { display: none; }
   .year-control { min-width: 78px; width: 78px; padding-inline: 7px; gap: 4px; }
   .year-control svg:last-child { display: none; }
+  .settings-actions > button { width: 100%; flex-basis: 100%; }
   .department-kpis { grid-template-columns: 1fr; }
   .department-kpi { min-height: 112px; }
   .department-trend, .department-quality, .department-compare, .department-depot { padding: 14px; }
+}
+
+@media (max-width: 340px) {
+  .brand span { display: none; }
+  .page { padding-inline: 10px; }
 }

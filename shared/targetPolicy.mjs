@@ -16,6 +16,7 @@ const MONTH_NAMES = Object.freeze([
  * @typedef {Object} TargetPolicySettings
  * @property {number} [reserveRate]
  * @property {{conservative?:number,growth?:number}} [rates]
+ * @property {{service?:{growthPct?:number,stretchPct?:number},parts?:{growthPct?:number,stretchPct?:number}}} [departmentTargets]
  * @property {Object<string, number>} [departmentGrowthTargets]
  * @property {Object<string, number>} [departmentStretchThresholds]
  */
@@ -232,6 +233,10 @@ function departmentSetting(map, department, fallback) {
 function normalizePolicySettings(settings) {
   const rootSettings = optionalRecord(settings, "Hedef ayarları");
   const rates = optionalRecord(rootSettings.rates, "Dağıtım oranları");
+  const departmentTargets = optionalRecord(
+    rootSettings.departmentTargets,
+    "Departman hedef ayarları",
+  );
   const growthTargets = optionalRecord(
     rootSettings.departmentGrowthTargets,
     "Departman hedef büyüme oranları",
@@ -256,18 +261,28 @@ function normalizePolicySettings(settings) {
     rates: { conservative: conservativeRate, growth: growthRate },
     departments: Object.fromEntries(DEPARTMENTS.map(({ id }) => [
       id,
-      {
-        growthPct: targetChange(
-          departmentSetting(growthTargets, id, 10),
-          `${id} hedef büyüme oranı`,
-          10,
-        ),
-        stretchPct: percentage(
-          departmentSetting(stretchThresholds, id, 10),
-          `${id} hedef üstü eşik oranı`,
-          10,
-        ),
-      },
+      (() => {
+        const canonical = optionalRecord(
+          departmentTargets[id],
+          `${id} departman hedef ayarı`,
+        );
+        return {
+          growthPct: targetChange(
+            canonical.growthPct === undefined
+              ? departmentSetting(growthTargets, id, 10)
+              : canonical.growthPct,
+            `${id} hedef büyüme oranı`,
+            10,
+          ),
+          stretchPct: percentage(
+            canonical.stretchPct === undefined
+              ? departmentSetting(stretchThresholds, id, 5)
+              : canonical.stretchPct,
+            `${id} hedef üstü eşik oranı`,
+            5,
+          ),
+        };
+      })(),
     ])),
   };
 }
@@ -296,7 +311,7 @@ export function classifyTargetBand({ actual, target, stretchPct }) {
   const normalizedStretchPct = percentage(
     stretchPct,
     "Hedef üstü eşik oranı",
-    10,
+    5,
   );
   const stretchTarget = roundMoney(
     normalizedTarget * (1 + normalizedStretchPct / 100),

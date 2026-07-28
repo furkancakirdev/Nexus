@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   IconAdjustmentsHorizontal,
   IconAlertTriangle,
@@ -24,7 +24,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { DEFAULT_SETTINGS, SettingsPage } from "./SettingsPage";
+import { SettingsPage } from "./SettingsPage";
 import { GoalsPage, PILOT_EMPLOYEES } from "./GoalsPage";
 import { ApprovalPage } from "./ApprovalPage";
 import { ReportsPage } from "./ReportsPage";
@@ -33,6 +33,16 @@ import { SalesPage } from "./SalesPage";
 import { DepartmentAnalysisPage } from "./DepartmentAnalysisPage";
 import { AuditPage } from "./AuditPage";
 import { PerformancePage } from "./PerformancePage";
+import {
+  DEFAULT_SETTINGS,
+  normalizeSettings,
+  serializeSettings,
+} from "../shared/settingsPolicy.mjs";
+import {
+  buildDepartmentTargetView,
+  mergeMonthlyTargetPools,
+} from "../shared/departmentTargetView.mjs";
+import { normalizePilotEmployees } from "../shared/employeePolicy.mjs";
 
 const NAV_ITEMS = [
   { page: "summary", label: "Özet" },
@@ -47,28 +57,7 @@ const NAV_ITEMS = [
   { page: "settings", label: "Ayarlar" },
 ];
 
-const scenarios = {
-  conservative: { label: "Temkinli", rate: 0.2 },
-  base: { label: "Gerçekleşen (Temel)", rate: 0.3 },
-  growth: { label: "Büyüme", rate: 0.35 },
-};
-
 const DEFAULT_APPEARANCE = { theme: "light", density: "comfortable", highContrast: false, reducedMotion: false, defaultPage: "summary" };
-
-function normalizeSettings(stored = {}) {
-  const legacyModel = Object.prototype.hasOwnProperty.call(stored, "individualWeight") || Object.prototype.hasOwnProperty.call(stored, "prorateNewJoiners");
-  return {
-    ...DEFAULT_SETTINGS,
-    ...stored,
-    costMethod: "lastPurchase",
-    companyWeight: legacyModel ? 60 : Number(stored.companyWeight ?? DEFAULT_SETTINGS.companyWeight),
-    teamWeight: legacyModel ? 40 : Number(stored.teamWeight ?? DEFAULT_SETTINGS.teamWeight),
-    rates: { ...DEFAULT_SETTINGS.rates, ...(stored.rates || {}) },
-    pilotCardCostRates: { ...DEFAULT_SETTINGS.pilotCardCostRates, ...(stored.pilotCardCostRates || {}) },
-    departmentGrowthTargets: { ...DEFAULT_SETTINGS.departmentGrowthTargets, ...(stored.departmentGrowthTargets || {}) },
-    departmentPerformanceScores: { ...DEFAULT_SETTINGS.departmentPerformanceScores, ...(stored.departmentPerformanceScores || {}) },
-  };
-}
 
 const fallbackRows = [
   [1, "Ocak", 168_520_000, 4_210_000, 6_180_000, 100_845_000, 83.8],
@@ -112,6 +101,17 @@ function StatusDot({ status }) {
   );
 }
 
+async function fetchDepartmentTargetState(year) {
+  const response = await fetch(`/api/department-targets?year=${year}`);
+  const payload = await response.json();
+  return {
+    rows: response.ok && Array.isArray(payload.rows) ? payload.rows : [],
+    mode: response.ok ? payload.mode || "live" : "error",
+    error: response.ok ? null : payload.error || "Hedef verisi okunamadı.",
+    generatedAt: payload.generatedAt || null,
+  };
+}
+
 export function App() {
   const [appearance, setAppearance] = useState(()=>{ try{return {...DEFAULT_APPEARANCE,...JSON.parse(localStorage.getItem("marlin-appearance")||"{}")};}catch{return DEFAULT_APPEARANCE;} });
   const [appearanceOpen,setAppearanceOpen]=useState(false);
@@ -121,7 +121,12 @@ export function App() {
     return availablePages.has(requestedPage) ? requestedPage : (appearance.defaultPage || "summary");
   });
   const [employees, setEmployees] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("marlin-pilot-employees") || "null") || PILOT_EMPLOYEES; }
+    try {
+      const storedEmployees = JSON.parse(
+        localStorage.getItem("marlin-pilot-employees") || "null",
+      );
+      return normalizePilotEmployees(storedEmployees || PILOT_EMPLOYEES);
+    }
     catch { return PILOT_EMPLOYEES; }
   });
   const [appSettings, setAppSettings] = useState(() => {
@@ -137,8 +142,13 @@ export function App() {
     catch { return []; }
   });
   const [year, setYear] = useState(2026);
-  const [scenarioKey, setScenarioKey] = useState("base");
   const [rows, setRows] = useState(fallbackRows);
+  const [targetState, setTargetState] = useState({
+    rows: [],
+    mode: "loading",
+    error: null,
+    generatedAt: null,
+  });
   const [mode, setMode] = useState("loading");
   const [connection, setConnection] = useState({ connected: false, readOnly: true });
   const [statusFilter, setStatusFilter] = useState("all");
@@ -147,6 +157,22 @@ export function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(null);
+  const refreshDepartmentTargets = useCallback(async () => {
+    try {
+      const nextState = await fetchDepartmentTargetState(year);
+      setTargetState(nextState);
+      return nextState;
+    } catch {
+      const failedState = {
+        rows: [],
+        mode: "error",
+        error: "Departman hedefleri okunamadı.",
+        generatedAt: null,
+      };
+      setTargetState(failedState);
+      return failedState;
+    }
+  }, [year]);
 
   useEffect(()=>{
     document.documentElement.dataset.theme=appearance.theme;
@@ -157,31 +183,61 @@ export function App() {
 
   useEffect(() => {
     let cancelled = false;
+    Promise.all([
+      fetch("/api/health").then((response) => response.json()),
+      fetch("/api/app-state")
+        .then((response) => response.ok ? response.json() : null)
+        .catch(() => null),
+    ]).then(([health, savedState]) => {
+      if (cancelled) return;
+      setConnection(health);
+      if (savedState?.settings) {
+        const migrated = normalizeSettings(savedState.settings);
+        setAppSettings(migrated);
+        localStorage.setItem(
+          "marlin-profit-settings",
+          JSON.stringify(serializeSettings(migrated)),
+        );
+      }
+      if (savedState?.employees?.length) {
+        setEmployees(normalizePilotEmployees(savedState.employees));
+      }
+      if (Array.isArray(savedState?.costOverrides)) {
+        setCostOverrides(savedState.costOverrides);
+      }
+    }).catch(() => {
+      if (!cancelled) setConnection({ connected: false, readOnly: true });
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
     setMode("loading");
 
     Promise.all([
       fetch(`/api/overview?year=${year}`).then((response) => response.json()),
-      fetch("/api/health").then((response) => response.json()),
-      fetch("/api/app-state").then((response) => response.ok ? response.json() : null).catch(() => null),
-    ]).then(([overview, health, savedState]) => {
+      fetchDepartmentTargetState(year),
+    ]).then(([overview, targets]) => {
       if (cancelled) return;
       setRows(overview.rows?.length ? overview.rows : fallbackRows);
       setMode(overview.mode || "demo");
-      setConnection(health);
-      if (savedState?.settings) setAppSettings(normalizeSettings(savedState.settings));
-      if (savedState?.employees?.length) setEmployees(savedState.employees);
-      if (Array.isArray(savedState?.costOverrides)) setCostOverrides(savedState.costOverrides);
+      setTargetState(targets);
     }).catch(() => {
       if (cancelled) return;
       setRows(fallbackRows);
       setMode("demo");
-      setConnection({ connected: false, readOnly: true });
+      setTargetState({
+        rows: [],
+        mode: "error",
+        error: "Departman hedefleri okunamadı.",
+        generatedAt: null,
+      });
     });
 
     return () => { cancelled = true; };
   }, [year]);
 
-  const scenario = { ...scenarios[scenarioKey], rate: appSettings.rates[scenarioKey] / 100 };
   const calculatedRows = useMemo(() => rows.map((row) => {
     const manualDecisions = costOverrides.filter((decision) => {
       const date = new Date(decision.documentDate);
@@ -220,14 +276,22 @@ export function App() {
     };
   }), [rows, appSettings.pilotCardCostRates, appSettings.requireManagementApprovalForManualCost, costOverrides, year]);
 
-  const enrichedRows = useMemo(() => calculatedRows.map((row) => {
+  const enrichedRows = useMemo(() => mergeMonthlyTargetPools(
+    calculatedRows.map((row) => {
     const profit = row.sales - row.returns - row.discounts - row.estimatedCost - (row.uncoveredNetSales || 0);
-    const contribution = appSettings.negativeRule === "zero" ? Math.max(0, profit * scenario.rate) : profit * scenario.rate;
     const status = Number(row.uncoveredCostLines || 0) === 0 && Number(row.unlinkedReturnLines || 0) === 0
       ? "Kesinleşmiş"
       : "Tahmini";
-    return { ...row, profit, contribution, status };
-  }), [appSettings.negativeRule, calculatedRows, scenario.rate, year]);
+    return { ...row, profit, status };
+    }),
+    targetState.rows,
+  ), [calculatedRows, targetState.rows]);
+
+  const targetView = useMemo(
+    () => buildDepartmentTargetView(targetState.rows),
+    [targetState.rows],
+  );
+  const annualPool = targetView.totalPool;
 
   const filteredRows = enrichedRows.filter((row) => (
     statusFilter === "all" ||
@@ -263,26 +327,56 @@ export function App() {
     : null;
 
   const persistState = (nextSettings, nextEmployees, nextCostOverrides = costOverrides) => {
-    fetch("/api/app-state", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: nextSettings, employees: nextEmployees, costOverrides: nextCostOverrides }) }).catch(() => {});
+    return fetch("/api/app-state", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        settings: serializeSettings(nextSettings),
+        employees: nextEmployees,
+        costOverrides: nextCostOverrides,
+      }),
+    });
   };
 
-  const saveSettings = (nextSettings) => {
-    setAppSettings(nextSettings);
-    localStorage.setItem("marlin-profit-settings", JSON.stringify(nextSettings));
+  const saveSettings = async (nextSettings) => {
+    const normalized = normalizeSettings(nextSettings);
+    const serialized = serializeSettings(normalized);
+    const saved = await persistState(serialized, employees);
+    if (!saved.ok) throw new Error("Ayarlar kaydedilemedi.");
+    setAppSettings(normalized);
+    localStorage.setItem("marlin-profit-settings", JSON.stringify(serialized));
     localStorage.setItem("marlin-settings-saved-at", new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium", timeStyle: "short" }).format(new Date()));
-    persistState(nextSettings, employees);
+    try {
+      await refreshDepartmentTargets();
+    } catch {
+      setTargetState({
+        rows: [],
+        mode: "error",
+        error: "Ayarlar kaydedildi fakat hedefler yenilenemedi.",
+        generatedAt: null,
+      });
+    }
   };
 
   const saveEmployees = (nextEmployees) => {
-    setEmployees(nextEmployees);
-    localStorage.setItem("marlin-pilot-employees", JSON.stringify(nextEmployees));
-    persistState(appSettings, nextEmployees);
+    const normalizedEmployees = normalizePilotEmployees(nextEmployees);
+    setEmployees(normalizedEmployees);
+    localStorage.setItem(
+      "marlin-pilot-employees",
+      JSON.stringify(normalizedEmployees),
+    );
+    persistState(appSettings, normalizedEmployees).catch(() => {});
   };
 
   const saveCostOverrides = (nextCostOverrides) => {
     setCostOverrides(nextCostOverrides);
     localStorage.setItem("marlin-cost-overrides", JSON.stringify(nextCostOverrides));
-    persistState(appSettings, employees, nextCostOverrides);
+    persistState(appSettings, employees, nextCostOverrides)
+      .then((response) => {
+        if (!response.ok) throw new Error("Maliyet kararı kaydedilemedi.");
+        return refreshDepartmentTargets();
+      })
+      .catch(() => {});
   };
 
   return (
@@ -324,7 +418,8 @@ export function App() {
           rows={enrichedRows}
           settings={appSettings}
           employees={employees}
-          annualPool={Math.max(0, totals.profit * (appSettings.rates.base / 100) * (1 - appSettings.reserveRate / 100))}
+          targetRows={targetState.rows}
+          annualPool={annualPool}
           year={year}
           mode={mode}
           onNavigate={setActivePage}
@@ -342,7 +437,7 @@ export function App() {
           connection={connection}
           mode={mode}
           annualProfit={totals.profit}
-          annualPool={Math.max(0, totals.profit * (appSettings.rates.base / 100) * (1 - appSettings.reserveRate / 100))}
+          annualPool={annualPool}
           employees={employees}
           onSaveEmployees={saveEmployees}
           onBack={() => setActivePage("ledger")}
@@ -350,10 +445,10 @@ export function App() {
       ) : activePage === "goals" ? (
         <GoalsPage
           settings={appSettings}
-          onSaveSettings={saveSettings}
-          employees={employees}
-          onSaveEmployees={saveEmployees}
-          annualPool={Math.max(0, totals.profit * (appSettings.rates.base / 100) * (1 - appSettings.reserveRate / 100))}
+          targetRows={targetState.rows}
+          targetMode={targetState.mode}
+          targetError={targetState.error}
+          annualPool={annualPool}
           year={year}
           onBack={() => setActivePage("ledger")}
         />
@@ -362,8 +457,8 @@ export function App() {
       ) : activePage === "approval" ? (
         <ApprovalPage
           settings={appSettings}
-          rows={enrichedRows.map((row) => ({ ...row, contribution: Math.max(0, row.profit * (appSettings.rates.base / 100) * (1 - appSettings.reserveRate / 100)) }))}
-          annualPool={Math.max(0, totals.profit * (appSettings.rates.base / 100) * (1 - appSettings.reserveRate / 100))}
+          rows={enrichedRows}
+          annualPool={annualPool}
           year={year}
           connection={connection}
           costOverrides={costOverrides}
@@ -374,7 +469,8 @@ export function App() {
         <ReportsPage
           settings={appSettings}
           employees={employees}
-          annualPool={Math.max(0, totals.profit * (appSettings.rates.base / 100) * (1 - appSettings.reserveRate / 100))}
+          targetRows={targetState.rows}
+          annualPool={annualPool}
           year={year}
           rows={enrichedRows}
         />
@@ -391,18 +487,11 @@ export function App() {
               <button aria-pressed={statusFilter === "estimate"} className={statusFilter === "estimate" ? "active" : ""} onClick={() => setStatusFilter(statusFilter === "estimate" ? "all" : "estimate")}><span className="orange-dot" />Tahmini</button>
               <button aria-pressed={statusFilter === "final"} className={statusFilter === "final" ? "active" : ""} onClick={() => setStatusFilter(statusFilter === "final" ? "all" : "final")}><span className="green-dot" />Kesinleşmiş</button>
             </div>
-            <label className="scenario-select">
-              <span>Senaryo</span>
-              <select aria-label="Senaryo" value={scenarioKey} onChange={(event) => setScenarioKey(event.target.value)}>
-                {Object.entries(scenarios).map(([key, value]) => <option value={key} key={key}>{value.label}</option>)}
-              </select>
-            </label>
             <div className="menu-wrap">
               <button className="icon-button icon-button--light" onClick={() => setMenuOpen((value) => !value)} aria-label="Diğer işlemler" aria-haspopup="menu" aria-expanded={menuOpen}><IconDots size={20} /></button>
               {menuOpen && (
                 <div className="action-menu" role="menu">
                   <button role="menuitem" onClick={() => setMenuOpen(false)}>Özet raporu aç</button>
-                  <button role="menuitem" onClick={() => setMenuOpen(false)}>Senaryoyu çoğalt</button>
                   <button role="menuitem" onClick={() => { setMenuOpen(false); setPolicyOpen(true); }}>Politikayı incele</button>
                 </div>
               )}
@@ -444,7 +533,7 @@ export function App() {
                   <div><dt>İskontolar</dt><dd className="negative">−{fmt(totals.discounts)}</dd></div>
                   <div><dt>Maliyet</dt><dd className="negative">−{fmt(totals.cost)}</dd></div>
                   <div className="summary-list__total"><dt>Dağıtıma Esas Kâr</dt><dd>{fmt(totals.profit)}</dd></div>
-                  <div><dt>Dağıtım Oranı</dt><dd>%{scenario.rate * 100}</dd></div>
+                  <div><dt>Dağıtım Kuralı</dt><dd>Departman hedef bandı</dd></div>
                   <div className="summary-list__pool"><dt>Dağıtılabilir Tutar</dt><dd>{fmt(totals.contribution)}</dd></div>
                 </dl>
               </div>
@@ -474,7 +563,7 @@ export function App() {
                         <td className="negative">−{fmt(row.discounts)}</td>
                         <td className="negative">−{fmt(row.estimatedCost)}</td>
                         <td className="positive">{fmt(row.profit)}</td>
-                        <td>%{scenario.rate * 100}</td>
+                        <td>{row.contribution > 0 ? "Hedef bandı" : "Muaf"}</td>
                         <td className="positive">{fmt(row.contribution)}</td>
                         <td><StatusDot status={row.status} /></td>
                       </tr>
@@ -483,7 +572,7 @@ export function App() {
                   </tbody>
                   <tfoot>
                     <tr>
-                      <th>Toplam</th><td>{fmt(totals.sales)}</td><td className="negative">−{fmt(totals.returns)}</td><td className="negative">−{fmt(totals.discounts)}</td><td className="negative">−{fmt(totals.cost)}</td><td>{fmt(totals.profit)}</td><td>%{scenario.rate * 100}</td><td>{fmt(totals.contribution)}</td><td>—</td>
+                      <th>Toplam</th><td>{fmt(totals.sales)}</td><td className="negative">−{fmt(totals.returns)}</td><td className="negative">−{fmt(totals.discounts)}</td><td className="negative">−{fmt(totals.cost)}</td><td>{fmt(totals.profit)}</td><td>Otomatik</td><td>{fmt(totals.contribution)}</td><td>—</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -522,7 +611,7 @@ export function App() {
                 </div>
 
                 <button className="policy-summary" onClick={() => setPolicyOpen(true)}>
-                  <div><strong>Havuz Kuralları Özeti</strong><p>Dağıtım oranı %{scenario.rate * 100}. {appSettings.negativeRule === "zero" ? "Zararlı aylarda katkı sıfırlanır." : "Zararlar yıllık sonuçta mahsup edilir."}</p></div>
+                  <div><strong>Havuz Kuralları Özeti</strong><p>Hedef altı aylar muaf; hedef tutan aylar temkinli, hedef üstü eşiği geçen aylar büyüme oranıyla hesaplanır.</p></div>
                   <IconChevronDown size={18} />
                 </button>
 
@@ -544,7 +633,8 @@ export function App() {
             <p className="eyebrow">Geçerli hesaplama kuralları</p>
             <h2 id="policy-title">Havuz Kuralları</h2>
             <div className="policy-grid">
-              <div><span>Dağıtım oranı</span><strong>%{scenario.rate * 100}</strong></div>
+              <div><span>Temkinli oran</span><strong>%{appSettings.rates.conservative}</strong></div>
+              <div><span>Büyüme oranı</span><strong>%{appSettings.rates.growth}</strong></div>
               <div><span>Negatif dönem</span><strong>{appSettings.negativeRule === "zero" ? "Katkı yok" : "Yıl sonunda mahsup"}</strong></div>
               <div><span>Veri kaynağı</span><strong>CPM / Salt okunur</strong></div>
               <div><span>Kesinleşme</span><strong>Yönetim onayı</strong></div>

@@ -7,6 +7,7 @@ import { buildSalesCaseModel, filterSalesCases, salesCaseSql } from "./salesCase
 import { buildFinalInvoiceLedger, finalInvoiceLedgerSql } from "./finalInvoiceLedger.mjs";
 import { createUnifiedLedgerRouter } from "./ledgerApi.mjs";
 import { createLedgerService } from "./ledgerService.mjs";
+import { serializeSettings } from "../shared/settingsPolicy.mjs";
 
 const app = express();
 const port = Number(process.env.PORT || 4318);
@@ -183,12 +184,20 @@ app.put("/api/app-state", async (request, response) => {
   }
   try {
     await mkdir(path.dirname(dataFile), { recursive: true });
-    const state = { settings, employees, costOverrides, savedAt: new Date().toISOString() };
+    const state = {
+      settings: serializeSettings(settings),
+      employees,
+      costOverrides,
+      savedAt: new Date().toISOString(),
+    };
     const tempFile = `${dataFile}.tmp`;
     await writeFile(tempFile, JSON.stringify(state, null, 2), "utf8");
     await rename(tempFile, dataFile);
     return response.json({ saved: true, savedAt: state.savedAt });
-  } catch {
+  } catch (error) {
+    if (error instanceof TypeError || error instanceof RangeError) {
+      return response.status(400).json({ error: "Geçersiz uygulama ayarı." });
+    }
     return response.status(500).json({ error: "Uygulama ayarları kaydedilemedi." });
   }
 });

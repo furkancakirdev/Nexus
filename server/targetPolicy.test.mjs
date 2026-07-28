@@ -102,7 +102,7 @@ test("varsayılan hedef ayarları yalnız alan yokken veya undefined iken uygula
     actual: 110,
     target: 100,
     stretchPct: undefined,
-  }).stretchTarget, 110);
+  }).stretchTarget, 105);
 
   const missing = monthlyDepartmentPool({
     profit: 100,
