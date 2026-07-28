@@ -1180,6 +1180,14 @@ export function buildFinalInvoiceLedger({
   const lineageRows = Array.isArray(lineage) ? lineage : [];
   const eventRows = Array.isArray(actorEvents) ? actorEvents : [];
   const pilotRows = Array.isArray(pilotOrders) ? pilotOrders : [];
+  const actorEventsByRoot = new Map();
+  for (const eventRow of eventRows) {
+    const rootId = text(eventRow?.rootId);
+    if (!rootId) continue;
+    if (!actorEventsByRoot.has(rootId)) actorEventsByRoot.set(rootId, []);
+    actorEventsByRoot.get(rootId).push(eventRow);
+  }
+  const eventsFor = (row) => actorEventsByRoot.get(text(row?.rootId)) || [];
   const structurallyValidRows = economicRows.filter(isValidEconomicRow);
   const economicCandidateRows = structurallyValidRows.filter((row) =>
     FINAL_SALE_TYPES.has(Number(row.documentType)) || FINAL_RETURN_TYPES.has(Number(row.documentType)));
@@ -1221,7 +1229,7 @@ export function buildFinalInvoiceLedger({
     const ownership = resolveCommercialOwnership({
       economic: row,
       lineage: lineageByRoot.get(text(row.rootId)) || [],
-      actorEvents: eventRows,
+      actorEvents: eventsFor(row),
       identities,
     });
     return { ...row, ...ownershipFields(ownership) };
@@ -1232,13 +1240,14 @@ export function buildFinalInvoiceLedger({
   const rows = directlyOwnedRows.map((row) => {
     if (row.isSale || !text(row.originalRootId)) return row;
     const rowLineage = lineageByRoot.get(text(row.rootId)) || [];
+    const rowActorEvents = eventsFor(row);
     const original = salesByRoot.get(text(row.originalRootId))
-      || priorPeriodOriginalOwnership(row, rowLineage, eventRows, identities);
+      || priorPeriodOriginalOwnership(row, rowLineage, rowActorEvents, identities);
     if (!original) return row;
     const directOwnership = resolveCommercialOwnership({
       economic: row,
       lineage: rowLineage,
-      actorEvents: eventRows,
+      actorEvents: rowActorEvents,
       identities,
     });
     return { ...row, ...linkedReturnOwnership(row, original, directOwnership) };

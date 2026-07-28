@@ -1778,6 +1778,30 @@ test("canlı SQL terminal satış tüketimini geçici tablonun quantity alanınd
   );
 });
 
+test("aktör olaylarını ekonomik satır başına yeniden taramak yerine kök kimlikle indeksler", () => {
+  let unrelatedRootReads = 0;
+  const unrelatedEvent = {
+    get rootId() {
+      unrelatedRootReads += 1;
+      return "UNRELATED";
+    },
+    lineageId: "UNRELATED-LINEAGE",
+    headerId: "UNRELATED-HEADER",
+    actorCode: "FURKAN",
+  };
+
+  const result = buildFinalInvoiceLedger({
+    economics: [
+      sale(85, "F-INDEX-1"),
+      sale(85, "F-INDEX-2"),
+    ],
+    actorEvents: [unrelatedEvent],
+  });
+
+  assert.equal(result.rows.length, 2);
+  assert.equal(unrelatedRootReads, 1);
+});
+
 test("actor history is scoped through the selected active company header id", () => {
   assert.match(finalInvoiceLedgerSql, /header\.ID\s+headerId/i);
   assert.match(finalInvoiceLedgerSql, /event\.rootId/i);
