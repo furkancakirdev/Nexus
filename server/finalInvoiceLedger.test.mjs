@@ -1767,6 +1767,17 @@ test("canlı SQL ayrılmış LINENO anahtar kelimesini sütun adı olarak kaçı
   assert.match(finalInvoiceLedgerSql, /\.\[lineNo\]/);
 });
 
+test("canlı SQL terminal satış tüketimini geçici tablonun quantity alanından okur", () => {
+  assert.doesNotMatch(
+    finalInvoiceLedgerSql,
+    /FROM\s+#terminalSales\s+movement[\s\S]{0,240}movement\.MIKTAR/i,
+  );
+  assert.match(
+    finalInvoiceLedgerSql,
+    /SUM\(CAST\(movement\.quantity\s+AS\s+decimal\(28,\s*4\)\)\)\s+consumedQuantity/i,
+  );
+});
+
 test("actor history is scoped through the selected active company header id", () => {
   assert.match(finalInvoiceLedgerSql, /header\.ID\s+headerId/i);
   assert.match(finalInvoiceLedgerSql, /event\.rootId/i);

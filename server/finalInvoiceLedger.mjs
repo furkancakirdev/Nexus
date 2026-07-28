@@ -1757,7 +1757,7 @@ OUTER APPLY (
     CAST(p.purchaseQuantity - ISNULL(consumption.consumedQuantity, 0) AS decimal(28, 4)) purchaseRemainingQuantity
   FROM #purchaseCandidates p
   OUTER APPLY (
-    SELECT SUM(CAST(movement.MIKTAR AS decimal(28, 4))) consumedQuantity
+    SELECT SUM(CAST(movement.quantity AS decimal(28, 4))) consumedQuantity
     FROM #terminalSales movement
     WHERE movement.productCode = p.productCode
       AND movement.documentDate > p.purchaseDate
@@ -1819,7 +1819,7 @@ OUTER APPLY (
   ORDER BY selected.selectionOrder
 ) selectedPurchase
 OUTER APPLY (
-  SELECT SUM(CAST(movement.MIKTAR AS decimal(28, 4))) consumedQuantity
+  SELECT SUM(CAST(movement.quantity AS decimal(28, 4))) consumedQuantity
   FROM #terminalSales movement
   WHERE movement.productCode = selectedPurchase.productCode
     AND movement.documentDate > selectedPurchase.purchaseDate
