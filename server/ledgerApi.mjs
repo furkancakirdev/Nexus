@@ -302,6 +302,8 @@ export function filterAuditLedger(ledger, query = {}) {
     excludedRows: 0,
     returnRiskRows: 0,
     filteredNetAmount: 0,
+    analysisNetAmount: 0,
+    excludedNetAmount: 0,
   };
   for (const row of filteredRows) {
     if (row.verificationStatus === "verified") summary.verifiedRows += 1;
@@ -309,7 +311,13 @@ export function filterAuditLedger(ledger, query = {}) {
     else if (row.verificationStatus === "review") summary.reviewRows += 1;
     else if (row.verificationStatus === "excluded") summary.excludedRows += 1;
     if (row.returnRisk) summary.returnRiskRows += 1;
-    summary.filteredNetAmount += row.isSale ? number(row.netAmount) : -number(row.netAmount);
+    const signedNetAmount = row.isSale ? number(row.netAmount) : -number(row.netAmount);
+    summary.filteredNetAmount += signedNetAmount;
+    if (row.verificationStatus === "excluded") {
+      summary.excludedNetAmount += signedNetAmount;
+    } else {
+      summary.analysisNetAmount += signedNetAmount;
+    }
   }
   const offset = (page - 1) * pageSize;
   return {
@@ -713,6 +721,7 @@ export function createUnifiedLedgerRouter({
         });
       }
       const audit = filterAuditLedger(snapshot.value, request.query);
+      const scopeNetSales = economicScopeNetSales(snapshot.value);
       response.setHeader("Cache-Control", "no-store");
       return response.json({
         year,
@@ -721,8 +730,9 @@ export function createUnifiedLedgerRouter({
         ...metadata(snapshot),
         reconciliation: reconciliation(
           snapshot.value.totals?.netSales,
-          audit.summary.filteredNetAmount,
-          audit.summary.filteredNetAmount,
+          audit.summary.analysisNetAmount,
+          scopeNetSales,
+          number(snapshot.value.totals?.netSales) - scopeNetSales,
         ),
       });
     } catch (error) {

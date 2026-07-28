@@ -51,7 +51,12 @@ function validPayloads() {
     audit: {
       mode: "live",
       readOnly: true,
-      summary: { totalRows: 1, filteredNetAmount: 100 },
+      summary: {
+        totalRows: 2,
+        filteredNetAmount: 600,
+        analysisNetAmount: 100,
+        excludedNetAmount: 500,
+      },
       rows: [{
         documentType: 85,
         revenueSource: "invoice",

@@ -100,7 +100,7 @@ export function validateYearPayloads(year, payloads) {
 
   const overviewTotal = overviewNetSales(overview.rows);
   const departmentTotal = roundMoney(departments.totals?.netSales || 0);
-  const auditTotal = roundMoney(audit.summary?.filteredNetAmount || 0);
+  const auditTotal = roundMoney(audit.summary?.analysisNetAmount || 0);
   const departmentRows = Array.isArray(departments.departments)
     ? departments.departments
     : [];

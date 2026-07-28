@@ -1299,12 +1299,13 @@ test("kapsam dışı gelir audit içinde kalır fakat overview ve departman topl
   });
 
   await withApiServer(router, async (baseUrl) => {
-    const [overview, department, audit] = await Promise.all([
+    const [overview, department, audit, fullAudit] = await Promise.all([
       fetch(`${baseUrl}/api/overview?year=2026`).then((response) => response.json()),
       fetch(`${baseUrl}/api/department-analysis?year=2026`).then((response) => response.json()),
       fetch(
         `${baseUrl}/api/audit-ledger?year=2026&method=excludedIncome&verification=excluded`,
       ).then((response) => response.json()),
+      fetch(`${baseUrl}/api/audit-ledger?year=2026`).then((response) => response.json()),
     ]);
 
     assert.equal(overview.rows.reduce((sum, row) => (
@@ -1313,6 +1314,13 @@ test("kapsam dışı gelir audit içinde kalır fakat overview ve departman topl
     assert.equal(department.totals.netSales, 250);
     assert.equal(audit.summary.totalRows, 1);
     assert.equal(audit.rows[0].costMethod, "excludedIncome");
+    assert.equal(audit.summary.filteredNetAmount, 500);
+    assert.equal(audit.summary.analysisNetAmount, 0);
+    assert.equal(audit.summary.excludedNetAmount, 500);
+    assert.equal(fullAudit.summary.filteredNetAmount, 750);
+    assert.equal(fullAudit.summary.analysisNetAmount, 250);
+    assert.equal(fullAudit.summary.excludedNetAmount, 500);
+    assert.equal(fullAudit.reconciliation.difference, 0);
     assert.equal(overview.reconciliation.difference, 0);
     assert.equal(department.reconciliation.difference, 0);
     assert.equal(overview.reconciliation.excludedNetSales, 500);
