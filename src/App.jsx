@@ -157,6 +157,7 @@ export function App() {
   const [year, setYear] = useState(2026);
   const [rows, setRows] = useState(fallbackRows);
   const [eurRateSets, setEurRateSets] = useState({});
+  const [canonicalMetric, setCanonicalMetric] = useState(null);
   const [targetState, setTargetState] = useState({
     rows: [],
     mode: "loading",
@@ -236,6 +237,7 @@ export function App() {
       if (cancelled) return;
       setRows(overview.rows?.length ? overview.rows : fallbackRows);
       setEurRateSets(overview.eurRateSets || {});
+      setCanonicalMetric(overview.canonicalMetric || null);
       setMode(overview.mode || "demo");
       setTargetState(targets);
     }).catch(() => {
@@ -440,7 +442,7 @@ export function App() {
           onNavigate={setActivePage}
         />
       ) : activePage === "sales" ? (
-        <SalesPage rows={calculatedRows} year={year} mode={mode} minimumCoverage={appSettings.minimumCoverage} pilotCardCostRates={appSettings.pilotCardCostRates} eurRateSets={eurRateSets} />
+        <SalesPage rows={calculatedRows} year={year} mode={mode} minimumCoverage={appSettings.minimumCoverage} pilotCardCostRates={appSettings.pilotCardCostRates} eurRateSets={eurRateSets} canonicalMetric={canonicalMetric} />
       ) : activePage === "departments" ? (
         <DepartmentAnalysisPage year={year} mode={mode} consolidatedRows={calculatedRows} minimumCoverage={appSettings.minimumCoverage} eurRateSets={eurRateSets} />
       ) : activePage === "audit" ? (

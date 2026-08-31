@@ -474,6 +474,7 @@ export function buildDepartmentAnalysis({
   for (let month = 1; month <= 12; month += 1) {
     monthMetrics.set(month, {
       month, monthName: MONTH_NAMES[month - 1],
+      all: emptyMetrics("all", "Toplam"),
       service: emptyMetrics("service", DEPARTMENT_META.service.name),
       parts: emptyMetrics("parts", DEPARTMENT_META.parts.name),
       review: emptyMetrics("review", DEPARTMENT_META.review.name),
@@ -482,6 +483,7 @@ export function buildDepartmentAnalysis({
   for (const row of normalized) {
     addMetric(departmentMetrics.get(row.department), row);
     addMetric(monthMetrics.get(row.month)[row.department], row);
+    addMetric(monthMetrics.get(row.month).all, row);
     addMetric(totalMetric, row);
     if (row.attributionStatus === "confirmed") confirmedAmount += row.netSales;
     else if (row.attributionStatus === "inferred") inferredAmount += row.netSales;
@@ -502,6 +504,7 @@ export function buildDepartmentAnalysis({
   const months = [...monthMetrics.values()].map((item) => ({
     month: item.month,
     monthName: item.monthName,
+    all: finalizeMetric(item.all),
     service: finalizeMetric(item.service),
     parts: finalizeMetric(item.parts),
     review: finalizeMetric(item.review),

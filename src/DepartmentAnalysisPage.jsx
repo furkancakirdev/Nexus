@@ -39,38 +39,6 @@ const emptyMetric = {
   inferredSales: 0, reviewSales: 0,
 };
 
-function sumMetrics(metrics) {
-  const summed = metrics.reduce((total, item = {}) => ({
-    grossSales: total.grossSales + Number(item.grossSales || 0),
-    returns: total.returns + Number(item.returns || 0),
-    discounts: total.discounts + Number(item.discounts || 0),
-    netSales: total.netSales + Number(item.netSales || 0),
-    cost: total.cost + Number(item.cost || 0),
-    profit: total.profit + Number(item.profit || 0),
-    documentCount: total.documentCount + Number(item.documentCount || 0),
-    customerCount: total.customerCount + Number(item.customerCount || 0),
-    crossDepotSales: total.crossDepotSales + Number(item.crossDepotSales || 0),
-    crossDepotDocuments: total.crossDepotDocuments + Number(item.crossDepotDocuments || 0),
-    lineCount: total.lineCount + Number(item.lineCount || 0),
-    coveredLines: total.coveredLines + Number(item.coveredLines || 0),
-    confirmedSales: total.confirmedSales + Number(item.confirmedSales || 0),
-    inferredSales: total.inferredSales + Number(item.inferredSales || 0),
-    reviewSales: total.reviewSales + Number(item.reviewSales || 0),
-    // EUR karşılıkları da toplanır; her ay kendi kur setiyle çevrilmiştir.
-    eurNetSales: total.eurNetSales + Number(item.eurEquivalent?.netSales || 0),
-    eurCost: total.eurCost + Number(item.eurEquivalent?.cost || 0),
-    eurProfit: total.eurProfit + Number(item.eurEquivalent?.profit || 0),
-    eurHasAny: total.eurHasAny || Boolean(item.eurEquivalent && Number.isFinite(item.eurEquivalent.netSales)),
-  }), { ...emptyMetric, lineCount: 0, coveredLines: 0, eurNetSales: 0, eurCost: 0, eurProfit: 0, eurHasAny: false });
-  summed.margin = metrics.at(-1)?.canonicalMetric?.scope?.confirmed?.margin ?? null;
-  summed.costCoveragePct = summed.lineCount ? summed.coveredLines / summed.lineCount * 100 : 0;
-  if (summed.eurHasAny && metrics.every((item) => item.eurComplete === true)) {
-    summed.eurEquivalent = { netSales: summed.eurNetSales, cost: summed.eurCost, profit: summed.eurProfit };
-    summed.eurMargin = metrics.at(-1)?.canonicalMetric?.eurMargin ?? null;
-  }
-  return summed;
-}
-
 function DepartmentTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   return <div className="department-tooltip"><strong>{label}</strong>{payload.filter((item) => item.value != null).map((item) => <span key={item.dataKey}><i style={{ background: item.color }} />{item.name}<b>{formatMoney(item.value)}</b></span>)}</div>;
@@ -128,7 +96,7 @@ export function DepartmentAnalysisPage({ year, mode: appMode, consolidatedRows =
       const selectedMonth = (data.months || []).find((item) => String(item.month) === month);
       if (!selectedMonth) return emptyMetric;
       return department === "all"
-        ? sumMetrics([selectedMonth.service, selectedMonth.parts, selectedMonth.review])
+        ? selectedMonth.all || emptyMetric
         : selectedMonth[department] || emptyMetric;
     }
     if (department === "all") return data.totals || emptyMetric;

@@ -67,7 +67,7 @@ function CustomSalesTooltip({ active, payload, label, moneyFormatter = formatMon
   );
 }
 
-export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80, eurRateSets = {} }) {
+export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80, eurRateSets = {}, canonicalMetric = null }) {
   const [view, setView] = useState("all");
   const [sort, setSort] = useState("month");
 
@@ -199,10 +199,9 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
       },
     );
 
-    const overallMargin = normalizedRows.length ? normalizedRows[normalizedRows.length - 1].canonicalMetric?.scope?.confirmed?.margin ?? null : null;
+    const overallMargin = canonicalMetric?.scope?.comparable?.margin ?? null;
     const overallCoverage = base.lineCount ? (base.costCoveredLines / base.lineCount) * 100 : 0;
-    const eurOverallMargin = normalizedRows.length && normalizedRows.every((row) => row.eurAvailable)
-      ? normalizedRows[normalizedRows.length - 1].canonicalMetric?.eurMargin ?? null : null;
+    const eurOverallMargin = canonicalMetric?.eur?.complete ? canonicalMetric.eurMargin : null;
 
     return {
       ...base,
@@ -211,7 +210,7 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
       overallCoverage,
       eurOverallMargin,
     };
-  }, [normalizedRows]);
+  }, [normalizedRows, canonicalMetric]);
 
   const topSalesMonth = useMemo(() => {
     return [...normalizedRows].sort((a, b) => (totals.eurHasAny

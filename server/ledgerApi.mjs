@@ -386,6 +386,13 @@ export function decorateOverviewRowsEur(rows, { index, year, approvals = {}, rep
   return { rows: decorated, eurRateSets };
 }
 
+export function aggregateDepartmentMetric(metric, rateSets) {
+  return aggregateFinancialMetric(metric?.[FINANCIAL_ROWS] || [], {
+    rateSets,
+    basisId: `department:${metric?.id || "total"}`,
+  });
+}
+
 function verificationStatus(row) {
   if (row.costMethod === "excludedIncome") return "excluded";
   if (String(row.costMethod || "").startsWith("configured")) return "configured";
@@ -428,12 +435,13 @@ function auditRow(row) {
   const effectiveRow = { ...row, costMethod: effectiveCostMethod };
   const verification = verificationStatus(effectiveRow);
   const signedNetAmount = (row.isSale ? 1 : -1) * netAmount;
-  const v2Cost = row.financeV2?.reviewReason == null
-    ? Number(row.financeV2?.lineCostTryExVat)
-    : NaN;
-  const calculatedCost = Number.isFinite(v2Cost)
-    ? (row.isSale ? 1 : -1) * v2Cost
-    : null;
+  const canonicalMetric = aggregateFinancialMetric([{
+    signedNetSalesTry: signedNetAmount,
+    period: String(monthOf(row.documentDate)),
+    productCurrency: row.financeV2?.productCurrency,
+    documentSellingRate: row.documentSellingRate,
+    financeV2: row.financeV2,
+  }], { basisId: `audit:${row.rootId}` });
   return {
     ...row,
     [AUDIT_SORT_TIME]: Date.parse(row.documentDate) || 0,
@@ -449,13 +457,7 @@ function auditRow(row) {
     discountPct: grossAmount ? 100 * number(row.discountAmount) / grossAmount : 0,
     netAmount,
     signedNetAmount,
-    canonicalMetric: aggregateFinancialMetric([{
-      signedNetSalesTry: signedNetAmount,
-      period: String(monthOf(row.documentDate)),
-      productCurrency: row.financeV2?.productCurrency,
-      documentSellingRate: row.documentSellingRate,
-      financeV2: row.financeV2,
-    }], { basisId: `audit:${row.rootId}` }),
+    canonicalMetric,
     vatAmount: number(row.vatAmount),
     vatRate: netAmount ? 100 * number(row.vatAmount) / netAmount : 0,
     invoiceTotalInclVat: number(row.invoiceTotalInclVat),
@@ -468,10 +470,12 @@ function auditRow(row) {
     costValidated: verification === "verified",
     returnRisk,
     costEvidenceClass: costEvidenceClass(effectiveRow),
-    calculatedCost,
-    grossProfit: effectiveCostMethod === "excludedIncome" || calculatedCost === null
+    calculatedCost: effectiveCostMethod === "excludedIncome" || canonicalMetric.scope.costReview.lines > 0
       ? null
-      : signedNetAmount - calculatedCost,
+      : canonicalMetric.try.cost,
+    grossProfit: effectiveCostMethod === "excludedIncome" || canonicalMetric.scope.costReview.lines > 0
+      ? null
+      : canonicalMetric.try.profit,
     purchaseVatRate: purchaseNetAmount
       ? 100 * number(row.purchaseVatAmount) / purchaseNetAmount
       : null,
@@ -930,11 +934,32 @@ export function createUnifiedLedgerRouter({
         approvals: state.approvals?.[String(year)] || {},
         reportDate: new Date(),
       });
+      const annualRateSets = Object.fromEntries(Object.entries(eurDecorated.eurRateSets).map(([month]) => {
+        const resolved = resolveMonthRateSet({
+          index: rateIndex,
+          year,
+          month: Number(month),
+          approval: (state.approvals?.[String(year)] || {})[month] || null,
+          reportDate: new Date(),
+        });
+        return [month, resolved.rateSet];
+      }));
+      const annualCanonicalMetric = aggregateFinancialMetric(
+        (snapshot.value.rows || []).filter((row) => !isExcludedIncome(row.productCode)).map((row) => ({
+          signedNetSalesTry: row.signedNetSales,
+          period: String(monthOf(row.documentDate)),
+          productCurrency: row.financeV2?.productCurrency,
+          documentSellingRate: row.documentSellingRate,
+          financeV2: row.financeV2,
+        })),
+        { rateSets: annualRateSets, basisId: `overview:${year}` },
+      );
       response.setHeader("Cache-Control", "no-store");
       return response.json({
         year,
         rows: eurDecorated.rows,
         eurRateSets: eurDecorated.eurRateSets,
+        canonicalMetric: annualCanonicalMetric,
         mode: "live",
         ...metadata(snapshot),
         reconciliation: reconciliation(
@@ -1003,16 +1028,26 @@ export function createUnifiedLedgerRouter({
       const rateIndex = buildExchangeRateIndex(snapshot.value.exchangeRates);
       const approvals = state.approvals?.[String(year)] || {};
       const reportDate = new Date();
+      const periodRateSets = {};
+      for (let month = 1; month <= 12; month += 1) {
+        const resolved = resolveMonthRateSet({
+          index: rateIndex,
+          year,
+          month,
+          approval: approvals[String(month)] || null,
+          reportDate,
+        });
+        periodRateSets[String(month)] = resolved.rateSet;
+      }
       const decorateMetricEur = (metric) => {
         if (!metric || typeof metric !== "object") return metric;
         const resolved = metric.month
-          ? resolveMonthRateSet({
-            index: rateIndex, year, month: metric.month, approval: approvals[String(metric.month)] || null, reportDate,
-          })
+          ? resolveMonthRateSet({ index: rateIndex, year, month: metric.month, approval: approvals[String(metric.month)] || null, reportDate })
           : { rateSet: buildRateSet(rateIndex, reportDate), frozen: false };
-        const canonicalMetric = aggregateFinancialMetric(metric[FINANCIAL_ROWS] || [], {
-          rateSet: resolved.rateSet, basisId: `department:${metric.id || "total"}`,
-        });
+        const canonicalMetric = aggregateDepartmentMetric(
+          metric,
+          metric.month ? { [String(metric.month)]: resolved.rateSet } : periodRateSets,
+        );
         return {
           ...metric,
           canonicalMetric,
