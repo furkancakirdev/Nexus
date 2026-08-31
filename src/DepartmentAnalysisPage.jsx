@@ -80,16 +80,26 @@ export function DepartmentAnalysisPage({ year, mode: appMode, consolidatedRows =
     return () => controller.abort();
   }, [year, refreshToken, externalRefreshToken]);
 
-  const monthRows = useMemo(() => (data.months || []).map((item) => ({
-    month: item.month,
-    monthName: item.monthName,
-    serviceSales: Number(item.service?.netSales || 0),
-    partsSales: Number(item.parts?.netSales || 0),
-    reviewSales: Number(item.review?.netSales || 0),
-    serviceProfit: Number(item.service?.profit || 0),
-    partsProfit: Number(item.parts?.profit || 0),
-    totalProfit: Number(item.service?.profit || 0) + Number(item.parts?.profit || 0) + Number(item.review?.profit || 0),
-  })), [data.months]);
+  const monthRows = useMemo(() => (data.months || []).map((item) => {
+    const project = (metric) => ({
+      netSales: metric?.canonicalMetric?.try?.netSales ?? null,
+      profit: metric?.canonicalMetric?.status === "TAMAM" ? metric.canonicalMetric.try.profit : null,
+    });
+    const service = project(item.service);
+    const parts = project(item.parts);
+    const review = project(item.review);
+    const all = project(item.all);
+    return {
+      month: item.month,
+      monthName: item.monthName,
+      serviceSales: service.netSales,
+      partsSales: parts.netSales,
+      reviewSales: review.netSales,
+      serviceProfit: service.profit,
+      partsProfit: parts.profit,
+      totalProfit: all.profit,
+    };
+  }), [data.months]);
 
   const selectedMetric = useMemo(() => {
     if (month !== "0") {
@@ -105,33 +115,13 @@ export function DepartmentAnalysisPage({ year, mode: appMode, consolidatedRows =
 
   const visibleDepartments = useMemo(() => (data.departments || []).filter((item) => department === "all" || item.id === department), [data.departments, department]);
   const chartRows = useMemo(() => month === "0" ? monthRows : monthRows.filter((item) => String(item.month) === month), [month, monthRows]);
-  const consolidated = useMemo(() => consolidatedRows.reduce((total, row) => {
-    const grossSales = Number(row.sales || 0);
-    const returns = Number(row.returns || 0);
-    const discounts = Number(row.discounts || 0);
-    const net = Number(row.sales || 0) - Number(row.returns || 0) - Number(row.discounts || 0);
-    const profit = Number(row.profit ?? (net - Number(row.cost ?? 0) - Number(row.uncoveredNetSales || 0)));
-    return {
-      grossSales: total.grossSales + grossSales,
-      returns: total.returns + returns,
-      discounts: total.discounts + discounts,
-      netSales: total.netSales + net,
-      profit: total.profit + profit,
-    };
-  }, { grossSales: 0, returns: 0, discounts: 0, netSales: 0, profit: 0 }), [consolidatedRows]);
-  const reconciliation = {
-    grossSales: Number(data.totals?.grossSales || 0) - consolidated.grossSales,
-    returns: Number(data.totals?.returns || 0) - consolidated.returns,
-    discounts: Number(data.totals?.discounts || 0) - consolidated.discounts,
-    netSales: Number(data.totals?.netSales || 0) - consolidated.netSales,
-    profit: Number(data.totals?.profit || 0) - consolidated.profit,
-  };
+  const reconciliation = data.reconciliation || null;
   const canReconcile = data.mode === "live" && appMode === "live";
-  const reconciled = canReconcile && Object.values(reconciliation).every((difference) => Math.abs(difference) < 1);
-  const reconciliationDifference = Math.abs(reconciliation.grossSales) >= 1
-    ? `Brüt fark ${formatMoney(reconciliation.grossSales)}`
-    : `Net fark ${formatMoney(reconciliation.netSales)}`;
-  const hasFinancialData = Number(data.totals?.lineCount || 0) > 0;
+  const reconciled = canReconcile && reconciliation?.balanced === true;
+  const reconciliationDifference = reconciliation?.difference == null
+    ? "Uzlaşma kanıtı bekleniyor"
+    : `Net fark ${formatMoney(reconciliation.difference)}`;
+  const hasFinancialData = data.totals?.lineCount > 0;
 
   const detailRows = useMemo(() => (data.detailRows || []).filter((row) => {
     if (department !== "all" && row.department !== department) return false;

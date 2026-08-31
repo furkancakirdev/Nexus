@@ -13,6 +13,7 @@ This pass completes the independent-review fixes for F-015, F-018, F-019 and F-0
 - SalesPage and DepartmentAnalysisPage consume selected-period canonical aggregates; DepartmentAnalysis has a server-provided `all` projection instead of a final-month/local sum fallback.
 - Added behavioral tests for complete/partial EUR, review/excluded scope, zero denominator, exact period rates, F-020 evidence/byCurrency, and cross-screen selected-period/currency reconciliation.
 - Final P1 pass decorates monthly `all` department projections, gates Sales top-month EUR ranking on canonical completeness, removes Sales local annual net/cost/profit/basket aggregation, and preserves null Audit detail values.
+- Final remaining review fix projects monthly chart values from canonical fields/status, removes DepartmentAnalysisPage local net/profit reconciliation arithmetic, and keeps review-month profit unavailable rather than coercing it to zero.
 - SummaryPage was not changed in this fix branch.
 
 ## Verification
@@ -23,7 +24,7 @@ Focused command:
 node --test server/task2IndependentReviewFix.test.mjs shared/financialMetric.test.mjs
 ```
 
-Result: **27 tests, 27 passed, 0 failed**.
+Result: **28 tests, 28 passed, 0 failed**.
 
 Full command: `npm test` — **335 tests, 331 passed, 4 failed**. Task 2 tests were green. Remaining failures are out of scope and unchanged: `production fingerprint registry executes the three approved queries` (CPM fingerprint fixture), `default labor pilot cost matches the Nexus zero-percent setting`, `departman hedef API ekran ayrıntısının 500 satır sınırından etkilenmez`, and `V2 kanıtı eksik ayda profit üretmez ve tüm net satışı incelemeye ayırır`.
 
@@ -35,6 +36,7 @@ Build command: `npm run build` — passed (`vite build`, 6772 modules transforme
 - Earlier Task 2 implementation/fix commits remain in ancestry, including `73ed37d`, `7a24a06`, `14f4040`, and `01e3d57`.
 - `cce425c` — `fix(finance): complete Task 2 canonical report projections` (Reports projection and Task 2 behavior tests).
 - Final P1 fix commit is created after this verification and includes the monthly-all projection, Sales EUR fail-closed selection, Audit null display, and regressions.
+- Final remaining review-fix commit is created after this verification and includes canonical monthly chart/reconciliation consumption plus the null-review regression.
 
 ## Known limitations / blocker
 

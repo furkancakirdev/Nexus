@@ -131,6 +131,19 @@ test("department Tümü keeps a canonical all projection with EUR evidence", () 
   assert.equal(all.canonicalMetric.try.netSales, 1000);
 });
 
+test("department monthly review profit stays unavailable instead of becoming zero", async () => {
+  const result = buildDepartmentAnalysis({ year: 2026, ledger: { rows: [row({
+    financeV2: { lineCostTryExVat: null, costStatus: "review", productCurrency: "TRY", reviewReason: "missing-cost" },
+  })] } });
+  const service = result.months[0].service;
+  assert.equal(service.canonicalMetric.status, "INCELEME");
+  assert.equal(service.canonicalMetric.scope.costReview.lines, 1);
+  const source = await readFile(new URL("../src/DepartmentAnalysisPage.jsx", import.meta.url), "utf8");
+  assert.match(source, /canonicalMetric\?\.status === "TAMAM"/);
+  assert.doesNotMatch(source, /Number\(item\.(service|parts|review)\?\.profit \|\| 0\)/);
+  assert.doesNotMatch(source, /net - Number\(row\.cost/);
+});
+
 test("Sales EUR top month fails closed when any period lacks complete evidence", () => {
   const canonical = { status: "TAMAM", eur: { complete: true } };
   const rows = [
