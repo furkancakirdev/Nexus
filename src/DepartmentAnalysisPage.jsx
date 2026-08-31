@@ -14,16 +14,18 @@ import {
   documentTypeLabel,
   normalizeActorCode,
 } from "./departmentEvidencePresentation.js";
+import { projectCanonicalMetric } from "../shared/financialMetric.mjs";
 
 const money = new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 0 });
 const compact = new Intl.NumberFormat("tr-TR", { notation: "compact", maximumFractionDigits: 1 });
 const eurFormat = new Intl.NumberFormat("tr-TR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
 const percent = (value) => value === null || value === undefined || value === "" ? "—" : `%${Number(value).toFixed(1).replace(".", ",")}`;
-const formatMoney = (value) => `${money.format(Math.round(Number(value || 0)))} TL`;
-const formatEur = (value) => eurFormat.format(Math.round(Number(value || 0)));
-const metricValue = (item, key, eurActive) => eurActive && item?.eurComplete === true && item?.eurEquivalent && ["netSales", "cost", "profit"].includes(key)
-  ? formatEur(item.eurEquivalent[key])
-  : formatMoney(item?.[key]);
+const formatMoney = (value) => value === null || value === undefined || !Number.isFinite(value) ? "—" : `${money.format(Math.round(value))} TL`;
+const formatEur = (value) => value === null || value === undefined || !Number.isFinite(value) ? "—" : eurFormat.format(Math.round(value));
+const metricValue = (item, key, eurActive) => {
+  const metric = projectCanonicalMetric(item?.canonicalMetric, eurActive ? "EUR" : "TRY");
+  return eurActive ? formatEur(metric[key]) : formatMoney(metric[key]);
+};
 const formatDate = (value) => value ? new Intl.DateTimeFormat("tr-TR").format(new Date(value)) : "—";
 
 const DEPARTMENTS = {
@@ -33,7 +35,7 @@ const DEPARTMENTS = {
 };
 
 const emptyMetric = {
-  grossSales: 0, returns: 0, discounts: 0, netSales: 0, cost: 0, profit: 0,
+  grossSales: null, returns: null, discounts: null, netSales: null, cost: null, profit: null,
   margin: null, eurMargin: null, documentCount: 0, customerCount: 0, crossDepotSales: 0,
   crossDepotDocuments: 0, costCoveragePct: 0, confirmedSales: 0,
   inferredSales: 0, reviewSales: 0,

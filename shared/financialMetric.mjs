@@ -224,3 +224,20 @@ export function selectCanonicalTopPeriod(rows = [], canonicalMetric = null) {
   }
   return [...rows].sort((a, b) => Number(b?.netSales || 0) - Number(a?.netSales || 0))[0] || null;
 }
+
+export function projectCanonicalMetric(metric = null, currency = "TRY") {
+  const status = metric?.status || "INCELEME";
+  const complete = status === "TAMAM";
+  const eurComplete = complete && metric?.eur?.complete === true;
+  const source = currency === "EUR" && eurComplete ? metric.eur : metric?.try;
+  return {
+    status,
+    complete: currency === "EUR" ? eurComplete : complete,
+    netSales: source?.netSales ?? null,
+    cost: complete && (currency !== "EUR" || eurComplete) ? source?.cost ?? null : null,
+    profit: complete && (currency !== "EUR" || eurComplete) ? source?.profit ?? null : null,
+    margin: complete && (currency !== "EUR" || eurComplete) ? source?.margin ?? null : null,
+    evidence: metric?.evidence || null,
+    byCurrency: metric?.byCurrency || null,
+  };
+}

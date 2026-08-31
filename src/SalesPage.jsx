@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { selectCanonicalTopPeriod } from "../shared/financialMetric.mjs";
+import { projectCanonicalMetric, selectCanonicalTopPeriod } from "../shared/financialMetric.mjs";
 import {
   Bar,
   BarChart,
@@ -32,8 +32,8 @@ const money = new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 0 });
 const compact = new Intl.NumberFormat("tr-TR", { notation: "compact", maximumFractionDigits: 1 });
 const eurFormat = new Intl.NumberFormat("tr-TR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
 const percent = (value) => value === null || value === undefined ? "—" : `%${Number(value).toFixed(1).replace(".", ",")}`;
-const formatMoney = (value) => `${money.format(Math.round(Number(value || 0)))} TL`;
-const formatEur = (value) => eurFormat.format(Math.round(Number(value || 0)));
+const formatMoney = (value) => value === null || value === undefined || !Number.isFinite(value) ? "—" : `${money.format(Math.round(value))} TL`;
+const formatEur = (value) => value === null || value === undefined || !Number.isFinite(value) ? "—" : eurFormat.format(Math.round(value));
 // EUR karşılığı yoksa (demo/bağlantısız mod) TL gösterimine düşer.
 const formatReportMoney = (row, field, fallback) => {
   const eurValue = row?.eurEquivalent?.[field];
@@ -74,31 +74,27 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
 
   const normalizedRows = useMemo(() => {
     return rows.map((row) => {
-      const grossSales = Number(row.sales || 0);
-      const returns = Number(row.returns || 0);
-      const discounts = Number(row.discounts || 0);
-      const netSales = Number(row.netSales ?? 0);
-      const v2Cost = Number(row.cost ?? 0);
-      const uncoveredNetSales = Number(row.uncoveredNetSales || 0);
-      const profit = row.profit ?? null;
-      const netMargin = row.margin ?? row.canonicalMetric?.scope?.confirmed?.margin ?? null;
+      const canonicalTry = projectCanonicalMetric(row.canonicalMetric, "TRY");
+      const canonicalEur = projectCanonicalMetric(row.canonicalMetric, "EUR");
+      const grossSales = row.sales ?? null;
+      const returns = row.returns ?? null;
+      const discounts = row.discounts ?? null;
+      const netSales = canonicalTry.netSales;
+      const v2Cost = canonicalTry.cost;
+      const uncoveredNetSales = row.canonicalMetric?.scope?.costReview?.netSales ?? null;
+      const profit = canonicalTry.profit;
+      const netMargin = canonicalTry.margin;
       const productListMargin = typeof row.averageProductListGrossMarginPct === "number" && Number.isFinite(row.averageProductListGrossMarginPct)
         ? row.averageProductListGrossMarginPct
         : null;
-      const coveragePct = Number(row.v2CostCoveragePct ?? row.costCoveragePct ?? 0);
+      const coveragePct = row.v2CostCoveragePct ?? row.costCoveragePct ?? null;
       // EUR ana görünüm: backend'in ürettiği kur seti karşılıkları; yoksa null (TL gösterimine düşer).
-      const eur = row.eurComplete === true && row.eurEquivalent && typeof row.eurEquivalent === "object" ? row.eurEquivalent : null;
-      const eurNetSales = eur && Number.isFinite(eur.netSales) ? eur.netSales : null;
-      const eurCost = eur && Number.isFinite(eur.cost) ? eur.cost : null;
-      const eurProfit = eur && Number.isFinite(eur.profit) ? eur.profit : null;
-      const eurMargin = eur?.margin ?? null;
+      const eur = canonicalEur.complete ? row.eurEquivalent : null;
+      const eurNetSales = canonicalEur.netSales;
+      const eurCost = canonicalEur.cost;
+      const eurProfit = canonicalEur.profit;
+      const eurMargin = canonicalEur.margin;
       const rateMeta = eurRateSets?.[String(row.month)] || eurRateSets?.[row.month] || null;
-
-      const laborSales = Number(row.pilotCards?.labor?.sales || 0);
-      const srfSales = Number(row.pilotCards?.srf?.sales || 0);
-      const tsrSales = Number(row.pilotCards?.tsr?.sales || 0);
-      const roadSales = Number(row.pilotCards?.road?.sales || 0);
-      const partsSales = Math.max(0, netSales - laborSales - srfSales - tsrSales - roadSales);
 
       return {
         ...row,
@@ -112,16 +108,11 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
         netMargin,
         productListMargin,
         coveragePct,
-        laborSales,
-        srfSales,
-        tsrSales,
-        roadSales,
-        partsSales,
         eurNetSales,
         eurCost,
         eurProfit,
         eurMargin,
-        eurAvailable: row.eurComplete === true && eurNetSales !== null,
+        eurAvailable: canonicalEur.complete && eurNetSales !== null,
         eurFrozen: Boolean(row.eurFrozen),
         eurRateMeta: rateMeta,
         // Grafik için aktif para birimi alanları (EUR varsa o, yoksa TL).
@@ -149,28 +140,16 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
   }, [normalizedRows, view, sort, minimumCoverage]);
 
   const totals = useMemo(() => {
-    const validMargins = normalizedRows
-      .map((r) => r.productListMargin)
-      .filter((m) => typeof m === "number" && Number.isFinite(m));
-    const avgProductListMargin = validMargins.length
-      ? validMargins.reduce((sum, v) => sum + v, 0) / validMargins.length
-      : null;
-
     const base = {
-      grossSales: normalizedRows.reduce((sum, r) => sum + r.grossSales, 0),
-      returns: normalizedRows.reduce((sum, r) => sum + r.returns, 0),
-      discounts: normalizedRows.reduce((sum, r) => sum + r.discounts, 0),
+      grossSales: canonicalMetric?.grossSales ?? null,
+      returns: canonicalMetric?.returns ?? null,
+      discounts: canonicalMetric?.discounts ?? null,
       netSales: canonicalMetric?.try?.netSales ?? null,
       v2Cost: canonicalMetric?.try?.cost ?? null,
       uncoveredNetSales: canonicalMetric?.scope?.costReview?.netSales ?? null,
       profit: canonicalMetric?.try?.profit ?? null,
-      lineCount: canonicalMetric?.evidence?.coveredLines + canonicalMetric?.evidence?.reviewLines || 0,
-      costCoveredLines: canonicalMetric?.evidence?.coveredLines ?? 0,
-      laborSales: normalizedRows.reduce((sum, r) => sum + r.laborSales, 0),
-      srfSales: normalizedRows.reduce((sum, r) => sum + r.srfSales, 0),
-      tsrSales: normalizedRows.reduce((sum, r) => sum + r.tsrSales, 0),
-      roadSales: normalizedRows.reduce((sum, r) => sum + r.roadSales, 0),
-      partsSales: normalizedRows.reduce((sum, r) => sum + r.partsSales, 0),
+      lineCount: canonicalMetric?.evidence?.coveredLines ?? null,
+      costCoveredLines: canonicalMetric?.evidence?.coveredLines ?? null,
       eurNetSales: canonicalMetric?.eur?.complete ? canonicalMetric.eur.netSales : null,
       eurCost: canonicalMetric?.eur?.complete ? canonicalMetric.eur.cost : null,
       eurProfit: canonicalMetric?.eur?.complete ? canonicalMetric.eur.profit : null,
@@ -178,13 +157,13 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
     };
 
     const overallMargin = canonicalMetric?.scope?.comparable?.margin ?? null;
-    const overallCoverage = base.lineCount ? (base.costCoveredLines / base.lineCount) * 100 : 0;
+    const overallCoverage = canonicalMetric?.costCoveragePct ?? null;
     const eurOverallMargin = canonicalMetric?.eur?.complete ? canonicalMetric.eurMargin : null;
 
     return {
       ...base,
       overallMargin,
-      avgProductListMargin,
+      avgProductListMargin: canonicalMetric?.averageProductListGrossMarginPct ?? null,
       overallCoverage,
       eurOverallMargin,
     };
@@ -205,13 +184,7 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
   const frozenMonths = normalizedRows.filter((row) => row.eurFrozen && row.eurAvailable).length;
 
   const categoryBreakdownData = useMemo(() => {
-    return [
-      { name: "Yedek Parça", sales: totals.partsSales, color: "#0284c7" },
-      { name: "İşçilik", sales: totals.laborSales, color: "#00d2d3" },
-      { name: "Sarf Malzeme", sales: totals.srfSales, color: "#10b981" },
-      { name: "Taşeron", sales: totals.tsrSales, color: "#f59e0b" },
-      { name: "Yol / Lojistik", sales: totals.roadSales, color: "#8b5cf6" },
-    ].filter((item) => item.sales > 0);
+    return canonicalMetric?.categoryBreakdown || [];
   }, [totals]);
 
   return (

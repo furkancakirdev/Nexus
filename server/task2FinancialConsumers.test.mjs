@@ -8,7 +8,7 @@ import {
   filterAuditLedger,
 } from "./ledgerApi.mjs";
 import { buildDepartmentAnalysis } from "./departmentAnalysis.mjs";
-import { aggregateFinancialMetric, selectCanonicalTopPeriod } from "../shared/financialMetric.mjs";
+import { aggregateFinancialMetric, projectCanonicalMetric, selectCanonicalTopPeriod } from "../shared/financialMetric.mjs";
 
 function row(overrides = {}) {
   return {
@@ -142,6 +142,18 @@ test("department monthly review profit stays unavailable instead of becoming zer
   assert.match(source, /canonicalMetric\?\.status === "TAMAM"/);
   assert.doesNotMatch(source, /Number\(item\.(service|parts|review)\?\.profit \|\| 0\)/);
   assert.doesNotMatch(source, /net - Number\(row\.cost/);
+});
+
+test("canonical UI projection preserves review nulls and complete totals", () => {
+  const review = projectCanonicalMetric({
+    status: "INCELEME", try: { netSales: 1000, cost: 400, profit: 600, margin: 60 },
+  });
+  const complete = projectCanonicalMetric({
+    status: "TAMAM", try: { netSales: 1000, cost: 400, profit: 600, margin: 60 },
+  });
+  assert.equal(review.netSales, 1000);
+  assert.equal(review.profit, null);
+  assert.equal(complete.profit, 600);
 });
 
 test("Sales EUR top month fails closed when any period lacks complete evidence", () => {
