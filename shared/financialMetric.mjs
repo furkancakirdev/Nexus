@@ -241,3 +241,7 @@ export function projectCanonicalMetric(metric = null, currency = "TRY") {
     byCurrency: metric?.byCurrency || null,
   };
 }
+
+export function formatCanonicalValue(value, format = (amount) => String(amount)) {
+  return value === null || value === undefined || !Number.isFinite(value) ? "—" : format(value);
+}

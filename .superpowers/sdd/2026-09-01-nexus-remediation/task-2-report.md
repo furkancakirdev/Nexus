@@ -15,6 +15,8 @@ This pass completes the independent-review fixes for F-015, F-018, F-019 and F-0
 - Final P1 pass decorates monthly `all` department projections, gates Sales top-month EUR ranking on canonical completeness, removes Sales local annual net/cost/profit/basket aggregation, and preserves null Audit detail values.
 - Final remaining review fix projects monthly chart values from canonical fields/status, removes DepartmentAnalysisPage local net/profit reconciliation arithmetic, and keeps review-month profit unavailable rather than coercing it to zero.
 - Terra final fix adds `projectCanonicalMetric` for UI projections, removes SalesPage local totals/category arithmetic and zero coercions, and makes DepartmentAnalysisPage format null financial values as unavailable with review status gating.
+- Final review closure moves Reports discount/return/dealer/service summary projection to the server, removes the Reports consumer-side financial reduce, and uses the shared null-safe canonical formatter for DepartmentAnalysis KPI/table/comparison values.
+- Added behavioral coverage for the Department null rendering contract and Reports canonical projection/no-reduce contract; no SummaryPage changes were included.
 - SummaryPage was not changed in this fix branch.
 
 ## Verification
@@ -25,7 +27,7 @@ Focused command:
 node --test server/task2FinancialConsumers.test.mjs server/departmentEurContract.test.mjs server/task2IndependentReviewFix.test.mjs shared/financialMetric.test.mjs
 ```
 
-Result: **29 tests, 29 passed, 0 failed**.
+Result: **30 tests, 30 passed, 0 failed**.
 
 Full command: `npm test` — **335 tests, 331 passed, 4 failed**. Task 2 tests were green. Remaining failures are out of scope and unchanged: `production fingerprint registry executes the three approved queries` (CPM fingerprint fixture), `default labor pilot cost matches the Nexus zero-percent setting`, `departman hedef API ekran ayrıntısının 500 satır sınırından etkilenmez`, and `V2 kanıtı eksik ayda profit üretmez ve tüm net satışı incelemeye ayırır`.
 
@@ -38,7 +40,7 @@ Build command: `npm run build` — passed (`vite build`, 6772 modules transforme
 - `cce425c` — `fix(finance): complete Task 2 canonical report projections` (Reports projection and Task 2 behavior tests).
 - Final P1 fix commit is created after this verification and includes the monthly-all projection, Sales EUR fail-closed selection, Audit null display, and regressions.
 - Final remaining review-fix commit is created after this verification and includes canonical monthly chart/reconciliation consumption plus the null-review regression.
-- Terra final fix commit is created after this verification and includes canonical UI projection helpers, null/review behavior tests, and this report update.
+- Terra final fix commit: `pending` at report drafting time; this commit includes the Reports server projection, null-safe DepartmentAnalysis formatting, behavioral regressions, and the updated verification record.
 
 ## Known limitations / blocker
 

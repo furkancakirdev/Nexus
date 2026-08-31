@@ -8,7 +8,7 @@ import {
   filterAuditLedger,
 } from "./ledgerApi.mjs";
 import { buildDepartmentAnalysis } from "./departmentAnalysis.mjs";
-import { aggregateFinancialMetric, projectCanonicalMetric, selectCanonicalTopPeriod } from "../shared/financialMetric.mjs";
+import { aggregateFinancialMetric, formatCanonicalValue, projectCanonicalMetric, selectCanonicalTopPeriod } from "../shared/financialMetric.mjs";
 
 function row(overrides = {}) {
   return {
@@ -154,6 +154,17 @@ test("canonical UI projection preserves review nulls and complete totals", () =>
   assert.equal(review.netSales, 1000);
   assert.equal(review.profit, null);
   assert.equal(complete.profit, 600);
+  assert.equal(formatCanonicalValue(review.profit), "—");
+  assert.equal(formatCanonicalValue(complete.profit, (value) => `${value} TL`), "600 TL");
+});
+
+test("Reports consumes server projections without consumer-side financial reduce", async () => {
+  const projection = buildAuditReportProjections(filterAuditLedger({ rows: [row()] }).rows);
+  assert.equal(projection.brand[0].netSales, 1000);
+  assert.equal(projection.summary.dealerNetSales, 0);
+  const source = await readFile(new URL("../src/ReportsPage.jsx", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /\.reduce\(/);
+  assert.match(source, /projections\.summary\?\.dealerNetSales/);
 });
 
 test("Sales EUR top month fails closed when any period lacks complete evidence", () => {

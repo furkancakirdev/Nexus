@@ -14,14 +14,14 @@ import {
   documentTypeLabel,
   normalizeActorCode,
 } from "./departmentEvidencePresentation.js";
-import { projectCanonicalMetric } from "../shared/financialMetric.mjs";
+import { formatCanonicalValue, projectCanonicalMetric } from "../shared/financialMetric.mjs";
 
 const money = new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 0 });
 const compact = new Intl.NumberFormat("tr-TR", { notation: "compact", maximumFractionDigits: 1 });
 const eurFormat = new Intl.NumberFormat("tr-TR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
 const percent = (value) => value === null || value === undefined || value === "" ? "—" : `%${Number(value).toFixed(1).replace(".", ",")}`;
-const formatMoney = (value) => value === null || value === undefined || !Number.isFinite(value) ? "—" : `${money.format(Math.round(value))} TL`;
-const formatEur = (value) => value === null || value === undefined || !Number.isFinite(value) ? "—" : eurFormat.format(Math.round(value));
+const formatMoney = (value) => formatCanonicalValue(value, (amount) => `${money.format(Math.round(amount))} TL`);
+const formatEur = (value) => formatCanonicalValue(value, (amount) => eurFormat.format(Math.round(amount)));
 const metricValue = (item, key, eurActive) => {
   const metric = projectCanonicalMetric(item?.canonicalMetric, eurActive ? "EUR" : "TRY");
   return eurActive ? formatEur(metric[key]) : formatMoney(metric[key]);

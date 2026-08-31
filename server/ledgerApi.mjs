@@ -590,12 +590,19 @@ export function buildAuditReportProjections(rows = []) {
     cost: (row) => ({ bulkPurchase: "Toplu alım stoku", priorPurchase: "Önceki son alım", nextPurchase: "Sonradan girilen alım", configuredLabor: "İşçilik oranı", configuredSrf: "SRF / BARNACLE", configuredTsr: "TSR oranı", configuredRoad: "YOL oranı", missingPurchase: "İnceleme gerekli", excludedIncome: "Kapsam dışı" }[row.costMethod] || row.costMethod),
     confidence: (row) => ({ verified: "Faturayla doğrulandı", configured: "Oranla hesaplandı", review: "İnceleme gerekli", excluded: "Kapsam dışı" }[row.verificationStatus] || row.verificationStatus),
   };
-  return Object.fromEntries(Object.entries(dimensions).map(([dimension, keyFn]) => {
+  const projections = Object.fromEntries(Object.entries(dimensions).map(([dimension, keyFn]) => {
     const groups = new Map();
     rows.forEach((row) => { const name = keyFn(row); if (name) groups.set(name, [...(groups.get(name) || []), row]); });
     return [dimension, [...groups.entries()].map(([name, group]) => reportGroup(group, name))
       .sort((left, right) => (right.netSales ?? 0) - (left.netSales ?? 0))];
   }));
+  projections.summary = {
+    dealerNetSales: reportGroup(rows.filter((row) => String(row.customerCode || "").startsWith("DBS")), "dealer-total").netSales,
+    serviceNetSales: reportGroup(rows.filter((row) => row.sourceDocumentType === 64), "service-total").netSales,
+    discounts: rows.reduce((sum, row) => sum + (row.isSale ? Number(row.discountAmount || 0) : 0), 0),
+    returns: rows.reduce((sum, row) => sum + (row.isSale ? 0 : Number(row.netAmount || 0)), 0),
+  };
+  return projections;
 }
 
 const AUDIT_SAMPLE_CATEGORY_ORDER = [
