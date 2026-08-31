@@ -3,34 +3,29 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import { IconBuilding, IconChartBar, IconDatabase, IconDiscount, IconReportAnalytics, IconSearch, IconUsers, IconWallet } from "@tabler/icons-react";
 import { calculateDepartmentDistribution } from "./distribution";
 
-const money=new Intl.NumberFormat("tr-TR",{maximumFractionDigits:0});
+const moneyFormatter=new Intl.NumberFormat("tr-TR",{maximumFractionDigits:0});
+const money={format:(value)=>value===null||value===undefined?"—":moneyFormatter.format(value)};
 const eurFormat=new Intl.NumberFormat("tr-TR",{style:"currency",currency:"EUR",maximumFractionDigits:0});
+const reportValue=(value)=>value===null||value===undefined?"—":`${money.format(value)} TL`;
 const tabs=[
   ["summary","Yönetim Özeti"],["brand","Marka"],["dealer","Bayi"],["channel","Kanal / Modül"],["service","Teknik Servis"],["cost","Alım ve Maliyet"],["discount","İskonto ve İade"],["confidence","Veri Güveni"],["pool","Havuz Dağılımı"],
 ];
 const pilotMethodRates={configuredLabor:"labor",configuredSrf:"srf",configuredTsr:"tsr",configuredRoad:"road"};
 
-function aggregate(rows,keyFn,valueFn){const map=new Map();rows.forEach((row)=>{const key=keyFn(row)||"Tanımsız";const current=map.get(key)||{name:key,netSales:0,cost:0,profit:0,margin:null,discount:0,returns:0,lines:0};const value=valueFn(row);Object.keys(value).forEach((field)=>current[field]=(current[field]||0)+Number(value[field] ?? 0));current.lines+=1;map.set(key,current);});return [...map.values()].sort((a,b)=>b.netSales-a.netSales);}
-
-export function ReportsPage({settings,employees,targetRows,annualPool,year,rows,eurRateSets={}}){
+export function ReportsPage({settings,employees,targetRows,annualPool,year,rows,eurRateSets={},canonicalMetric=null}){
   const [active,setActive]=useState("summary");
   const [ledger,setLedger]=useState([]);
   const [query,setQuery]=useState("");
   const [loading,setLoading]=useState(true);
-  useEffect(()=>{let cancelled=false;setLoading(true);fetch(`/api/audit-ledger?year=${year}&export=1`).then((response)=>response.json()).then((data)=>{if(!cancelled){setLedger(data.rows||[]);setLoading(false);}}).catch(()=>{if(!cancelled){setLedger([]);setLoading(false);}});return()=>{cancelled=true;};},[year]);
-  // Server canonicalMetric derives financeV2.lineCostTryExVat; this consumer only projects it.
-  const valued=useMemo(()=>ledger.map((row)=>({...row,net:row.signedNetAmount,cost:row.calculatedCost,profit:row.grossProfit,discount:row.isSale?Number(row.discountAmount||0):0,returns:row.isSale?0:Number(row.netAmount||0)})),[ledger]);
-  const totals=valued.reduce((a,r)=>({netSales:a.netSales+r.net,cost:a.cost+r.cost,profit:a.profit+r.profit,discount:a.discount+r.discount,returns:a.returns+r.returns}),{netSales:0,cost:0,profit:0,discount:0,returns:0});
-  const eurComplete = (rows || []).length > 0 && rows.every((row) => row.eurComplete === true);
-  const eurNetSales = eurComplete ? (rows || []).reduce((sum, row) => sum + Number(row.eurEquivalent?.netSales ?? 0), 0) : null;
-  const eurProfit = eurComplete ? (rows || []).reduce((sum, row) => sum + Number(row.eurEquivalent?.profit ?? 0), 0) : null;
+  const [projections,setProjections]=useState({brand:[],dealer:[],channel:[],service:[],cost:[],confidence:[]});
+  useEffect(()=>{let cancelled=false;setLoading(true);fetch(`/api/audit-ledger?year=${year}&export=1`).then((response)=>response.json()).then((data)=>{if(!cancelled){setLedger(data.rows||[]);setProjections(data.projections||{});setLoading(false);}}).catch(()=>{if(!cancelled){setLedger([]);setProjections({});setLoading(false);}});return()=>{cancelled=true;};},[year]);
+  const valued=ledger;
+  const totals=valued.reduce((a,r)=>({discount:a.discount+Number(r.discount||0),returns:a.returns+Number(r.returns||0)}),{discount:0,returns:0});
+  const eurComplete = canonicalMetric?.eur?.complete === true && canonicalMetric?.status === "TAMAM";
+  const eurNetSales = eurComplete ? canonicalMetric.eur.netSales : null;
+  const eurProfit = eurComplete ? canonicalMetric.eur.profit : null;
   const eurRateCount = Object.values(eurRateSets || {}).filter((set) => Number.isFinite(Number(set?.eurTryBuyingRate))).length;
-  const brand=aggregate(valued,r=>r.brand||"Tanımsız",r=>({netSales:r.net,cost:r.cost,profit:r.profit,discount:r.discount,returns:r.returns}));
-  const dealer=aggregate(valued.filter(r=>String(r.customerCode||"").startsWith("DBS")),r=>r.customerCode,r=>({netSales:r.net,cost:r.cost,profit:r.profit,discount:r.discount,returns:r.returns}));
-  const channel=aggregate(valued,r=>r.sourceDocumentType===64?"Teknik Servis":r.documentType===91?"Perakende Satış":r.documentType===85?"İrsaliyesiz Fatura":r.revenueSource==="provisional"?"Kapanmış / aktarılmış":"Satış Faturası",r=>({netSales:r.net,cost:r.cost,profit:r.profit,discount:r.discount,returns:r.returns}));
-  const service=aggregate(valued.filter(r=>r.sourceDocumentType===64),r=>r.brand||"Tanımsız",r=>({netSales:r.net,cost:r.cost,profit:r.profit,discount:r.discount,returns:r.returns}));
-  const costs=aggregate(valued,r=>({bulkPurchase:"Toplu alım stoku",priorPurchase:"Önceki son alım",nextPurchase:"Sonradan girilen alım",configuredLabor:"İşçilik oranı",configuredSrf:"SRF / BARNACLE",configuredTsr:"TSR oranı",configuredRoad:"YOL oranı",missingPurchase:"İnceleme gerekli",excludedIncome:"Kapsam dışı"}[r.costMethod]||r.costMethod),r=>({netSales:r.net,cost:r.cost,profit:r.profit}));
-  const confidence=aggregate(valued,r=>({verified:"Faturayla doğrulandı",configured:"Oranla hesaplandı",review:"İnceleme gerekli",excluded:"Kapsam dışı"}[r.verificationStatus]||r.verificationStatus),r=>({netSales:r.net,cost:r.cost,profit:r.profit}));
+  const brand=projections.brand||[]; const dealer=projections.dealer||[]; const channel=projections.channel||[]; const service=projections.service||[]; const costs=projections.cost||[]; const confidence=projections.confidence||[];
   const distributionResult=useMemo(
     ()=>calculateDepartmentDistribution({employees,settings,targetRows}),
     [employees,settings,targetRows],

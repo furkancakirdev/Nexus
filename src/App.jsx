@@ -491,6 +491,7 @@ export function App() {
           annualPool={annualPool}
           year={year}
           rows={enrichedRows}
+          canonicalMetric={canonicalMetric}
         />
       ) : (
       <main className="page" id="top">

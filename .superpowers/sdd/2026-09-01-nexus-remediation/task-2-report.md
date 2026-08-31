@@ -2,14 +2,16 @@
 
 ## Scope
 
-This fix pass addresses the independent-review findings for F-015, F-018, F-019 and F-020. CPM remains read-only; no credentials, production calls, or CPM writes were used.
+This pass completes the independent-review fixes for F-015, F-018, F-019 and F-020. CPM remained strictly read-only; no production calls, writes, or credentials were used. SummaryPage and unrelated contracts were not changed.
 
 ## Changes
 
 - Added `shared/eurReporting.mjs` to the committed ancestry and made the canonical financial contract expose confirmed/review scopes, null-safe margins, EUR evidence status, and period/currency evidence.
-- Converted `server/ledgerApi.mjs` and `server/departmentAnalysis.mjs` to canonical aggregation/projection adapters. Department attribution and operational counters remain local; financial fields are projected from `aggregateFinancialMetric`.
-- Added complete-only EUR gates to Sales, Department Analysis and Reports consumers. Partial EUR evidence remains unavailable/review; zero denominators remain null.
-- Added focused review tests covering canonical cross-projections, partial EUR with excluded scope, zero denominators, and UI arithmetic guards.
+- `server/ledgerApi.mjs` now supplies exact period/rate-set canonical EUR projections for department and annual consumers.
+- Audit rows and Reports projections are derived from `aggregateFinancialMetric`; review and excluded cost/profit/margin values remain null.
+- ReportsPage consumes server `projections` and annual canonical EUR fields instead of locally aggregating financial values. EUR KPI output is gated on canonical `complete` and `TAMAM` status.
+- SalesPage and DepartmentAnalysisPage consume selected-period canonical aggregates; DepartmentAnalysis has a server-provided `all` projection instead of a final-month/local sum fallback.
+- Added behavioral tests for complete/partial EUR, review/excluded scope, zero denominator, exact period rates, F-020 evidence/byCurrency, and cross-screen selected-period/currency reconciliation.
 - SummaryPage was not changed in this fix branch.
 
 ## Verification
@@ -20,22 +22,18 @@ Focused command:
 node --test server/task2IndependentReviewFix.test.mjs shared/financialMetric.test.mjs
 ```
 
-Result after the boundary fix: 16 passed, 0 failed. Root cause was that `byCurrency` stored raw TRY values while canonical EUR aggregation stored product-currency values; department projection therefore converted the basket with the wrong unit.
+Result: **25 tests, 25 passed, 0 failed**.
 
-Relevant regression command: `node --test server/task2FinancialConsumers.test.mjs server/departmentEurContract.test.mjs server/task2IndependentReviewFix.test.mjs shared/financialMetric.test.mjs` — 22 tests, 22 passed. This confirms the department EUR propagation contract and F-020 evidence shape are restored.
-
-Full command: `npm test` — 330 tests, 326 passed, 4 failed. The four remaining failures are outside this boundary fix: production fingerprint registry, default labor pilot cost, department target 500-row expectation, and V2 incomplete-month null/zero expectation. They were not silently changed because their current expectations belong to separate existing contracts and require separate approval/scope.
+Full command: `npm test` — **333 tests, 329 passed, 4 failed**. Task 2 tests were green. Remaining failures are out of scope and unchanged: `production fingerprint registry executes the three approved queries` (CPM fingerprint fixture), `default labor pilot cost matches the Nexus zero-percent setting`, `departman hedef API ekran ayrıntısının 500 satır sınırından etkilenmez`, and `V2 kanıtı eksik ayda profit üretmez ve tüm net satışı incelemeye ayırır`.
 
 Build command: `npm run build` — passed (`vite build`, 6770 modules transformed).
 
 ## Commits
 
 - Base: `409172f` (`fix(finance): close Task 1 metric contract review findings`)
-- Implementation commit: `ba29b4c0355823ec4005f9b27c91778e202bd619`.
-- Report update is tracked in the follow-up commit.
-- Boundary fix commit: `73ed37dba3a729f360b8a6bef555b0396dc7114b`.
-- EUR propagation/evidence compatibility fix commit: `7a24a060c2d4f51ff75206c56ed31a23c681fcf4`.
+- Earlier Task 2 implementation/fix commits remain in ancestry, including `73ed37d`, `7a24a06`, `14f4040`, and `01e3d57`.
+- This pass commit is created after verification and includes the Reports projection, Task 2 behavior tests, and this report.
 
 ## Known limitations / blocker
 
-The full suite still has 4 unrelated compatibility failures listed above. The workspace also contains unrelated pre-existing untracked diagnostic artifacts; they were not staged or deleted. No production/CPM verification was performed.
+The four full-suite failures above require separate existing-contract decisions and were not altered. Unrelated pre-existing untracked artifacts remain untouched. No production/CPM verification was performed.

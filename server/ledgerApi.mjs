@@ -567,6 +567,37 @@ export function filterAuditLedger(ledger, query = {}) {
   };
 }
 
+function reportGroup(rows, name) {
+  const canonical = aggregateFinancialMetric(rows.map((row) => row[FINANCIAL_ROWS] || {
+    signedNetSalesTry: row.signedNetAmount,
+    period: String(monthOf(row.documentDate)),
+    productCurrency: row.financeV2?.productCurrency,
+    documentSellingRate: row.documentSellingRate,
+    financeV2: row.financeV2,
+  }), { basisId: `audit-report:${name}` });
+  const review = canonical.scope.costReview.lines > 0 || canonical.scope.excluded.lines > 0;
+  return { name, lines: rows.length, netSales: canonical.try.netSales,
+    cost: review ? null : canonical.try.cost, profit: review ? null : canonical.try.profit,
+    margin: review ? null : canonical.try.margin, status: canonical.status, evidence: canonical.evidence };
+}
+
+export function buildAuditReportProjections(rows = []) {
+  const dimensions = {
+    brand: (row) => row.brand || "Tanımsız",
+    dealer: (row) => String(row.customerCode || "").startsWith("DBS") ? row.customerCode : null,
+    channel: (row) => row.sourceDocumentType === 64 ? "Teknik Servis" : row.documentType === 91 ? "Perakende Satış" : row.documentType === 85 ? "İrsaliyesiz Fatura" : row.revenueSource === "provisional" ? "Kapanmış / aktarılmış" : "Satış Faturası",
+    service: (row) => row.sourceDocumentType === 64 ? (row.brand || "Tanımsız") : null,
+    cost: (row) => ({ bulkPurchase: "Toplu alım stoku", priorPurchase: "Önceki son alım", nextPurchase: "Sonradan girilen alım", configuredLabor: "İşçilik oranı", configuredSrf: "SRF / BARNACLE", configuredTsr: "TSR oranı", configuredRoad: "YOL oranı", missingPurchase: "İnceleme gerekli", excludedIncome: "Kapsam dışı" }[row.costMethod] || row.costMethod),
+    confidence: (row) => ({ verified: "Faturayla doğrulandı", configured: "Oranla hesaplandı", review: "İnceleme gerekli", excluded: "Kapsam dışı" }[row.verificationStatus] || row.verificationStatus),
+  };
+  return Object.fromEntries(Object.entries(dimensions).map(([dimension, keyFn]) => {
+    const groups = new Map();
+    rows.forEach((row) => { const name = keyFn(row); if (name) groups.set(name, [...(groups.get(name) || []), row]); });
+    return [dimension, [...groups.entries()].map(([name, group]) => reportGroup(group, name))
+      .sort((left, right) => (right.netSales ?? 0) - (left.netSales ?? 0))];
+  }));
+}
+
 const AUDIT_SAMPLE_CATEGORY_ORDER = [
   "priorPurchase",
   "nextPurchase",
@@ -1117,11 +1148,13 @@ export function createUnifiedLedgerRouter({
         });
       }
       const audit = filterAuditLedger(snapshot.value, request.query);
+      const projections = buildAuditReportProjections(audit.rows);
       const scopeNetSales = economicScopeNetSales(snapshot.value);
       response.setHeader("Cache-Control", "no-store");
       return response.json({
         year,
         ...audit,
+        projections,
         mode: "live",
         ...metadata(snapshot),
         reconciliation: reconciliation(
