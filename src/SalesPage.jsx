@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { selectCanonicalTopPeriod } from "../shared/financialMetric.mjs";
 import {
   Bar,
   BarChart,
@@ -155,49 +156,26 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
       ? validMargins.reduce((sum, v) => sum + v, 0) / validMargins.length
       : null;
 
-    const base = normalizedRows.reduce(
-      (acc, r) => ({
-        grossSales: acc.grossSales + r.grossSales,
-        returns: acc.returns + r.returns,
-        discounts: acc.discounts + r.discounts,
-        netSales: acc.netSales + r.netSales,
-        v2Cost: acc.v2Cost + r.v2Cost,
-        uncoveredNetSales: acc.uncoveredNetSales + r.uncoveredNetSales,
-        profit: acc.profit + r.profit,
-        lineCount: acc.lineCount + Number(r.lineCount || r.invoiceLineCount || 0),
-        costCoveredLines: acc.costCoveredLines + Number(r.costCoveredLines || r.v2CostCoveredLines || 0),
-        laborSales: acc.laborSales + r.laborSales,
-        srfSales: acc.srfSales + r.srfSales,
-        tsrSales: acc.tsrSales + r.tsrSales,
-        roadSales: acc.roadSales + r.roadSales,
-        partsSales: acc.partsSales + r.partsSales,
-        // EUR karşılıkları (kapsanan satırlardan; EUR yoksa null kalır).
-        eurNetSales: r.eurAvailable ? acc.eurNetSales + r.eurNetSales : acc.eurNetSales,
-        eurCost: r.eurAvailable ? acc.eurCost + r.eurCost : acc.eurCost,
-        eurProfit: r.eurAvailable ? acc.eurProfit + r.eurProfit : acc.eurProfit,
-        eurHasAny: acc.eurHasAny || r.eurAvailable,
-      }),
-      {
-        grossSales: 0,
-        returns: 0,
-        discounts: 0,
-        netSales: 0,
-        v2Cost: 0,
-        uncoveredNetSales: 0,
-        profit: 0,
-        lineCount: 0,
-        costCoveredLines: 0,
-        laborSales: 0,
-        srfSales: 0,
-        tsrSales: 0,
-        roadSales: 0,
-        partsSales: 0,
-        eurNetSales: 0,
-        eurCost: 0,
-        eurProfit: 0,
-        eurHasAny: false,
-      },
-    );
+    const base = {
+      grossSales: normalizedRows.reduce((sum, r) => sum + r.grossSales, 0),
+      returns: normalizedRows.reduce((sum, r) => sum + r.returns, 0),
+      discounts: normalizedRows.reduce((sum, r) => sum + r.discounts, 0),
+      netSales: canonicalMetric?.try?.netSales ?? null,
+      v2Cost: canonicalMetric?.try?.cost ?? null,
+      uncoveredNetSales: canonicalMetric?.scope?.costReview?.netSales ?? null,
+      profit: canonicalMetric?.try?.profit ?? null,
+      lineCount: canonicalMetric?.evidence?.coveredLines + canonicalMetric?.evidence?.reviewLines || 0,
+      costCoveredLines: canonicalMetric?.evidence?.coveredLines ?? 0,
+      laborSales: normalizedRows.reduce((sum, r) => sum + r.laborSales, 0),
+      srfSales: normalizedRows.reduce((sum, r) => sum + r.srfSales, 0),
+      tsrSales: normalizedRows.reduce((sum, r) => sum + r.tsrSales, 0),
+      roadSales: normalizedRows.reduce((sum, r) => sum + r.roadSales, 0),
+      partsSales: normalizedRows.reduce((sum, r) => sum + r.partsSales, 0),
+      eurNetSales: canonicalMetric?.eur?.complete ? canonicalMetric.eur.netSales : null,
+      eurCost: canonicalMetric?.eur?.complete ? canonicalMetric.eur.cost : null,
+      eurProfit: canonicalMetric?.eur?.complete ? canonicalMetric.eur.profit : null,
+      eurHasAny: canonicalMetric?.eur?.complete === true && canonicalMetric?.status === "TAMAM",
+    };
 
     const overallMargin = canonicalMetric?.scope?.comparable?.margin ?? null;
     const overallCoverage = base.lineCount ? (base.costCoveredLines / base.lineCount) * 100 : 0;
@@ -212,33 +190,15 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
     };
   }, [normalizedRows, canonicalMetric]);
 
-  const topSalesMonth = useMemo(() => {
-    return [...normalizedRows].sort((a, b) => (totals.eurHasAny
-      ? b.eurNetSales - a.eurNetSales
-      : b.netSales - a.netSales))[0];
-  }, [normalizedRows, totals.eurHasAny]);
+  const topSalesMonth = useMemo(() => selectCanonicalTopPeriod(normalizedRows.map((row) => ({
+    ...row, eurEquivalent: row.eurAvailable ? { netSales: row.eurNetSales } : null,
+  })), canonicalMetric), [normalizedRows, canonicalMetric]);
 
   // Döviz sepetleri: tüm ayların byCurrency toplamları. EUR/USD/GBP/TRY
   // doğrudan toplanmaz; her sepet kendi dövizinde raporlanır.
-  const currencyBasket = useMemo(() => {
-    const baskets = ["EUR", "USD", "GBP", "TRY", "INCELEME"];
-    const aggregate = Object.fromEntries(baskets.map((currency) => [
-      currency, { netSales: 0, cost: 0, profit: 0, lineCount: 0 },
-    ]));
-    for (const row of rows) {
-      for (const currency of baskets) {
-        const item = row.byCurrency?.[currency];
-        if (!item) continue;
-        aggregate[currency].netSales += Number(item.netSales || 0);
-        aggregate[currency].cost += Number(item.cost || 0);
-        aggregate[currency].profit = aggregate[currency].netSales - aggregate[currency].cost;
-        aggregate[currency].lineCount += Number(item.lineCount || 0);
-      }
-    }
-    return aggregate;
-  }, [rows]);
+  const currencyBasket = canonicalMetric?.byCurrency || { INCELEME: { lineCount: 0 } };
 
-  const eurActive = normalizedRows.length > 0 && normalizedRows.every((row) => row.eurAvailable);
+  const eurActive = canonicalMetric?.eur?.complete === true && canonicalMetric?.status === "TAMAM";
   const reportMoney = eurActive ? formatEur : formatMoney;
   const rateMetaList = Object.values(eurRateSets || {});
   const weekendNote = rateMetaList.map((meta) => meta?.weekendOrHolidayNote).find(Boolean) || null;

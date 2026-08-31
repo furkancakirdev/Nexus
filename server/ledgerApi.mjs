@@ -1096,6 +1096,7 @@ export function createUnifiedLedgerRouter({
         service: decorateMetricEur(item.service),
         parts: decorateMetricEur(item.parts),
         review: decorateMetricEur(item.review),
+        all: decorateMetricEur(item.all),
       }));
       response.setHeader("Cache-Control", "no-store");
       return response.json({

@@ -214,3 +214,13 @@ export function reconcileFinancialMetrics(actual, expected, options = {}) {
     : Object.values(deltas).some((value) => value !== 0) ? "MISMATCH" : "MATCH";
   return { status, basisId: text(options.basisId) || null, deltas };
 }
+
+export function selectCanonicalTopPeriod(rows = [], canonicalMetric = null) {
+  const eurComplete = canonicalMetric?.eur?.complete === true && canonicalMetric?.status === "TAMAM";
+  if (eurComplete) {
+    const valid = rows.filter((row) => row?.eurComplete === true && Number.isFinite(row?.eurEquivalent?.netSales));
+    if (valid.length !== rows.length) return null;
+    return [...valid].sort((a, b) => b.eurEquivalent.netSales - a.eurEquivalent.netSales)[0] || null;
+  }
+  return [...rows].sort((a, b) => Number(b?.netSales || 0) - Number(a?.netSales || 0))[0] || null;
+}

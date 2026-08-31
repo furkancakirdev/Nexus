@@ -8,7 +8,7 @@ import {
   filterAuditLedger,
 } from "./ledgerApi.mjs";
 import { buildDepartmentAnalysis } from "./departmentAnalysis.mjs";
-import { aggregateFinancialMetric } from "../shared/financialMetric.mjs";
+import { aggregateFinancialMetric, selectCanonicalTopPeriod } from "../shared/financialMetric.mjs";
 
 function row(overrides = {}) {
   return {
@@ -53,7 +53,7 @@ test("F-015 exposes the EUR-selected top month instead of sorting the TL fallbac
   const eurTop = [...decorated].sort((left, right) => right.eurEquivalent.netSales - left.eurEquivalent.netSales)[0];
   assert.equal(eurTop.month, 2);
   const salesSource = await readFile(new URL("../src/SalesPage.jsx", import.meta.url), "utf8");
-  assert.match(salesSource, /topSalesMonth[\s\S]*totals\.eurHasAny[\s\S]*b\.eurNetSales - a\.eurNetSales/);
+  assert.match(salesSource, /selectCanonicalTopPeriod/);
 });
 
 test("F-018 audit projections expose canonical calculated cost and signed gross profit", () => {
@@ -123,6 +123,24 @@ test("annual department EUR projection keeps exact period rates", () => {
   assert.equal(february.eur.netSales, 50);
 });
 
+test("department Tümü keeps a canonical all projection with EUR evidence", () => {
+  const result = buildDepartmentAnalysis({ year: 2026, ledger: { rows: [row()] } });
+  const all = result.months.find((item) => item.month === 1)?.all;
+  assert.equal(all.canonicalMetric.try.netSales, 1000);
+  assert.equal(all.evidence.coveredLines, 1);
+  assert.equal(all.canonicalMetric.try.netSales, 1000);
+});
+
+test("Sales EUR top month fails closed when any period lacks complete evidence", () => {
+  const canonical = { status: "TAMAM", eur: { complete: true } };
+  const rows = [
+    { month: 1, eurComplete: true, eurEquivalent: { netSales: 10 } },
+    { month: 2, eurComplete: false, eurEquivalent: { netSales: 100 } },
+  ];
+  assert.equal(selectCanonicalTopPeriod(rows, canonical), null);
+  assert.equal(selectCanonicalTopPeriod([{ ...rows[0] }], canonical).month, 1);
+});
+
 test("selected period and currency reconcile across overview, department, and reports projections", () => {
   const fixture = row({
     documentDate: "2026-02-10",
@@ -158,4 +176,6 @@ test("critical React consumers read canonical fields without local financial ari
   assert.match(sources[2], /row\.calculatedCost/);
   assert.match(sources[4], /canonicalMetric/);
   assert.doesNotMatch(sources[4], /row\.calculatedCost/);
+  const auditSource = await readFile(new URL("../src/AuditPage.jsx", import.meta.url), "utf8");
+  assert.doesNotMatch(auditSource, /row\.calculatedCost\|\|0/);
 });

@@ -12,6 +12,7 @@ This pass completes the independent-review fixes for F-015, F-018, F-019 and F-0
 - ReportsPage consumes server `projections` and annual canonical EUR fields instead of locally aggregating financial values. EUR KPI output is gated on canonical `complete` and `TAMAM` status.
 - SalesPage and DepartmentAnalysisPage consume selected-period canonical aggregates; DepartmentAnalysis has a server-provided `all` projection instead of a final-month/local sum fallback.
 - Added behavioral tests for complete/partial EUR, review/excluded scope, zero denominator, exact period rates, F-020 evidence/byCurrency, and cross-screen selected-period/currency reconciliation.
+- Final P1 pass decorates monthly `all` department projections, gates Sales top-month EUR ranking on canonical completeness, removes Sales local annual net/cost/profit/basket aggregation, and preserves null Audit detail values.
 - SummaryPage was not changed in this fix branch.
 
 ## Verification
@@ -22,18 +23,18 @@ Focused command:
 node --test server/task2IndependentReviewFix.test.mjs shared/financialMetric.test.mjs
 ```
 
-Result: **25 tests, 25 passed, 0 failed**.
+Result: **27 tests, 27 passed, 0 failed**.
 
-Full command: `npm test` — **333 tests, 329 passed, 4 failed**. Task 2 tests were green. Remaining failures are out of scope and unchanged: `production fingerprint registry executes the three approved queries` (CPM fingerprint fixture), `default labor pilot cost matches the Nexus zero-percent setting`, `departman hedef API ekran ayrıntısının 500 satır sınırından etkilenmez`, and `V2 kanıtı eksik ayda profit üretmez ve tüm net satışı incelemeye ayırır`.
+Full command: `npm test` — **335 tests, 331 passed, 4 failed**. Task 2 tests were green. Remaining failures are out of scope and unchanged: `production fingerprint registry executes the three approved queries` (CPM fingerprint fixture), `default labor pilot cost matches the Nexus zero-percent setting`, `departman hedef API ekran ayrıntısının 500 satır sınırından etkilenmez`, and `V2 kanıtı eksik ayda profit üretmez ve tüm net satışı incelemeye ayırır`.
 
-Build command: `npm run build` — passed (`vite build`, 6770 modules transformed).
+Build command: `npm run build` — passed (`vite build`, 6772 modules transformed).
 
 ## Commits
 
 - Base: `409172f` (`fix(finance): close Task 1 metric contract review findings`)
 - Earlier Task 2 implementation/fix commits remain in ancestry, including `73ed37d`, `7a24a06`, `14f4040`, and `01e3d57`.
 - `cce425c` — `fix(finance): complete Task 2 canonical report projections` (Reports projection and Task 2 behavior tests).
-- Follow-up report-only commit records this final verification state.
+- Final P1 fix commit is created after this verification and includes the monthly-all projection, Sales EUR fail-closed selection, Audit null display, and regressions.
 
 ## Known limitations / blocker
 
