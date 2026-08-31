@@ -34,7 +34,7 @@ function configuredRate(method, rates) {
 function signed(value, isSale) { return Number(value || 0) * (isSale ? 1 : -1); }
 function formatMoney(value) { return `${Number(value || 0) < 0 ? "−" : ""}${money.format(Math.abs(Number(value || 0)))} TL`; }
 
-export function AuditPage({ year, mode, pilotCardCostRates, settings, costOverrides = [], onSaveCostOverrides }) {
+export function AuditPage({ year, mode, refreshToken = 0, pilotCardCostRates, settings, costOverrides = [], onSaveCostOverrides }) {
   const [filters, setFilters] = useState(initialFilters);
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -63,19 +63,17 @@ export function AuditPage({ year, mode, pilotCardCostRates, settings, costOverri
       if (!cancelled) { setData(result); setLoading(false); setExpanded(null); }
     }).catch(() => { if (!cancelled) { setData({ rows: [], summary: { totalRows: 0 }, mode: "error" }); setLoading(false); } });
     return () => { cancelled = true; };
-  }, [year, page, pageSize, filters.month, filters.documentType, filters.source, filters.method, filters.verification, filters.returnRisk, debouncedSearch]);
+  }, [year, refreshToken, page, pageSize, filters.month, filters.documentType, filters.source, filters.method, filters.verification, filters.returnRisk, debouncedSearch]);
 
   const totalPages = Math.max(1, Math.ceil(Number(data.summary?.totalRows || 0) / pageSize));
   const activeFilterCount = Object.entries(filters).filter(([key, value]) => key === "search" ? value.trim() : value && value !== "0").length;
   const rows = useMemo(() => data.rows.map((row) => {
     const override = costOverrides.find((decision) => String(decision.rowId) === String(row.id));
-    const rate = configuredRate(row.costMethod, pilotCardCostRates);
-    const calculatedCost = override
-      ? signed(Number(row.quantity || 0) * Number(override.unitCost || 0), row.isSale)
-      : rate == null ? row.lineCost : signed(Number(row.netAmount || 0) * rate / 100, row.isSale);
+    // Server canonicalMetric derives financeV2.lineCostTryExVat; UI never recalculates it.
+    const calculatedCost = row.calculatedCost ?? null;
     const netSigned = signed(row.netAmount, row.isSale);
-    const grossProfit = row.costMethod === "excludedIncome" || calculatedCost == null ? null : netSigned - Number(calculatedCost);
-    return { ...row, override, configuredRate: rate, calculatedCost, netSigned, grossProfit };
+    const grossProfit = row.grossProfit ?? null;
+    return { ...row, override, configuredRate: null, calculatedCost, netSigned, grossProfit };
   }), [costOverrides, data.rows, pilotCardCostRates]);
 
   const setFilter = (key, value) => { setFilters((current) => ({ ...current, [key]: value })); if (key !== "search") setPage(1); };
@@ -135,7 +133,9 @@ export function AuditPage({ year, mode, pilotCardCostRates, settings, costOverri
     const columns = [
       "Belge türü","Belge no","Tarih","Kaynak","Cari kodu","Kart kodu","Kart adı","Miktar",
       "Satış brüt (KDV hariç)","Satış iskontosu","Satış iskonto %","Satış net (KDV hariç)","Satış KDV","Fatura toplamı (KDV dahil)",
+      "Ürün dövizi","Satır dövizi","Satır dövizi yöntemi","Satır dövizi inceleme nedeni",
       "Maliyet yöntemi","Maliyet belge sınıfı","Doğrulama","Doğrulama gerekçesi",
+      "Resmi WAC durumu","Resmi WAC inceleme nedeni",
       "Alım firması","Alım cari kodu","Alım belge türü","Alım belge no","Alım tarihi","Alım miktarı",
       "Alım brüt (KDV hariç)","Alım iskontosu","Alım iskonto 1 %","Alım iskonto 2 %","Alım efektif iskonto %","Alım net (KDV hariç)","Alım KDV","Alım KDV %",
       "Birim maliyet (KDV hariç)","Satır maliyeti (KDV hariç)","Brüt kâr (KDV hariç)",
@@ -143,13 +143,17 @@ export function AuditPage({ year, mode, pilotCardCostRates, settings, costOverri
     ];
     const values = exportRows.map((row) => {
       const override = costOverrides.find((decision) => String(decision.rowId) === String(row.id));
-      const rate = configuredRate(row.costMethod, pilotCardCostRates);
-      const calculatedCost = override ? signed(Number(row.quantity || 0) * Number(override.unitCost || 0), row.isSale) : rate == null ? row.lineCost : signed(Number(row.netAmount || 0) * rate / 100, row.isSale);
-      const grossProfit = row.costMethod === "excludedIncome" || calculatedCost == null ? "" : signed(row.netAmount, row.isSale) - Number(calculatedCost);
+      const calculatedCost = row.calculatedCost ?? null;
+      const grossProfit = row.grossProfit ?? "";
       return [
         row.documentType,row.documentNo,row.documentDate,sourceLabels[row.revenueSource]||row.revenueSource,row.customerCode,row.cardCode,row.cardName,row.quantity,
         row.grossAmount,row.discountAmount,row.discountPct,row.netAmount,row.vatAmount,row.invoiceTotalInclVat,
+        row.financeV2?.productCurrency || row.productCurrency || "",
+        row.lineCurrency || row.financeV2?.lineCurrencyEvidence?.currency || "",
+        row.financeV2?.lineCurrencyEvidence?.method || "",
+        row.financeV2?.lineCurrencyEvidence?.reviewReason || "",
         override?"manualCost":row.costMethod,evidenceClassLabels[row.costEvidenceClass]||row.costEvidenceClass,override?.status||row.verificationStatus,row.costValidationReason,
+        row.financeV2?.costStatus || "",row.financeV2?.reviewReason || "",
         row.purchasePartyName,row.purchaseAccountCode,row.purchaseType,row.purchaseNo,row.purchaseDate,row.purchaseQuantity,
         row.purchaseGrossAmount,row.purchaseDiscountAmount,row.purchaseDiscountRate1,row.purchaseDiscountRate2,row.purchaseEffectiveDiscountPct,row.purchaseNetAmount,row.purchaseVatAmount,row.purchaseVatRate,
         override?.unitCost??row.unitCost,calculatedCost,grossProfit,
@@ -194,7 +198,7 @@ export function AuditPage({ year, mode, pilotCardCostRates, settings, costOverri
       <div className="table-scroll audit-table-wrap"><table className="audit-table"><thead><tr>
         <th aria-label="Detay" /><th>Belge</th><th>Stok / hizmet</th>
         <th>Satış net<small>KDV hariç</small></th>
-        <th>Satır maliyeti<small>KDV hariç</small></th>
+        <th className="audit-table__cost">Satır maliyeti<small>KDV hariç</small></th>
         <th className="audit-table__profit">Brüt kâr<small>KDV hariç</small></th>
         <th className="audit-table__validation">Doğrulama</th>
       </tr></thead><tbody>
@@ -204,7 +208,7 @@ export function AuditPage({ year, mode, pilotCardCostRates, settings, costOverri
             <th><strong>{row.documentType}/{row.documentNo}</strong><small>{new Date(row.documentDate).toLocaleDateString("tr-TR")}</small></th>
             <td><strong>{row.cardCode}</strong><small>{row.cardName||"—"}</small></td>
             <td className={row.isSale?"positive":"negative"}><strong>{formatMoney(row.netSigned)}</strong></td>
-            <td>{row.calculatedCost==null?"—":formatMoney(row.calculatedCost)}</td>
+            <td className="audit-table__cost">{row.calculatedCost==null?"—":formatMoney(row.calculatedCost)}</td>
             <td className={`audit-table__profit ${row.grossProfit==null?"":row.grossProfit>=0?"positive":"negative"}`}>{row.grossProfit==null?"—":formatMoney(row.grossProfit)}</td>
             <td className="audit-table__validation"><span className={`audit-status audit-status--${row.override?.status === "approved" ? "verified" : row.override ? "review" : row.verificationStatus}`}>{row.override?.status === "approved" ? "Manuel · onaylı" : row.override ? "Yönetim onayı bekliyor" : verificationLabels[row.verificationStatus]}</span>{row.returnRisk&&<span className="audit-return-flag">İade ayıklandı</span>}</td>
           </tr>

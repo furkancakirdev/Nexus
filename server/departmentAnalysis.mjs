@@ -4,6 +4,7 @@ import {
   excludedTestAudit,
   isExcludedTestDocument,
 } from "./testDocumentRegistry.mjs";
+import { aggregateFinancialMetric, FINANCIAL_ROWS } from "../shared/financialMetric.mjs";
 
 const MONTH_NAMES = [
   "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
@@ -195,11 +196,16 @@ function ledgerAttribution(economic) {
 function emptyMetrics(id, name) {
   return {
     id, name, grossSales: 0, returns: 0, discounts: 0, netSales: 0,
-    cost: 0, uncoveredNetSales: 0, profit: 0, margin: 0,
+    cost: 0, uncoveredNetSales: 0, profit: 0, margin: null,
     lineCount: 0, coveredLines: 0, documentCount: 0, customerCount: 0,
     crossDepotSales: 0, crossDepotDocuments: 0, confirmedSales: 0,
     inferredSales: 0, reviewSales: 0, costCoveragePct: 0,
     documents: new Set(), customers: new Set(), crossDepotDocumentKeys: new Set(),
+    marginObservations: new Map(),
+    byCurrency: null,
+    [FINANCIAL_ROWS]: [],
+    canonicalMetric: null,
+    evidence: { coveredLines: 0, reviewLines: 0, excludedLines: 0 },
   };
 }
 
@@ -207,11 +213,11 @@ function addMetric(target, row) {
   target.grossSales += row.grossSales;
   target.returns += row.returns;
   target.discounts += row.discounts;
-  target.netSales += row.netSales;
-  target.cost += row.cost;
-  target.uncoveredNetSales += row.uncoveredNetSales;
+  target[FINANCIAL_ROWS].push(row[FINANCIAL_ROWS]);
   target.lineCount += 1;
   target.coveredLines += row.costCovered ? 1 : 0;
+  if (row.costCovered) target.evidence.coveredLines += 1;
+  else target.evidence.reviewLines += 1;
   target.documents.add(row.documentKey);
   if (row.customerCode) target.customers.add(row.customerCode);
   if (row.crossDepot) {
@@ -221,21 +227,42 @@ function addMetric(target, row) {
   if (row.attributionStatus === "confirmed") target.confirmedSales += row.netSales;
   else if (row.attributionStatus === "inferred") target.inferredSales += row.netSales;
   else target.reviewSales += row.netSales;
+  if (row.costCovered && row.productMarginObservationKey
+    && typeof row.productListGrossMarginPct === "number"
+    && Number.isFinite(row.productListGrossMarginPct)) {
+    target.marginObservations.set(
+      row.productMarginObservationKey,
+      row.productListGrossMarginPct,
+    );
+  }
 }
 
 function finalizeMetric(metric) {
-  const profit = metric.netSales - metric.cost - metric.uncoveredNetSales;
+  const canonicalMetric = aggregateFinancialMetric(metric[FINANCIAL_ROWS], { preserveCurrencyWhenRateMissing: true });
+  const confirmed = canonicalMetric.scope.confirmed;
+  const marginObservations = [...metric.marginObservations.values()];
   return {
     ...metric,
+    netSales: canonicalMetric.try.netSales,
+    cost: confirmed.cost,
+    uncoveredNetSales: canonicalMetric.scope.costReview.netSales,
     documentCount: metric.documents.size,
     customerCount: metric.customers.size,
     crossDepotDocuments: metric.crossDepotDocumentKeys.size,
-    profit,
-    margin: metric.netSales ? profit / metric.netSales * 100 : 0,
-    costCoveragePct: metric.lineCount ? metric.coveredLines / metric.lineCount * 100 : 0,
+    profit: confirmed.profit,
+    margin: confirmed.margin,
+    eurMargin: canonicalMetric.eurMargin,
+    byCurrency: canonicalMetric.byCurrency,
+    evidence: canonicalMetric.evidence,
+    canonicalMetric,
+    averageProductListGrossMarginPct: marginObservations.length
+      ? marginObservations.reduce((sum, value) => sum + value, 0) / marginObservations.length
+      : null,
+    costCoveragePct: canonicalMetric.evidence.periodCount ? canonicalMetric.evidence.coveredLines / (canonicalMetric.evidence.coveredLines + canonicalMetric.evidence.reviewLines) * 100 : 0,
     documents: undefined,
     customers: undefined,
     crossDepotDocumentKeys: undefined,
+    marginObservations: undefined,
   };
 }
 
@@ -318,8 +345,15 @@ export function buildDepartmentAnalysis({
     const netSales = number(economic.signedNetSales);
     const override = overrides.get(rootId);
     const rate = configuredRate(economic.productCode, pilotCardCostRates, productKey);
+    const financeV2 = usesLedger && economic.financeV2 && typeof economic.financeV2 === "object"
+      ? economic.financeV2
+      : null;
     const evidenceCost = usesLedger
-      ? nullableNumber(economic.lineCost)
+      ? financeV2
+        ? financeV2.reviewReason == null
+          ? nullableNumber(financeV2.lineCostTryExVat)
+          : null
+        : nullableNumber(economic.lineCost)
       : nullableNumber(economic.resolvedCost);
     const cost = override
       ? number(economic.quantity) * number(override.unitCost) * (economic.isSale ? 1 : -1)
@@ -359,7 +393,29 @@ export function buildDepartmentAnalysis({
       costCovered,
       costMethod: override
         ? "manualDecision"
-        : configuredCostMethod(economic.productCode, productKey) || economic.costMethod,
+        : configuredCostMethod(economic.productCode, productKey)
+          || financeV2?.costMethod
+          || economic.costMethod,
+      productCurrency: financeV2?.productCurrency ?? economic.productCurrency ?? null,
+      documentSellingRate: nullableNumber(economic.documentSellingRate),
+      financeV2: financeV2 ? { ...financeV2 } : null,
+      [FINANCIAL_ROWS]: {
+        signedNetSalesTry: netSales,
+        period: String(monthOf(economic.documentDate)),
+        productCurrency: financeV2?.productCurrency ?? economic.productCurrency,
+        documentSellingRate: economic.documentSellingRate,
+        financeV2,
+        manualCostApproved: Boolean(override),
+        manualCostTry: override ? cost : null,
+      },
+      manualCostTry: override || rate != null ? cost : null,
+      productListGrossMarginPct: override || rate != null
+        ? null
+        : nullableNumber(financeV2?.productListGrossMarginPct),
+      productMarginObservationKey: override || rate != null
+        ? null
+        : financeV2?.observationKey || null,
+      financeV2ReviewReason: financeV2?.reviewReason || null,
       revenueSource: economic.revenueSource || (economic.isSale ? "invoice" : "return"),
       department: attribution.department,
       departmentName: attribution.departmentName,
@@ -469,6 +525,17 @@ export function buildDepartmentAnalysis({
         status: attribution.confidence === "confirmed" ? "ready" : "review",
       };
     });
+  const ownerRows = normalized.filter((row) => row.attributionStatus !== "review" && !row.batchRisk && row.commercialOwner);
+  const ownerTotals = topGroups(ownerRows, (row) => ({
+    id: row.commercialOwner,
+    name: row.commercialOwnerName,
+    code: row.commercialOwner,
+    department: row.department,
+    departmentName: row.departmentName,
+    active: row.ownerActive,
+    location: row.ownerLocation,
+  }), Number.MAX_SAFE_INTEGER);
+  const ownerAssignedNetSales = ownerRows.reduce((sum, row) => sum + row.netSales, 0);
 
   return {
     year,
@@ -484,6 +551,8 @@ export function buildDepartmentAnalysis({
       explicitOwnerCoveragePct: total.netSales ? explicitOwnerAmount / total.netSales * 100 : 0,
       sourceOrderCoveragePct: total.netSales ? sourceOrderAmount / total.netSales * 100 : 0,
       reviewAmount,
+      ownerAssignedNetSales,
+      ownerUnassignedNetSales: total.netSales - ownerAssignedNetSales,
       unassignedReviewAmount: departments.find((item) => item.id === "review")?.netSales || 0,
       hintedReviewAmount,
       batchRiskAmount,
@@ -500,6 +569,7 @@ export function buildDepartmentAnalysis({
       active: row.ownerActive,
       location: row.ownerLocation,
     }), 10),
+    ownerTotals,
     topProducts: topGroups(normalized, (row) => ({ id: row.productCode, name: row.productName, code: row.productCode, brand: row.brandName }), 10),
     topCustomers: topGroups(normalized, (row) => ({ id: row.customerCode, name: row.customerName, code: row.customerCode }), 10),
     depotMatrix: ["service", "parts", "review"].flatMap((department) => ["MRK", "YTM", "—"].map((depot) => {

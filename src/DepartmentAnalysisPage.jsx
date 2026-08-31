@@ -17,19 +17,24 @@ import {
 
 const money = new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 0 });
 const compact = new Intl.NumberFormat("tr-TR", { notation: "compact", maximumFractionDigits: 1 });
-const percent = (value) => `%${Number(value || 0).toFixed(1).replace(".", ",")}`;
+const eurFormat = new Intl.NumberFormat("tr-TR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
+const percent = (value) => value === null || value === undefined || value === "" ? "—" : `%${Number(value).toFixed(1).replace(".", ",")}`;
 const formatMoney = (value) => `${money.format(Math.round(Number(value || 0)))} TL`;
+const formatEur = (value) => eurFormat.format(Math.round(Number(value || 0)));
+const metricValue = (item, key, eurActive) => eurActive && item?.eurComplete === true && item?.eurEquivalent && ["netSales", "cost", "profit"].includes(key)
+  ? formatEur(item.eurEquivalent[key])
+  : formatMoney(item?.[key]);
 const formatDate = (value) => value ? new Intl.DateTimeFormat("tr-TR").format(new Date(value)) : "—";
 
 const DEPARTMENTS = {
-  service: { name: "Servis", color: "#087f8c", center: "Yatmarin" },
-  parts: { name: "Yedek Parça Satış", color: "#0a3972", center: "Merkez Ofis" },
-  review: { name: "İnceleme Gerekli", color: "#d9730d", center: "—" },
+  service: { name: "Servis", color: "#00d2d3", center: "Yatmarin" },
+  parts: { name: "Yedek Parça Satış", color: "#0284c7", center: "Merkez Ofis" },
+  review: { name: "İnceleme Gerekli", color: "#f59e0b", center: "—" },
 };
 
 const emptyMetric = {
   grossSales: 0, returns: 0, discounts: 0, netSales: 0, cost: 0, profit: 0,
-  margin: 0, documentCount: 0, customerCount: 0, crossDepotSales: 0,
+  margin: null, eurMargin: null, documentCount: 0, customerCount: 0, crossDepotSales: 0,
   crossDepotDocuments: 0, costCoveragePct: 0, confirmedSales: 0,
   inferredSales: 0, reviewSales: 0,
 };
@@ -51,9 +56,18 @@ function sumMetrics(metrics) {
     confirmedSales: total.confirmedSales + Number(item.confirmedSales || 0),
     inferredSales: total.inferredSales + Number(item.inferredSales || 0),
     reviewSales: total.reviewSales + Number(item.reviewSales || 0),
-  }), { ...emptyMetric, lineCount: 0, coveredLines: 0 });
-  summed.margin = summed.netSales ? summed.profit / summed.netSales * 100 : 0;
+    // EUR karşılıkları da toplanır; her ay kendi kur setiyle çevrilmiştir.
+    eurNetSales: total.eurNetSales + Number(item.eurEquivalent?.netSales || 0),
+    eurCost: total.eurCost + Number(item.eurEquivalent?.cost || 0),
+    eurProfit: total.eurProfit + Number(item.eurEquivalent?.profit || 0),
+    eurHasAny: total.eurHasAny || Boolean(item.eurEquivalent && Number.isFinite(item.eurEquivalent.netSales)),
+  }), { ...emptyMetric, lineCount: 0, coveredLines: 0, eurNetSales: 0, eurCost: 0, eurProfit: 0, eurHasAny: false });
+  summed.margin = metrics.at(-1)?.canonicalMetric?.scope?.confirmed?.margin ?? null;
   summed.costCoveragePct = summed.lineCount ? summed.coveredLines / summed.lineCount * 100 : 0;
+  if (summed.eurHasAny && metrics.every((item) => item.eurComplete === true)) {
+    summed.eurEquivalent = { netSales: summed.eurNetSales, cost: summed.eurCost, profit: summed.eurProfit };
+    summed.eurMargin = metrics.at(-1)?.canonicalMetric?.eurMargin ?? null;
+  }
   return summed;
 }
 
@@ -75,7 +89,7 @@ function DepartmentBadge({ department }) {
   return <span className={`department-badge department-badge--${department || "review"}`}><i style={{ background: meta.color }} />{meta.name}</span>;
 }
 
-export function DepartmentAnalysisPage({ year, mode: appMode, consolidatedRows = [], minimumCoverage = 80 }) {
+export function DepartmentAnalysisPage({ year, mode: appMode, consolidatedRows = [], minimumCoverage = 80, externalRefreshToken = 0, eurRateSets = {} }) {
   const [data, setData] = useState({ departments: [], months: [], detailRows: [], pilotOrders: [], quality: {}, totals: emptyMetric, mode: "loading" });
   const [loading, setLoading] = useState(true);
   const [refreshToken, setRefreshToken] = useState(0);
@@ -91,13 +105,12 @@ export function DepartmentAnalysisPage({ year, mode: appMode, consolidatedRows =
     const controller = new AbortController();
     setLoading(true);
     const params = new URLSearchParams({ year });
-    if (refreshToken) params.set("refresh", "1");
     fetch(`/api/department-analysis?${params}`, { signal: controller.signal })
       .then((response) => response.json())
       .then((result) => { setData(result); setLoading(false); })
       .catch((error) => { if (error.name !== "AbortError") { setData((current) => ({ ...current, mode: "error", error: "Departman verileri okunamadı." })); setLoading(false); } });
     return () => controller.abort();
-  }, [year, refreshToken]);
+  }, [year, refreshToken, externalRefreshToken]);
 
   const monthRows = useMemo(() => (data.months || []).map((item) => ({
     month: item.month,
@@ -129,7 +142,7 @@ export function DepartmentAnalysisPage({ year, mode: appMode, consolidatedRows =
     const returns = Number(row.returns || 0);
     const discounts = Number(row.discounts || 0);
     const net = Number(row.sales || 0) - Number(row.returns || 0) - Number(row.discounts || 0);
-    const profit = net - Number(row.estimatedCost || 0) - Number(row.uncoveredNetSales || 0);
+    const profit = Number(row.profit ?? (net - Number(row.cost ?? 0) - Number(row.uncoveredNetSales || 0)));
     return {
       grossSales: total.grossSales + grossSales,
       returns: total.returns + returns,
@@ -172,6 +185,18 @@ export function DepartmentAnalysisPage({ year, mode: appMode, consolidatedRows =
   }), [data.depotMatrix]);
 
   const activeSource = data.mode === "live";
+  // EUR yalnız API'nin kanıtlı sepeti ve Halkbank alış kuru seti mevcutsa gösterilir.
+  // eurRateSets, Overview/Goals/Approval ile ortak sözleşmenin dönem kanıtıdır;
+  // departman API'sindeki tam rateSet ise eksik kurda fail-closed kalır.
+  const selectedRateEvidence = month === "0" ? data.eurRateSet : (eurRateSets?.[month] || data.eurRateSet);
+  const metricEurActive = Boolean(
+    selectedMetric?.eurComplete === true && selectedMetric?.eurEquivalent
+      && Number.isFinite(selectedMetric.eurEquivalent.netSales)
+      && (selectedRateEvidence?.bank === "HALKBANK" || Number.isFinite(selectedRateEvidence?.eurTryBuyingRate))
+  );
+  const currencyEvidence = selectedMetric?.byCurrency || {};
+  const currencyEvidenceCount = Object.entries(currencyEvidence)
+    .filter(([currency, basket]) => currency !== "INCELEME" && Number(basket?.netSales || 0) !== 0).length;
   const selectedName = month === "0" ? `${year} geneli` : chartRows[0]?.monthName || "Seçili dönem";
 
   return <main className="page department-page" id="top">
@@ -184,13 +209,14 @@ export function DepartmentAnalysisPage({ year, mode: appMode, consolidatedRows =
       <div className="segmented-control" role="group" aria-label="Departman"><button className={department === "all" ? "active" : ""} onClick={() => setDepartment("all")}>Tümü</button><button className={department === "service" ? "active" : ""} onClick={() => setDepartment("service")}><IconTool size={15} />Servis</button><button className={department === "parts" ? "active" : ""} onClick={() => setDepartment("parts")}><IconPackage size={15} />Yedek Parça</button><button className={department === "review" ? "active" : ""} onClick={() => setDepartment("review")}>İnceleme</button></div>
       <label className="department-period"><span>Dönem</span><select value={month} onChange={(event) => setMonth(event.target.value)}><option value="0">{year} geneli</option>{monthRows.map((item) => <option key={item.month} value={item.month}>{item.monthName}</option>)}</select><IconChevronDown size={15} /></label>
       <span className={`reconciliation-chip ${!canReconcile ? "neutral" : reconciled ? "good" : "risk"}`}>{!canReconcile ? <IconDatabase size={16} /> : reconciled ? <IconCircleCheck size={16} /> : <IconAlertTriangle size={16} />}{!canReconcile ? "Uzlaşma için bağlantı bekleniyor" : reconciled ? "Toplu raporla brüt/net uzlaşıyor" : reconciliationDifference}</span>
+      {metricEurActive && <span className="reconciliation-chip good" title={selectedRateEvidence?.weekendOrHolidayNote || undefined}><IconCircleCheck size={16} />EUR · {currencyEvidenceCount} döviz sepeti · Halkbank alış kuru</span>}
     </section>
 
     {!activeSource && <section className="department-notice"><IconAlertTriangle size={20} /><div><strong>Gerçek departman rakamları henüz okunamıyor.</strong><p>Sayfa ve veri sözleşmesi hazır. CPM salt-okunur bağlantısı geldiğinde aynı ekran gerçek sonuçları gösterecek; örnek finansal dağılım üretilmiyor.</p></div></section>}
 
     <section className="department-kpis">
-      <MetricCard icon={IconChartBar} label="Brüt satış" value={formatMoney(selectedMetric.grossSales)} detail={`Net satış ${formatMoney(selectedMetric.netSales)} · KDV hariç`} />
-      <MetricCard icon={IconTrendingUp} tone="green" label="Esas brüt kâr" value={formatMoney(selectedMetric.profit)} detail={`Net marj ${percent(selectedMetric.margin)}`} />
+      <MetricCard icon={IconChartBar} label={`Net satış${metricEurActive ? " · EUR" : ""}`} value={metricEurActive ? formatEur(selectedMetric.eurEquivalent.netSales) : formatMoney(selectedMetric.netSales)} detail={metricEurActive ? "Halkbank alış kuru karşılığı · KDV hariç" : `Brüt ${formatMoney(selectedMetric.grossSales)} · KDV hariç`} />
+  <MetricCard icon={IconTrendingUp} tone="green" label={`Esas brüt kâr${metricEurActive ? " · EUR" : ""}`} value={metricEurActive ? formatEur(selectedMetric.eurEquivalent.profit) : formatMoney(selectedMetric.profit)} detail={`Net marj ${percent(metricEurActive ? selectedMetric.eurMargin : selectedMetric.margin)}`} />
       <MetricCard icon={IconDatabase} tone={Number(selectedMetric.costCoveragePct || 0) >= minimumCoverage ? "green" : "amber"} label="Maliyet kapsamı" value={percent(selectedMetric.costCoveragePct)} detail={`${money.format(selectedMetric.coveredLines || 0)} / ${money.format(selectedMetric.lineCount || 0)} satır`} />
       <MetricCard icon={IconHierarchy} label="Satış belgeleri" value={money.format(selectedMetric.documentCount || 0)} detail={`${money.format(selectedMetric.customerCount || 0)} farklı cari`} />
       <MetricCard icon={IconArrowsExchange} tone="teal" label="Çapraz-depo satış" value={formatMoney(selectedMetric.crossDepotSales)} detail={`${money.format(selectedMetric.crossDepotDocuments || 0)} belge · ${selectedMetric.netSales ? percent(selectedMetric.crossDepotSales / selectedMetric.netSales * 100) : "%0,0"}`} />
@@ -208,11 +234,11 @@ export function DepartmentAnalysisPage({ year, mode: appMode, consolidatedRows =
       </section>
 
       <section className="department-overview-grid department-overview-grid--balanced">
-        <article className="panel department-compare"><div className="panel-heading"><div><h2>Departman Karşılaştırması</h2><p>Ciro, kârlılık ve operasyonel bağlam</p></div></div><div className="department-compare__rows">{visibleDepartments.map((item) => <div className="department-compare__row" key={item.id}><div className="department-identity"><i style={{ background: DEPARTMENTS[item.id]?.color }} /><span><strong>{item.name}</strong><small>{DEPARTMENTS[item.id]?.center}</small></span></div><div><small>Net satış</small><strong>{formatMoney(item.netSales)}</strong></div><div><small>Brüt kâr</small><strong className={item.profit >= 0 ? "positive" : "negative"}>{formatMoney(item.profit)}</strong></div><div><small>Marj</small><strong>{percent(item.margin)}</strong></div><div><small>Çapraz depo</small><strong>{percent(item.netSales ? item.crossDepotSales / item.netSales * 100 : 0)}</strong></div><div><small>Maliyet kapsamı</small><strong>{percent(item.costCoveragePct)}</strong></div></div>)}</div></article>
+        <article className="panel department-compare"><div className="panel-heading"><div><h2>Departman Karşılaştırması</h2><p>Ciro, kârlılık ve operasyonel bağlam · EUR ana görünüm</p></div></div><div className="department-compare__rows">{visibleDepartments.map((item) => <div className="department-compare__row" key={item.id}><div className="department-identity"><i style={{ background: DEPARTMENTS[item.id]?.color }} /><span><strong>{item.name}</strong><small>{DEPARTMENTS[item.id]?.center}</small></span></div><div><small>Net satış{metricEurActive ? " · EUR" : ""}</small><strong>{metricValue(item, "netSales", metricEurActive)}</strong></div><div><small>Brüt kâr{metricEurActive ? " · EUR" : ""}</small><strong className={item.profit >= 0 ? "positive" : "negative"}>{metricValue(item, "profit", metricEurActive)}</strong></div><div><small>Marj</small><strong>{percent(metricEurActive ? item.eurMargin : item.margin)}</strong></div><div><small>Çapraz depo · TL</small><strong>{percent(item.netSales ? item.crossDepotSales / item.netSales * 100 : 0)}</strong></div><div><small>Maliyet kapsamı</small><strong>{percent(item.costCoveragePct)}</strong></div></div>)}</div></article>
         <article className="panel department-depot"><div className="panel-heading"><div><h2>Departman × Teslimat Deposu</h2><p>Depo ciro sahibi değildir; teslimat desenini gösterir</p></div><IconBuildingWarehouse size={22} /></div>{hasFinancialData ? <ResponsiveContainer width="100%" height={240}><BarChart data={depotRows} layout="vertical" margin={{ left: 12, right: 14 }}><CartesianGrid horizontal={false} stroke="#e2e7ed" /><XAxis type="number" tickFormatter={(value) => compact.format(value)} tick={{ fontSize: 10, fill: "#64748a" }} /><YAxis type="category" dataKey="name" width={104} tick={{ fontSize: 11, fill: "#52677d" }} /><Tooltip content={<DepartmentTooltip />} /><Legend iconType="square" wrapperStyle={{ fontSize: 11 }} /><Bar dataKey="merkez" name="Merkez Depo" stackId="depot" fill="#0a3972" /><Bar dataKey="yatmarin" name="Yatmarin Depo" stackId="depot" fill="#087f8c" /><Bar dataKey="belirsiz" name="Belirsiz" stackId="depot" fill="#aab4c0" /></BarChart></ResponsiveContainer> : <div className="department-chart-empty department-chart-empty--small"><IconBuildingWarehouse size={26} /><strong>Depo deseni için veri bekleniyor</strong><span>Depo, ticari sorumluluğu değiştirmeden burada karşılaştırılacak.</span></div>}</article>
       </section>
 
-      <section className="panel department-table-panel"><div className="panel-heading"><div><h2>Yönetim Karşılaştırma Tablosu</h2><p>İadeler ve iskontolar dahil tam ticari görünüm</p></div></div><div className="table-scroll"><table className="department-summary-table"><thead><tr><th>Departman</th><th>Brüt satış</th><th>İade</th><th>İskonto</th><th>Net satış</th><th>Maliyet</th><th>Brüt kâr</th><th>Marj</th><th>Belge</th><th>Cari</th></tr></thead><tbody>{visibleDepartments.map((item) => <tr key={item.id}><th><DepartmentBadge department={item.id} /></th><td>{formatMoney(item.grossSales)}</td><td className="negative">-{formatMoney(item.returns)}</td><td className="negative">-{formatMoney(item.discounts)}</td><td><strong>{formatMoney(item.netSales)}</strong></td><td>{formatMoney(item.cost)}</td><td className={item.profit >= 0 ? "positive" : "negative"}>{formatMoney(item.profit)}</td><td>{percent(item.margin)}</td><td>{money.format(item.documentCount)}</td><td>{money.format(item.customerCount)}</td></tr>)}</tbody></table></div></section>
+      <section className="panel department-table-panel"><div className="panel-heading"><div><h2>Yönetim Karşılaştırma Tablosu</h2><p>Net satış, maliyet ve kâr EUR; iade ve iskonto kaynak para birimi TL olarak korunur.</p></div></div><div className="table-scroll"><table className="department-summary-table"><thead><tr><th>Departman</th><th>Brüt satış · TL</th><th>İade · TL</th><th>İskonto · TL</th><th>Net satış{metricEurActive ? " · EUR" : ""}</th><th>Maliyet{metricEurActive ? " · EUR" : ""}</th><th>Brüt kâr{metricEurActive ? " · EUR" : ""}</th><th>Marj</th><th>Belge</th><th>Cari</th></tr></thead><tbody>{visibleDepartments.map((item) => <tr key={item.id}><th><DepartmentBadge department={item.id} /></th><td>{formatMoney(item.grossSales)}</td><td className="negative">-{formatMoney(item.returns)}</td><td className="negative">-{formatMoney(item.discounts)}</td><td><strong>{metricValue(item, "netSales", metricEurActive)}</strong></td><td>{metricValue(item, "cost", metricEurActive)}</td><td className={item.profit >= 0 ? "positive" : "negative"}>{metricValue(item, "profit", metricEurActive)}</td><td>{percent(metricEurActive ? item.eurMargin : item.margin)}</td><td>{money.format(item.documentCount)}</td><td>{money.format(item.customerCount)}</td></tr>)}</tbody></table></div></section>
     </>}
 
     {tab === "rankings" && <section className="ranking-grid">
@@ -312,7 +338,7 @@ function orderedActors(row) {
 }
 
 function FragmentRow({ row, expanded, onToggle }) {
-  const margin = row.netSales ? row.profit / row.netSales * 100 : 0;
+  const margin = row.margin;
   const documents = orderedDocuments(row);
   const actors = orderedActors(row);
   const excludedActors = row.ownershipEvidence?.excludedActors || [];

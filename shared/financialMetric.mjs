@@ -7,6 +7,7 @@ import {
 
 const FOREIGN_CURRENCIES = new Set(["EUR", "USD", "GBP"]);
 const METRIC_FIELDS = ["netSales", "cost", "profit"];
+export const FINANCIAL_ROWS = Symbol.for("nexus.financialRows");
 
 function numberOrNull(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -25,7 +26,7 @@ function periodKey(row, fallback) {
 }
 
 function emptyScope() {
-  return { lines: 0, netSales: 0, cost: 0, profit: 0 };
+  return { lines: 0, netSales: 0, cost: 0, profit: 0, margin: null };
 }
 
 function addScope(scope, netSales, cost = 0) {
@@ -33,6 +34,7 @@ function addScope(scope, netSales, cost = 0) {
   scope.netSales += netSales;
   scope.cost += cost;
   scope.profit = scope.netSales - scope.cost;
+  scope.margin = scope.netSales === 0 ? null : scope.profit / scope.netSales * 100;
 }
 
 function createPeriodMetric() {
@@ -94,7 +96,7 @@ function finishMetric(metric) {
   metric.eur.profit = metric.eur.netSales - metric.eur.cost;
   metric.eur.margin = metric.eur.netSales === 0 ? null : metric.eur.profit / metric.eur.netSales * 100;
   metric.eurMargin = metric.eur.margin;
-  metric.status = metric.evidence.reviewLines > 0 ? "INCELEME" : "TAMAM";
+  metric.status = metric.evidence.reviewLines > 0 || metric.evidence.eurReviewLines > 0 ? "INCELEME" : "TAMAM";
   return metric;
 }
 
@@ -107,13 +109,13 @@ export function aggregateFinancialMetric(rows = [], options = {}) {
   const metric = {
     status: "TAMAM",
     basisId: text(options.basisId) || null,
-    scope: { included: emptyScope(), review: emptyScope(), excluded: emptyScope() },
-    try: { netSales: 0, cost: 0, profit: 0 },
+    scope: { included: emptyScope(), confirmed: emptyScope(), review: emptyScope(), costReview: emptyScope(), excluded: emptyScope() },
+    try: { netSales: 0, cost: 0, profit: 0, margin: null },
     byCurrency: emptyCurrencyBasket(),
     byPeriod: {},
     eur: { netSales: 0, cost: 0, profit: 0, margin: null, complete: true },
     eurMargin: null,
-    evidence: { coveredLines: 0, reviewLines: 0, excludedLines: 0, manualCostLines: 0, periodCount: 0, currencyCount: 0 },
+    evidence: { coveredLines: 0, reviewLines: 0, eurReviewLines: 0, excludedLines: 0, manualCostLines: 0, periodCount: 0, currencyCount: 0 },
   };
   const inputRows = Array.isArray(rows) ? rows : [];
   const fallbackPeriod = text(options.period) || "TOTAL";
@@ -138,20 +140,27 @@ export function aggregateFinancialMetric(rows = [], options = {}) {
     const eurCovered = line.covered && addEur(periodMetric, line, rateSet);
     const review = !line.covered || !eurCovered;
     const knownTryCost = signedTryCost(row);
-    const reviewLine = review
+    const reviewLine = review && (!line.covered || !options.preserveCurrencyWhenRateMissing)
       ? { basket: "INCELEME", netSales, cost: knownTryCost, covered: false, reason: line.reason || "missing-exchange-rate" }
       : line;
     const cost = review ? knownTryCost : signedTryCost(row);
     addScope(metric.scope.included, netSales, cost);
     if (review) addScope(metric.scope.review, netSales, cost);
+    if (!line.covered) addScope(metric.scope.costReview, netSales, cost);
+    else addScope(metric.scope.confirmed, netSales, cost);
     metric.try.netSales += netSales;
     metric.try.cost += cost;
     metric.try.profit = metric.try.netSales - metric.try.cost;
+    metric.try.margin = metric.try.netSales === 0 ? null : metric.try.profit / metric.try.netSales * 100;
     addToCurrencyBasket(metric.byCurrency, reviewLine.basket, { netSales, cost });
     addToCurrencyBasket(periodMetric.byCurrency, reviewLine.basket, { netSales, cost });
     if (review) {
-      metric.evidence.reviewLines += 1;
-      periodMetric.evidence.reviewLines += 1;
+      metric.evidence.eurReviewLines += 1;
+      periodMetric.evidence.eurReviewLines += 1;
+      if (!line.covered) {
+        metric.evidence.reviewLines += 1;
+        periodMetric.evidence.reviewLines += 1;
+      }
     } else {
       metric.evidence.coveredLines += 1;
       periodMetric.evidence.coveredLines += 1;

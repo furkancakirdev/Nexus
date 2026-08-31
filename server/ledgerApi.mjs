@@ -4,6 +4,12 @@ import {
   buildDepartmentTargets,
   summarizeDepartmentTargets,
 } from "../shared/targetPolicy.mjs";
+import {
+  buildExchangeRateIndex,
+  buildRateSet,
+} from "../shared/eurReporting.mjs";
+import { buildInventoryResearchPayload } from "./inventoryResearchApi.mjs";
+import { aggregateFinancialMetric, FINANCIAL_ROWS } from "../shared/financialMetric.mjs";
 
 const MONTH_NAMES = [
   "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
@@ -91,6 +97,16 @@ function emptyOverviewMonth(month) {
     returns: 0,
     discounts: 0,
     estimatedCost: 0,
+    cost: 0,
+    coveredNetSales: 0,
+    reviewNetSales: 0,
+    profit: 0,
+    margin: 0,
+    averageProductListGrossMarginPct: null,
+    v2CostCoveredLines: 0,
+    v2ReviewLines: 0,
+    v2CostCoveragePct: 0,
+    _v2MarginObservations: new Map(),
     lineCount: 0,
     costCoveredLines: 0,
     costCoveragePct: 0,
@@ -110,6 +126,8 @@ function emptyOverviewMonth(month) {
     unlinkedReturnLines: 0,
     costMethod: "final-invoice-ledger",
     source: "live",
+    byCurrency: null,
+    [FINANCIAL_ROWS]: [],
   };
 }
 
@@ -123,6 +141,13 @@ export function buildOverviewRows(ledger) {
     const month = monthOf(row.documentDate);
     if (!month) continue;
     const target = months.get(month) || emptyOverviewMonth(month);
+    target[FINANCIAL_ROWS].push({
+      signedNetSalesTry: row.signedNetSales,
+      period: String(month),
+      productCurrency: row.financeV2?.productCurrency,
+      documentSellingRate: row.documentSellingRate,
+      financeV2: row.financeV2,
+    });
     const cardKey = pilotCardKey(row.productCode);
     const isSale = Boolean(row.isSale);
 
@@ -131,6 +156,28 @@ export function buildOverviewRows(ledger) {
     if (!isSale) {
       if (row.originalDocumentNo) target.linkedReturnLines += 1;
       else target.unlinkedReturnLines += 1;
+    }
+
+    const financeV2 = row.financeV2;
+    const v2LineCost = financeV2?.lineCostTryExVat;
+    const v2Covered = financeV2?.reviewReason == null
+      && typeof v2LineCost === "number"
+      && Number.isFinite(v2LineCost);
+    if (v2Covered) {
+      target.cost += v2LineCost;
+      target.coveredNetSales += number(row.signedNetSales);
+      target.v2CostCoveredLines += 1;
+      if (financeV2.observationKey
+        && typeof financeV2.productListGrossMarginPct === "number"
+        && Number.isFinite(financeV2.productListGrossMarginPct)) {
+        target._v2MarginObservations.set(
+          financeV2.observationKey,
+          financeV2.productListGrossMarginPct,
+        );
+      }
+    } else {
+      target.reviewNetSales += number(row.signedNetSales);
+      target.v2ReviewLines += 1;
     }
 
     if (cardKey) {
@@ -151,7 +198,13 @@ export function buildOverviewRows(ledger) {
     }
     target.lineCount += 1;
 
-    if (row.lineCost === null || row.lineCost === undefined) {
+    const officialWacRow = financeV2?.schemaVersion === 2
+      && financeV2?.costMethod === "movingWeightedAverage";
+    if (officialWacRow) {
+      // WAC resmi yolunda legacy lineCost yalnız denetim karşılaştırmasıdır.
+      if (v2Covered) target.costCoveredLines += 1;
+      else target.uncoveredCostLines += 1;
+    } else if (row.lineCost === null || row.lineCost === undefined) {
       target.uncoveredCostLines += 1;
       target.uncoveredNetSales += number(row.signedNetSales);
     } else {
@@ -166,12 +219,34 @@ export function buildOverviewRows(ledger) {
 
   const rows = [...months.values()]
     .sort((left, right) => left.month - right.month)
-    .map((row) => ({
-      ...row,
-      costCoveragePct: row.lineCount
-        ? Number((100 * row.costCoveredLines / row.lineCount).toFixed(1))
+    .map((row) => {
+      const canonicalMetric = aggregateFinancialMetric(row[FINANCIAL_ROWS], { period: String(row.month), basisId: `overview:${row.month}`, preserveCurrencyWhenRateMissing: true });
+      const marginObservations = [...row._v2MarginObservations.values()];
+      const { _v2MarginObservations, [FINANCIAL_ROWS]: financialRows, ...publicRow } = row;
+      const confirmed = canonicalMetric.scope.confirmed;
+      return {
+      ...publicRow,
+      [FINANCIAL_ROWS]: financialRows,
+      netSales: canonicalMetric.try.netSales,
+      cost: confirmed.cost,
+      coveredNetSales: confirmed.netSales,
+      reviewNetSales: canonicalMetric.scope.review.netSales,
+      byCurrency: canonicalMetric.byCurrency,
+      canonicalMetric,
+      profit: confirmed.profit,
+      margin: confirmed.margin,
+      averageProductListGrossMarginPct: marginObservations.length
+        ? marginObservations.reduce((sum, value) => sum + value, 0) / marginObservations.length
+        : null,
+      v2CostCoveragePct: row.v2CostCoveredLines + row.v2ReviewLines
+        ? Number((100 * row.v2CostCoveredLines
+          / (row.v2CostCoveredLines + row.v2ReviewLines)).toFixed(1))
         : 0,
-    }));
+      costCoveragePct: canonicalMetric.evidence.coveredLines + canonicalMetric.evidence.reviewLines
+        ? Number((100 * canonicalMetric.evidence.coveredLines / (canonicalMetric.evidence.coveredLines + canonicalMetric.evidence.reviewLines)).toFixed(1))
+        : 0,
+      };
+    });
   if (ledger && typeof ledger === "object") overviewRowsCache.set(ledger, rows);
   return rows;
 }
@@ -183,6 +258,132 @@ function overviewNetSales(rows) {
     ), 0);
     return total + number(row.sales) - number(row.returns) - number(row.discounts) + pilotNet;
   }, 0);
+}
+
+/**
+ * CPM canonical fatura satırları ile Nexus özet görünümünü karşılaştırır.
+ * Kaynak tutarlar KDV hariç net ve KDV dahil fatura toplamı olarak ayrı tutulur;
+ * inceleme/kapsam dışı satırlar sessizce toplamdan düşürülmez, ayrıca raporlanır.
+ */
+export function buildInvoiceReconciliation(ledger, overviewRows = buildOverviewRows(ledger)) {
+  const sourceRows = Array.isArray(ledger?.rows) ? ledger.rows : [];
+  const excludedIncomeRows = sourceRows.filter((row) => isExcludedIncome(row.productCode));
+  const includedRows = sourceRows.filter((row) => !isExcludedIncome(row.productCode));
+  const sumSource = (rows) => rows.reduce((total, row) => ({
+    grossSales: total.grossSales + (row.isSale ? number(row.grossAmount) : 0),
+    returns: total.returns + (row.isSale ? 0 : number(row.netAmount)),
+    discounts: total.discounts + (row.isSale ? number(row.discountAmount) : 0),
+    netSales: total.netSales + number(row.signedNetSales),
+    vatAmount: total.vatAmount + number(row.signedVatAmount),
+    invoiceTotalInclVat: total.invoiceTotalInclVat + number(row.signedInvoiceTotalInclVat),
+    rows: total.rows + 1,
+  }), {
+    grossSales: 0, returns: 0, discounts: 0, netSales: 0, vatAmount: 0,
+    invoiceTotalInclVat: 0, rows: 0,
+  });
+  const source = sumSource(includedRows);
+  const excludedIncome = sumSource(excludedIncomeRows);
+  const nexus = (overviewRows || []).reduce((total, row) => {
+    const pilotEntries = Object.values(row.pilotCards || {});
+    const pilotSales = pilotEntries.reduce((sum, card) => sum + number(card.sales), 0);
+    const pilotReturns = pilotEntries.reduce((sum, card) => sum + number(card.returns), 0);
+    const pilotDiscounts = pilotEntries.reduce((sum, card) => sum + number(card.discounts), 0);
+    return {
+    grossSales: total.grossSales + number(row.sales) + pilotSales,
+    returns: total.returns + number(row.returns) + pilotReturns,
+    discounts: total.discounts + number(row.discounts) + pilotDiscounts,
+    netSales: total.netSales + number(row.sales) + pilotSales - number(row.returns) - pilotReturns - number(row.discounts) - pilotDiscounts,
+    rows: total.rows + number(row.invoiceLineCount || row.lineCount),
+    };
+  }, { grossSales: 0, returns: 0, discounts: 0, netSales: 0, rows: 0 });
+  const differences = {
+    grossSales: source.grossSales - nexus.grossSales,
+    returns: source.returns - nexus.returns,
+    discounts: source.discounts - nexus.discounts,
+    netSales: source.netSales - nexus.netSales,
+  };
+  const breakdown = (overviewRows || []).map((row) => ({
+    month: row.month,
+    monthName: row.monthName,
+    sourceNetSales: sourceRows
+      .filter((item) => monthOf(item.documentDate) === row.month)
+      .reduce((sum, item) => sum + number(item.signedNetSales), 0),
+    nexusNetSales: number(row.sales) - number(row.returns) - number(row.discounts)
+      + Object.values(row.pilotCards || {}).reduce((sum, card) => sum + number(card.sales) - number(card.returns) - number(card.discounts), 0),
+  })).map((row) => ({ ...row, difference: row.sourceNetSales - row.nexusNetSales }));
+  const maxDifference = Math.max(...Object.values(differences).map((value) => Math.abs(value)), 0);
+  return {
+    tolerance: 0.01,
+    status: maxDifference <= 0.01 ? "matched" : "review-required",
+    source,
+    rawSource: sumSource(sourceRows),
+    excludedIncome,
+    nexus,
+    differences,
+    breakdown,
+    excludedIncomeCodes: [...EXCLUDED_INCOME_CODES],
+    note: "KDV hariç net ciro ve KDV dahil fatura toplamı ayrı tutulur; kapsam dışı ve inceleme satırları ayrıca izlenir.",
+  };
+}
+
+/**
+ * Ayın son takvim gününün tarih anahtarını üretir.
+ */
+export function lastDayOfMonthKey(year, month) {
+  const lastDay = new Date(Date.UTC(year, month, 0));
+  return `${year}-${String(lastDay.getUTCMonth() + 1).padStart(2, "0")}-${String(lastDay.getUTCDate()).padStart(2, "0")}`;
+}
+
+/**
+ * Bir ay için kullanılacak EUR kur setini çözer. Onaylı dönemlerde dondurulmuş
+ * kur seti (yoksa dönemin son günü kuru) kullanılır; açık dönemler rapor günü
+ * kuruyla dinamik değerlendirilir. Hafta sonu/tatil günlerinde kur indeksi
+ * çözümleyicisi en son önceki iş gününe düşer.
+ */
+export function resolveMonthRateSet({ index, year, month, approval = null, reportDate }) {
+  const locked = Boolean(approval) && approval.locked !== false;
+  if (locked && approval.exchangeRateSet && typeof approval.exchangeRateSet === "object") {
+    return { rateSet: approval.exchangeRateSet, frozen: true };
+  }
+  if (locked) {
+    const rateSet = buildRateSet(index, lastDayOfMonthKey(year, month));
+    if (rateSet) return { rateSet, frozen: true };
+  }
+  return { rateSet: buildRateSet(index, reportDate), frozen: false };
+}
+
+/**
+ * Overview satırlarını kur setleriyle EUR karşılığına süsler. Her ay kendi
+ * kur setiyle değerlendirilir; onaylı aylar dondurulmuş kurla değişmez.
+ */
+export function decorateOverviewRowsEur(rows, { index, year, approvals = {}, reportDate }) {
+  const yearApprovals = approvals && typeof approvals === "object" ? approvals : {};
+  const eurRateSets = {};
+  const decorated = (rows || []).map((row) => {
+    const approval = yearApprovals[String(row.month)] || null;
+    const { rateSet, frozen } = resolveMonthRateSet({
+      index, year, month: row.month, approval, reportDate,
+    });
+    const canonicalMetric = aggregateFinancialMetric(row[FINANCIAL_ROWS] || [], {
+      period: String(row.month), rateSet, basisId: `overview:${row.month}`,
+    });
+    eurRateSets[row.month] = {
+      reportDate: rateSet?.reportDate ?? null,
+      frozen,
+      eurTryBuyingRate: rateSet?.eurTryBuyingRate ?? null,
+      weekendOrHolidayNote: rateSet?.weekendOrHolidayNote ?? null,
+    };
+    return {
+      ...row,
+      canonicalMetric,
+      eurEquivalent: canonicalMetric.eur,
+      eurMargin: canonicalMetric.eurMargin,
+      eurComplete: canonicalMetric.eur.complete && canonicalMetric.status === "TAMAM",
+      eurMissingCurrencies: canonicalMetric.eur.complete ? [] : ["INCELEME"],
+      eurFrozen: frozen,
+    };
+  });
+  return { rows: decorated, eurRateSets };
 }
 
 function verificationStatus(row) {
@@ -226,6 +427,13 @@ function auditRow(row) {
   const effectiveCostMethod = configuredCostMethod(row.productCode) || row.costMethod;
   const effectiveRow = { ...row, costMethod: effectiveCostMethod };
   const verification = verificationStatus(effectiveRow);
+  const signedNetAmount = (row.isSale ? 1 : -1) * netAmount;
+  const v2Cost = row.financeV2?.reviewReason == null
+    ? Number(row.financeV2?.lineCostTryExVat)
+    : NaN;
+  const calculatedCost = Number.isFinite(v2Cost)
+    ? (row.isSale ? 1 : -1) * v2Cost
+    : null;
   return {
     ...row,
     [AUDIT_SORT_TIME]: Date.parse(row.documentDate) || 0,
@@ -240,6 +448,14 @@ function auditRow(row) {
     discountAmount: number(row.discountAmount),
     discountPct: grossAmount ? 100 * number(row.discountAmount) / grossAmount : 0,
     netAmount,
+    signedNetAmount,
+    canonicalMetric: aggregateFinancialMetric([{
+      signedNetSalesTry: signedNetAmount,
+      period: String(monthOf(row.documentDate)),
+      productCurrency: row.financeV2?.productCurrency,
+      documentSellingRate: row.documentSellingRate,
+      financeV2: row.financeV2,
+    }], { basisId: `audit:${row.rootId}` }),
     vatAmount: number(row.vatAmount),
     vatRate: netAmount ? 100 * number(row.vatAmount) / netAmount : 0,
     invoiceTotalInclVat: number(row.invoiceTotalInclVat),
@@ -252,6 +468,10 @@ function auditRow(row) {
     costValidated: verification === "verified",
     returnRisk,
     costEvidenceClass: costEvidenceClass(effectiveRow),
+    calculatedCost,
+    grossProfit: effectiveCostMethod === "excludedIncome" || calculatedCost === null
+      ? null
+      : signedNetAmount - calculatedCost,
     purchaseVatRate: purchaseNetAmount
       ? 100 * number(row.purchaseVatAmount) / purchaseNetAmount
       : null,
@@ -460,6 +680,9 @@ function targetSourceRows(analysis) {
       netSales: month[department]?.netSales || 0,
       cost: month[department]?.cost || 0,
       uncoveredNetSales: month[department]?.uncoveredNetSales || 0,
+      eurNetSales: month[department]?.eurEquivalent?.netSales ?? null,
+      eurCost: month[department]?.eurEquivalent?.cost ?? null,
+      eurProfit: month[department]?.eurEquivalent?.profit ?? null,
     }))
   ));
 }
@@ -606,6 +829,7 @@ export function createDepartmentTargetLoader({
           summary: summarizeDepartmentTargets(rows),
           mode: "live",
           ...metadata(currentSnapshot),
+          inventorySource: currentSnapshot.value.inventorySource || null,
           previousLedgerVersion: previousMetadata.ledgerVersion,
           previousGeneratedAt: previousMetadata.generatedAt,
           previousCacheStatus: previousMetadata.cacheStatus,
@@ -650,6 +874,30 @@ export function createUnifiedLedgerRouter({
   const loadDepartmentTargets = departmentTargetLoader
     || createDepartmentTargetLoader({ ledgerService, getAppState, logger });
 
+  router.post("/api/ledger-refresh", async (request, response) => {
+    const year = validYear(request.body?.year || request.query.year);
+    if (!year) return response.status(400).json({ status: "failed", readOnly: true, error: "Geçersiz yıl." });
+    try {
+      const results = typeof ledgerService.refreshMany === "function"
+        ? await ledgerService.refreshMany([year, year - 1])
+        : await Promise.all([year, year - 1].map(async (item) => ({ year: item, status: "fulfilled", value: await ledgerService.get(item, { refresh: true }) })));
+      const years = Object.fromEntries(results.map((item) => [String(item.year), item.status === "fulfilled"
+        ? { ledgerVersion: item.value.ledgerVersion, generatedAt: item.value.generatedAt, cacheStatus: item.value.cache.status }
+        : { ledgerVersion: null, generatedAt: null, cacheStatus: "refresh-error", error: item.reason?.message || "Yenileme başarısız." }]));
+      const failed = results.filter((item) => item.status !== "fulfilled");
+      response.setHeader("Cache-Control", "no-store");
+      return response.status(failed.length === results.length ? 503 : 200).json({
+        readOnly: true,
+        status: failed.length ? "partial" : "completed",
+        year,
+        years,
+      });
+    } catch (error) {
+      logger.error("Marlin Nexus ledger refresh failed:", error);
+      return response.status(503).json({ readOnly: true, status: "failed", year, error: "CPM verisi yenilenemedi." });
+    }
+  });
+
   router.get("/api/overview", async (request, response) => {
     const year = validYear(request.query.year);
     if (!year) {
@@ -659,9 +907,12 @@ export function createUnifiedLedgerRouter({
       });
     }
     try {
-      const snapshot = await ledgerService.get(year, {
-        refresh: request.query.refresh === "1",
-      });
+      const [snapshot, state] = await Promise.all([
+        ledgerService.get(year, {
+          refresh: request.query.refresh === "1",
+        }),
+        getAppState(),
+      ]);
       if (!snapshot.value) {
         return response.status(503).json({
           year, rows: [], mode: "unavailable", ...metadata(snapshot),
@@ -671,10 +922,19 @@ export function createUnifiedLedgerRouter({
       const rows = buildOverviewRows(snapshot.value);
       const responseNetSales = overviewNetSales(rows);
       const scopeNetSales = economicScopeNetSales(snapshot.value);
+      // EUR raporlama katmanı: açık aylar rapor günü, onaylı aylar dondurulmuş kur setiyle.
+      const rateIndex = buildExchangeRateIndex(snapshot.value.exchangeRates);
+      const eurDecorated = decorateOverviewRowsEur(rows, {
+        index: rateIndex,
+        year,
+        approvals: state.approvals?.[String(year)] || {},
+        reportDate: new Date(),
+      });
       response.setHeader("Cache-Control", "no-store");
       return response.json({
         year,
-        rows,
+        rows: eurDecorated.rows,
+        eurRateSets: eurDecorated.eurRateSets,
         mode: "live",
         ...metadata(snapshot),
         reconciliation: reconciliation(
@@ -690,6 +950,24 @@ export function createUnifiedLedgerRouter({
         year, rows: [], mode: "error", ...retainedMetadata(ledgerService, year),
         error: "Satış özeti birleşik defterden okunamadı.",
       });
+    }
+  });
+
+  router.get("/api/reconciliation/invoices", async (request, response) => {
+    const year = validYear(request.query.year);
+    if (!year) return response.status(400).json({ error: "Geçersiz yıl.", ...INVALID_METADATA });
+    try {
+      const snapshot = await ledgerService.get(year, { refresh: request.query.refresh === "1" });
+      if (!snapshot.value) {
+        return response.status(503).json({ year, mode: "unavailable", ...metadata(snapshot), error: "CPM fatura uzlaştırması üretilemedi." });
+      }
+      const overviewRows = buildOverviewRows(snapshot.value);
+      const reconciliation = buildInvoiceReconciliation(snapshot.value, overviewRows);
+      response.setHeader("Cache-Control", "no-store");
+      return response.json({ year, ...reconciliation, mode: "live", ...metadata(snapshot) });
+    } catch (error) {
+      logger.error("Marlin Nexus invoice reconciliation failed:", error);
+      return response.status(500).json({ year, mode: "error", ...retainedMetadata(ledgerService, year), error: "CPM fatura uzlaştırması okunamadı." });
     }
   });
 
@@ -721,6 +999,38 @@ export function createUnifiedLedgerRouter({
         requireApproval: state.settings?.requireManagementApprovalForManualCost !== false,
       });
       const scopeNetSales = economicScopeNetSales(snapshot.value);
+      // EUR raporlama katmanı: departman, ay ve toplam sepetleri kur setiyle süslenir.
+      const rateIndex = buildExchangeRateIndex(snapshot.value.exchangeRates);
+      const approvals = state.approvals?.[String(year)] || {};
+      const reportDate = new Date();
+      const decorateMetricEur = (metric) => {
+        if (!metric || typeof metric !== "object") return metric;
+        const resolved = metric.month
+          ? resolveMonthRateSet({
+            index: rateIndex, year, month: metric.month, approval: approvals[String(metric.month)] || null, reportDate,
+          })
+          : { rateSet: buildRateSet(rateIndex, reportDate), frozen: false };
+        const canonicalMetric = aggregateFinancialMetric(metric[FINANCIAL_ROWS] || [], {
+          rateSet: resolved.rateSet, basisId: `department:${metric.id || "total"}`,
+        });
+        return {
+          ...metric,
+          canonicalMetric,
+          eurEquivalent: canonicalMetric.eur,
+          eurComplete: canonicalMetric.eur.complete && canonicalMetric.status === "TAMAM",
+          eurStatus: canonicalMetric.status,
+          eurFrozen: resolved.frozen,
+        };
+      };
+      analysis.eurRateSet = buildRateSet(rateIndex, reportDate);
+      analysis.totals = decorateMetricEur({ ...analysis.totals, month: null });
+      analysis.departments = (analysis.departments || []).map(decorateMetricEur);
+      analysis.months = (analysis.months || []).map((item) => ({
+        ...item,
+        service: decorateMetricEur(item.service),
+        parts: decorateMetricEur(item.parts),
+        review: decorateMetricEur(item.review),
+      }));
       response.setHeader("Cache-Control", "no-store");
       return response.json({
         ...analysis,
@@ -826,6 +1136,41 @@ export function createUnifiedLedgerRouter({
         year, rows: [], mode: "error", ...retainedMetadata(ledgerService, year),
         error: "Kanıt örnekleri birleşik defterden okunamadı.",
       });
+    }
+  });
+
+  router.get("/api/inventory-research", async (request, response) => {
+    const year = validYear(request.query.year);
+    if (!year) return response.status(400).json({ error: "Geçersiz yıl." });
+    try {
+      const snapshot = await ledgerService.get(year, { refresh: request.query.refresh === "1" });
+      if (!snapshot.value) {
+        return response.status(503).json(buildInventoryResearchPayload({
+          year,
+          source: { status: "missing", evidence: { reason: "cpm-not-connected" } },
+        }));
+      }
+      const audit = filterAuditLedger(snapshot.value, {
+        ...request.query,
+        page: 1,
+        pageSize: 200,
+      });
+      const search = String(request.query.search || "").trim().toLocaleUpperCase("tr-TR");
+      const rows = search
+        ? audit.rows.filter((row) => `${row.cardCode || ""} ${row.cardName || ""}`.toLocaleUpperCase("tr-TR").includes(search))
+        : audit.rows;
+      response.setHeader("Cache-Control", "no-store");
+      return response.json(buildInventoryResearchPayload({
+        year,
+        source: snapshot.value.inventorySource,
+        rows,
+      }));
+    } catch (error) {
+      logger.error("Marlin Nexus inventory research read failed:", error);
+      return response.status(500).json(buildInventoryResearchPayload({
+        year,
+        source: { status: "invalid", evidence: { reason: "inventory-research-read-failed" } },
+      }));
     }
   });
 

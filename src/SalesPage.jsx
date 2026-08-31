@@ -1,41 +1,590 @@
 import { useMemo, useState } from "react";
-import { Bar, BarChart, CartesianGrid, Line, ComposedChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { IconChartBar, IconDiscount, IconFilter, IconReceiptRefund, IconTrendingUp } from "@tabler/icons-react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  ComposedChart,
+  Legend,
+  Line,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
+  IconAlertTriangle,
+  IconChartBar,
+  IconCircleCheck,
+  IconCoins,
+  IconDatabase,
+  IconDiscount,
+  IconFileInvoice,
+  IconFilter,
+  IconLayersSubtract,
+  IconReceiptRefund,
+  IconShieldCheck,
+  IconTrendingUp,
+} from "@tabler/icons-react";
 
 const money = new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 0 });
 const compact = new Intl.NumberFormat("tr-TR", { notation: "compact", maximumFractionDigits: 1 });
+const eurFormat = new Intl.NumberFormat("tr-TR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
+const percent = (value) => value === null || value === undefined ? "—" : `%${Number(value).toFixed(1).replace(".", ",")}`;
+const formatMoney = (value) => `${money.format(Math.round(Number(value || 0)))} TL`;
+const formatEur = (value) => eurFormat.format(Math.round(Number(value || 0)));
+// EUR karşılığı yoksa (demo/bağlantısız mod) TL gösterimine düşer.
+const formatReportMoney = (row, field, fallback) => {
+  const eurValue = row?.eurEquivalent?.[field];
+  if (typeof eurValue === "number" && Number.isFinite(eurValue)) return formatEur(eurValue);
+  return formatMoney(fallback);
+};
 
-export function SalesPage({ rows, year, mode, minimumCoverage }) {
+function CustomSalesTooltip({ active, payload, label, moneyFormatter = formatMoney }) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="chart-tooltip" style={{ minWidth: "220px" }}>
+      <strong style={{ display: "block", marginBottom: "6px", color: "var(--ink)", borderBottom: "1px solid var(--line)", paddingBottom: "4px" }}>
+        {label}
+      </strong>
+      <div style={{ display: "grid", gap: "4px", fontSize: "12px" }}>
+        {payload.map((entry) => {
+          const isPercent = entry.name.includes("marj") || entry.name.includes("Marj") || entry.name.includes("%");
+          return (
+            <div key={entry.dataKey || entry.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px" }}>
+              <span style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--muted)" }}>
+                <i style={{ width: "8px", height: "8px", borderRadius: "2px", background: entry.color || entry.fill || entry.stroke, display: "inline-block" }} />
+                {entry.name}
+              </span>
+              <strong style={{ color: entry.color || entry.fill || entry.stroke }}>
+                {isPercent ? percent(entry.value) : moneyFormatter(entry.value)}
+              </strong>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80, eurRateSets = {} }) {
   const [view, setView] = useState("all");
   const [sort, setSort] = useState("month");
-  const data = useMemo(() => rows.map((row) => {
-    const netSales = row.sales - row.returns - row.discounts;
-    const profit = netSales - row.estimatedCost - (row.uncoveredNetSales || 0);
-    return { ...row, netSales, profit, margin: netSales ? profit / netSales * 100 : 0 };
-  }), [rows]);
-  const filtered = data.filter((row) => view === "all" || (view === "healthy" ? row.costCoveragePct >= minimumCoverage : row.costCoveragePct < minimumCoverage)).sort((a,b) => sort === "sales" ? b.sales - a.sales : sort === "profit" ? b.profit - a.profit : a.month - b.month);
-  const totals = data.reduce((acc,row) => ({
-    sales: acc.sales+row.sales, returns: acc.returns+row.returns, discounts: acc.discounts+row.discounts,
-    profit: acc.profit+row.profit, netSales: acc.netSales+row.netSales,
-    bulkPurchaseCostLines:acc.bulkPurchaseCostLines+(row.bulkPurchaseCostLines||0),
-    lastPurchaseCostLines:acc.lastPurchaseCostLines+(row.lastPurchaseCostLines||0),
-    nextPurchaseCostLines:acc.nextPurchaseCostLines+(row.nextPurchaseCostLines||0),
-    uncoveredCostLines:acc.uncoveredCostLines+(row.uncoveredCostLines||0),
-    uncoveredNetSales:acc.uncoveredNetSales+(row.uncoveredNetSales||0),
-    pilotCardLines:acc.pilotCardLines+(row.pilotCardLines||0), pilotCost:acc.pilotCost+(row.pilotCost||0),
-    invoiceLineCount:acc.invoiceLineCount+(row.invoiceLineCount||0),
-    provisionalLineCount:acc.provisionalLineCount+(row.provisionalLineCount||0),
-    invoiceNetSales:acc.invoiceNetSales+(row.invoiceNetSales||0),
-    provisionalNetSales:acc.provisionalNetSales+(row.provisionalNetSales||0),
-    linkedReturnLines:acc.linkedReturnLines+(row.linkedReturnLines||0),
-    unlinkedReturnLines:acc.unlinkedReturnLines+(row.unlinkedReturnLines||0),
-  }), { sales:0, returns:0, discounts:0, profit:0, netSales:0, bulkPurchaseCostLines:0, lastPurchaseCostLines:0, nextPurchaseCostLines:0, uncoveredCostLines:0, uncoveredNetSales:0, pilotCardLines:0, pilotCost:0, invoiceLineCount:0, provisionalLineCount:0, invoiceNetSales:0, provisionalNetSales:0, linkedReturnLines:0, unlinkedReturnLines:0 });
-  const top = [...data].sort((a,b) => b.sales-a.sales)[0];
 
-  return <main className="page sales-page" id="top">
-    <section className="page-heading sales-heading"><div><p className="eyebrow">Satış performansı</p><h1>Satışlar ve Kârlılık</h1><p>{year} satışlarını, iadeleri, iskontoları ve maliyet sonrası kârlılığı inceleyin.</p></div><span className={`source-badge source-badge--${mode}`}>{mode === "live" ? "CPM canlı" : "Pilot veri"}</span></section>
-    <section className="sales-kpis"><article><span><IconChartBar/></span><div><small>Brüt satışlar</small><strong>{money.format(totals.sales)} TL</strong><p>Nihai + doğrulanmış geçici evraklar</p></div></article><article><span className="red"><IconReceiptRefund/></span><div><small>İadeler</small><strong>{money.format(totals.returns)} TL</strong><p>Brüt satışın %{totals.sales ? (totals.returns/totals.sales*100).toFixed(1).replace(".",",") : 0}</p></div></article><article><span className="amber"><IconDiscount/></span><div><small>İskontolar</small><strong>{money.format(totals.discounts)} TL</strong><p>Brüt satışın %{totals.sales ? (totals.discounts/totals.sales*100).toFixed(1).replace(".",",") : 0}</p></div></article><article><span className="green"><IconTrendingUp/></span><div><small>Esas kâr</small><strong>{money.format(totals.profit)} TL</strong><p>Eksik maliyetli gelir havuz dışında · marj %{totals.netSales ? (totals.profit/totals.netSales*100).toFixed(1).replace(".",",") : 0}</p></div></article></section>
-    <section className="panel sales-chart-panel"><div className="panel-heading"><div><h2>Aylık Satış ve Marj Trendi</h2><p>Brüt satış, dağıtıma esas kâr ve net marj</p></div><div className="sales-highlight"><small>En yüksek satış</small><strong>{top?.monthName || "—"} · {money.format(top?.sales || 0)} TL</strong></div></div><div className="sales-chart"><ResponsiveContainer width="100%" height={320}><ComposedChart data={data} margin={{ top: 20, right: 18, left: 6, bottom: 4 }}><CartesianGrid vertical={false} stroke="#e5e9ef"/><XAxis dataKey="monthName" tick={{fontSize:11,fill:"#52677d"}}/><YAxis yAxisId="money" tickFormatter={(v)=>compact.format(v)} tick={{fontSize:11,fill:"#728197"}} width={72}/><YAxis yAxisId="percent" orientation="right" tickFormatter={(v)=>`%${v.toFixed(0)}`} tick={{fontSize:11,fill:"#728197"}}/><Tooltip formatter={(value,name)=>name==="Net marj"?`%${Number(value).toFixed(1)}`:`${money.format(value)} TL`}/><Bar yAxisId="money" dataKey="sales" name="Brüt satış" fill="#0a3972" radius={[3,3,0,0]}/><Bar yAxisId="money" dataKey="profit" name="Kâr" fill="#16884e" radius={[3,3,0,0]}/><Line yAxisId="percent" dataKey="margin" name="Net marj" stroke="#d58a19" strokeWidth={2}/></ComposedChart></ResponsiveContainer></div></section>
-    <section className="panel sales-table-panel"><div className="sales-table-head"><div><h2>Aylık Satış Defteri</h2><p>{filtered.length} dönem gösteriliyor</p></div><div className="sales-filters"><label><IconFilter/><select aria-label="Maliyet kapsam filtresi" value={view} onChange={(e)=>setView(e.target.value)}><option value="all">Tüm dönemler</option><option value="healthy">Kapsamı yeterli</option><option value="risk">Kapsam riski</option></select></label><select aria-label="Satış sıralaması" value={sort} onChange={(e)=>setSort(e.target.value)}><option value="month">Aya göre</option><option value="sales">Satışa göre</option><option value="profit">Kâra göre</option></select></div></div><div className="table-scroll"><table className="sales-table"><thead><tr><th>Ay</th><th>Brüt satış</th><th>İade</th><th>İskonto</th><th>Net satış</th><th>Maliyet</th><th>Kâr</th><th>Marj</th><th>Maliyet kapsamı</th></tr></thead><tbody>{filtered.map((row)=><tr key={row.month}><th>{row.monthName}</th><td className="positive">{money.format(row.sales)}</td><td className="negative">-{money.format(row.returns)}</td><td className="negative">-{money.format(row.discounts)}</td><td>{money.format(row.netSales)}</td><td>{money.format(row.estimatedCost)}</td><td className={row.profit>=0?"positive":"negative"}>{money.format(row.profit)}</td><td>%{row.margin.toFixed(1).replace(".",",")}</td><td><span className={row.costCoveragePct>=minimumCoverage?"coverage-pill good":"coverage-pill risk"}>%{row.costCoveragePct.toFixed(1).replace(".",",")}</span></td></tr>)}</tbody><tfoot><tr><th>Toplam</th><td>{money.format(totals.sales)}</td><td className="negative">-{money.format(totals.returns)}</td><td className="negative">-{money.format(totals.discounts)}</td><td>{money.format(totals.netSales)}</td><td>—</td><td>{money.format(totals.profit)}</td><td>%{totals.netSales?(totals.profit/totals.netSales*100).toFixed(1).replace(".",","):0}</td><td>—</td></tr></tfoot></table></div></section>
-  </main>;
+  const normalizedRows = useMemo(() => {
+    return rows.map((row) => {
+      const grossSales = Number(row.sales || 0);
+      const returns = Number(row.returns || 0);
+      const discounts = Number(row.discounts || 0);
+      const netSales = Number(row.netSales ?? 0);
+      const v2Cost = Number(row.cost ?? 0);
+      const uncoveredNetSales = Number(row.uncoveredNetSales || 0);
+      const profit = row.profit ?? null;
+      const netMargin = row.margin ?? row.canonicalMetric?.scope?.confirmed?.margin ?? null;
+      const productListMargin = typeof row.averageProductListGrossMarginPct === "number" && Number.isFinite(row.averageProductListGrossMarginPct)
+        ? row.averageProductListGrossMarginPct
+        : null;
+      const coveragePct = Number(row.v2CostCoveragePct ?? row.costCoveragePct ?? 0);
+      // EUR ana görünüm: backend'in ürettiği kur seti karşılıkları; yoksa null (TL gösterimine düşer).
+      const eur = row.eurComplete === true && row.eurEquivalent && typeof row.eurEquivalent === "object" ? row.eurEquivalent : null;
+      const eurNetSales = eur && Number.isFinite(eur.netSales) ? eur.netSales : null;
+      const eurCost = eur && Number.isFinite(eur.cost) ? eur.cost : null;
+      const eurProfit = eur && Number.isFinite(eur.profit) ? eur.profit : null;
+      const eurMargin = eur?.margin ?? null;
+      const rateMeta = eurRateSets?.[String(row.month)] || eurRateSets?.[row.month] || null;
+
+      const laborSales = Number(row.pilotCards?.labor?.sales || 0);
+      const srfSales = Number(row.pilotCards?.srf?.sales || 0);
+      const tsrSales = Number(row.pilotCards?.tsr?.sales || 0);
+      const roadSales = Number(row.pilotCards?.road?.sales || 0);
+      const partsSales = Math.max(0, netSales - laborSales - srfSales - tsrSales - roadSales);
+
+      return {
+        ...row,
+        grossSales,
+        returns,
+        discounts,
+        netSales,
+        v2Cost,
+        uncoveredNetSales,
+        profit,
+        netMargin,
+        productListMargin,
+        coveragePct,
+        laborSales,
+        srfSales,
+        tsrSales,
+        roadSales,
+        partsSales,
+        eurNetSales,
+        eurCost,
+        eurProfit,
+        eurMargin,
+        eurAvailable: row.eurComplete === true && eurNetSales !== null,
+        eurFrozen: Boolean(row.eurFrozen),
+        eurRateMeta: rateMeta,
+        // Grafik için aktif para birimi alanları (EUR varsa o, yoksa TL).
+        chartNetSales: eurNetSales ?? netSales,
+        chartCost: eurCost ?? v2Cost,
+        chartProfit: eurProfit ?? profit,
+      };
+    });
+  }, [rows, eurRateSets]);
+
+  const filtered = useMemo(() => {
+    return normalizedRows
+      .filter((row) => {
+        if (view === "healthy") return row.coveragePct >= minimumCoverage;
+        if (view === "risk") return row.coveragePct < minimumCoverage;
+        return true;
+      })
+      .sort((a, b) => {
+        if (sort === "sales") return b.netSales - a.netSales;
+        if (sort === "profit") return b.profit - a.profit;
+        if (sort === "margin") return b.netMargin - a.netMargin;
+        if (sort === "productListMargin") return (b.productListMargin || 0) - (a.productListMargin || 0);
+        return a.month - b.month;
+      });
+  }, [normalizedRows, view, sort, minimumCoverage]);
+
+  const totals = useMemo(() => {
+    const validMargins = normalizedRows
+      .map((r) => r.productListMargin)
+      .filter((m) => typeof m === "number" && Number.isFinite(m));
+    const avgProductListMargin = validMargins.length
+      ? validMargins.reduce((sum, v) => sum + v, 0) / validMargins.length
+      : null;
+
+    const base = normalizedRows.reduce(
+      (acc, r) => ({
+        grossSales: acc.grossSales + r.grossSales,
+        returns: acc.returns + r.returns,
+        discounts: acc.discounts + r.discounts,
+        netSales: acc.netSales + r.netSales,
+        v2Cost: acc.v2Cost + r.v2Cost,
+        uncoveredNetSales: acc.uncoveredNetSales + r.uncoveredNetSales,
+        profit: acc.profit + r.profit,
+        lineCount: acc.lineCount + Number(r.lineCount || r.invoiceLineCount || 0),
+        costCoveredLines: acc.costCoveredLines + Number(r.costCoveredLines || r.v2CostCoveredLines || 0),
+        laborSales: acc.laborSales + r.laborSales,
+        srfSales: acc.srfSales + r.srfSales,
+        tsrSales: acc.tsrSales + r.tsrSales,
+        roadSales: acc.roadSales + r.roadSales,
+        partsSales: acc.partsSales + r.partsSales,
+        // EUR karşılıkları (kapsanan satırlardan; EUR yoksa null kalır).
+        eurNetSales: r.eurAvailable ? acc.eurNetSales + r.eurNetSales : acc.eurNetSales,
+        eurCost: r.eurAvailable ? acc.eurCost + r.eurCost : acc.eurCost,
+        eurProfit: r.eurAvailable ? acc.eurProfit + r.eurProfit : acc.eurProfit,
+        eurHasAny: acc.eurHasAny || r.eurAvailable,
+      }),
+      {
+        grossSales: 0,
+        returns: 0,
+        discounts: 0,
+        netSales: 0,
+        v2Cost: 0,
+        uncoveredNetSales: 0,
+        profit: 0,
+        lineCount: 0,
+        costCoveredLines: 0,
+        laborSales: 0,
+        srfSales: 0,
+        tsrSales: 0,
+        roadSales: 0,
+        partsSales: 0,
+        eurNetSales: 0,
+        eurCost: 0,
+        eurProfit: 0,
+        eurHasAny: false,
+      },
+    );
+
+    const overallMargin = normalizedRows.length ? normalizedRows[normalizedRows.length - 1].canonicalMetric?.scope?.confirmed?.margin ?? null : null;
+    const overallCoverage = base.lineCount ? (base.costCoveredLines / base.lineCount) * 100 : 0;
+    const eurOverallMargin = normalizedRows.length && normalizedRows.every((row) => row.eurAvailable)
+      ? normalizedRows[normalizedRows.length - 1].canonicalMetric?.eurMargin ?? null : null;
+
+    return {
+      ...base,
+      overallMargin,
+      avgProductListMargin,
+      overallCoverage,
+      eurOverallMargin,
+    };
+  }, [normalizedRows]);
+
+  const topSalesMonth = useMemo(() => {
+    return [...normalizedRows].sort((a, b) => (totals.eurHasAny
+      ? b.eurNetSales - a.eurNetSales
+      : b.netSales - a.netSales))[0];
+  }, [normalizedRows, totals.eurHasAny]);
+
+  // Döviz sepetleri: tüm ayların byCurrency toplamları. EUR/USD/GBP/TRY
+  // doğrudan toplanmaz; her sepet kendi dövizinde raporlanır.
+  const currencyBasket = useMemo(() => {
+    const baskets = ["EUR", "USD", "GBP", "TRY", "INCELEME"];
+    const aggregate = Object.fromEntries(baskets.map((currency) => [
+      currency, { netSales: 0, cost: 0, profit: 0, lineCount: 0 },
+    ]));
+    for (const row of rows) {
+      for (const currency of baskets) {
+        const item = row.byCurrency?.[currency];
+        if (!item) continue;
+        aggregate[currency].netSales += Number(item.netSales || 0);
+        aggregate[currency].cost += Number(item.cost || 0);
+        aggregate[currency].profit = aggregate[currency].netSales - aggregate[currency].cost;
+        aggregate[currency].lineCount += Number(item.lineCount || 0);
+      }
+    }
+    return aggregate;
+  }, [rows]);
+
+  const eurActive = normalizedRows.length > 0 && normalizedRows.every((row) => row.eurAvailable);
+  const reportMoney = eurActive ? formatEur : formatMoney;
+  const rateMetaList = Object.values(eurRateSets || {});
+  const weekendNote = rateMetaList.map((meta) => meta?.weekendOrHolidayNote).find(Boolean) || null;
+  const frozenMonths = normalizedRows.filter((row) => row.eurFrozen && row.eurAvailable).length;
+
+  const categoryBreakdownData = useMemo(() => {
+    return [
+      { name: "Yedek Parça", sales: totals.partsSales, color: "#0284c7" },
+      { name: "İşçilik", sales: totals.laborSales, color: "#00d2d3" },
+      { name: "Sarf Malzeme", sales: totals.srfSales, color: "#10b981" },
+      { name: "Taşeron", sales: totals.tsrSales, color: "#f59e0b" },
+      { name: "Yol / Lojistik", sales: totals.roadSales, color: "#8b5cf6" },
+    ].filter((item) => item.sales > 0);
+  }, [totals]);
+
+  return (
+    <main className="page sales-page" id="top">
+      <section className="page-heading control-room-heading">
+        <div>
+          <p className="eyebrow">Satış ve kârlılık kokpiti</p>
+          <h1>Satış Analizi ve Marj Defteri</h1>
+          <p>{year} yılı KDV hariç satışları, alım faturası ve kur kanıtlı maliyetleri ve kârlılık trendini izleyin.</p>
+        </div>
+        <div className="heading-actions">
+          <span className={`source-badge source-badge--${mode}`}>
+            <IconDatabase size={15} />
+            {mode === "live" ? "CPM canlı · salt okunur" : "Pilot / simüle veri"}
+          </span>
+          {eurActive && (
+            <span className="source-badge source-badge--eur" title={weekendNote || undefined}>
+              <IconCoins size={15} />
+              EUR raporlama{frozenMonths > 0 ? ` · ${frozenMonths} dönem donuk` : ""}
+            </span>
+          )}
+        </div>
+      </section>
+      {weekendNote && (
+        <p className="eur-rate-note" role="note">{weekendNote}</p>
+      )}
+
+      {/* Top V2 KPI Grid */}
+      <section className="control-kpis sales-kpis-grid">
+        <article>
+          <span><IconChartBar size={22} /></span>
+          <div>
+            <small>Brüt satışlar</small>
+            <strong>{formatMoney(totals.grossSales)}</strong>
+            <p>Nihai + doğrulanmış faturalar</p>
+          </div>
+        </article>
+
+        <article>
+          <span className="red"><IconReceiptRefund size={22} /></span>
+          <div>
+            <small>İadeler ve İskontolar</small>
+            <strong style={{ color: "var(--red)" }}>
+              −{formatMoney(totals.returns + totals.discounts)}
+            </strong>
+            <p>
+              İade {formatMoney(totals.returns)} · İskonto {formatMoney(totals.discounts)}
+            </p>
+          </div>
+        </article>
+
+        <article>
+          <span className="cyan"><IconCoins size={22} /></span>
+          <div>
+            <small>Net satışlar{eurActive ? " · EUR" : ""}</small>
+            <strong>{eurActive ? formatEur(totals.eurNetSales) : formatMoney(totals.netSales)}</strong>
+            <p>{eurActive ? "Halkbank alış kuru karşılığı" : "KDV hariç ticari hasılat"}</p>
+          </div>
+        </article>
+
+        <article>
+          <span className="slate"><IconLayersSubtract size={22} /></span>
+          <div>
+            <small>Satır Maliyeti{eurActive ? " · EUR" : ""}</small>
+            <strong>{eurActive ? formatEur(totals.eurCost) : formatMoney(totals.v2Cost)}</strong>
+            <p>Alım faturası + Halkbank kuru kanıtı</p>
+          </div>
+        </article>
+
+        <article>
+          <span className="green"><IconTrendingUp size={22} /></span>
+          <div>
+            <small>Esas Brüt Kâr{eurActive ? " · EUR" : ""}</small>
+            <strong style={{ color: "var(--green)" }}>
+              {eurActive ? formatEur(totals.eurProfit) : formatMoney(totals.profit)}
+            </strong>
+            <p>Net kâr marjı {percent(eurActive ? totals.eurOverallMargin : totals.overallMargin)}</p>
+          </div>
+        </article>
+
+        <article>
+          <span className="amber"><IconFileInvoice size={22} /></span>
+          <div>
+            <small>Ortalama Liste Brüt Marjı</small>
+            <strong style={{ color: "var(--amber)" }}>
+              {totals.avgProductListMargin == null ? "—" : percent(totals.avgProductListMargin)}
+            </strong>
+            <p>Perakende fiyat − döviz maliyeti</p>
+          </div>
+        </article>
+
+        <article>
+          <span className="blue"><IconShieldCheck size={22} /></span>
+          <div>
+            <small>Maliyet / Kur Kapsamı</small>
+            <strong>{percent(totals.overallCoverage)}</strong>
+            <p>{money.format(totals.costCoveredLines)} / {money.format(totals.lineCount)} satır</p>
+          </div>
+        </article>
+      </section>
+
+      {/* Main Dual-Axis Chart & Category Breakdown Grid */}
+      <section className="sales-charts-layout">
+        <article className="panel sales-chart-panel">
+          <div className="panel-heading">
+            <div>
+              <h2>Aylık Satış, Maliyet ve Marj Trendi</h2>
+              <p>Net Satış (bar), Maliyet (bar), Esas Brüt Kâr (line) ve Net Marj % (sağ eksen line) · {eurActive ? "EUR karşılığı" : "TL"}</p>
+            </div>
+            <div className="sales-highlight">
+              <small>En yüksek dönem</small>
+              <strong>{topSalesMonth?.monthName || "—"} · {eurActive ? formatEur(topSalesMonth?.eurNetSales) : formatMoney(topSalesMonth?.netSales)}</strong>
+            </div>
+          </div>
+          <div className="sales-chart" style={{ width: "100%", height: 340 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={normalizedRows} margin={{ top: 18, right: 24, left: 6, bottom: 4 }}>
+                <CartesianGrid vertical={false} stroke="var(--line)" strokeDasharray="3 3" />
+                <XAxis dataKey="monthName" tick={{ fontSize: 11, fill: "var(--muted)" }} />
+                <YAxis
+                  yAxisId="money"
+                  tickFormatter={(v) => compact.format(v)}
+                  tick={{ fontSize: 11, fill: "var(--muted)" }}
+                  width={72}
+                />
+                <YAxis
+                  yAxisId="percent"
+                  orientation="right"
+                  tickFormatter={(v) => `%${Number(v).toFixed(0)}`}
+                  tick={{ fontSize: 11, fill: "var(--muted)" }}
+                  width={48}
+                />
+                <Tooltip content={<CustomSalesTooltip moneyFormatter={reportMoney} />} />
+                <Legend iconType="circle" wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+                <Bar yAxisId="money" dataKey="chartNetSales" name="Net Satış" fill="#0284c7" radius={[4, 4, 0, 0]} />
+                <Bar yAxisId="money" dataKey="chartCost" name="Maliyet" fill="#334155" radius={[4, 4, 0, 0]} />
+                <Line yAxisId="money" dataKey="chartProfit" name="Esas Brüt Kâr" stroke="#10b981" strokeWidth={3} dot={{ r: 4, fill: "#10b981" }} />
+                <Line yAxisId="percent" dataKey="netMargin" name="Net Kâr Marjı %" stroke="#00d2d3" strokeWidth={2} dot={{ r: 3, fill: "#00d2d3" }} />
+                <Line yAxisId="percent" dataKey="productListMargin" name="Liste Brüt Marjı %" stroke="#f59e0b" strokeWidth={2} strokeDasharray="4 4" dot={{ r: 3, fill: "#f59e0b" }} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+        </article>
+
+        <article className="panel sales-category-panel">
+          <div className="panel-heading">
+            <div>
+              <h2>Gelir ve Kategori Dağılımı</h2>
+              <p>Hizmet ve Parça bazında net ciro dökümü</p>
+            </div>
+            <IconCoins size={20} style={{ color: "var(--accent)" }} />
+          </div>
+          <div style={{ width: "100%", height: 340 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={categoryBreakdownData} layout="vertical" margin={{ top: 12, right: 20, left: 10, bottom: 4 }}>
+                <CartesianGrid horizontal={false} stroke="var(--line)" strokeDasharray="3 3" />
+                <XAxis type="number" tickFormatter={(v) => compact.format(v)} tick={{ fontSize: 10, fill: "var(--muted)" }} />
+                <YAxis type="category" dataKey="name" width={95} tick={{ fontSize: 11, fill: "var(--ink)" }} />
+                <Tooltip content={<CustomSalesTooltip />} />
+                <Bar dataKey="sales" name="Net Ciro" radius={[0, 4, 4, 0]}>
+                  {categoryBreakdownData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </article>
+      </section>
+
+      {/* Döviz Sepeti: EUR/USD/GBP/TRY ayrı tutulur, doğrudan toplanmaz */}
+      <section className="panel sales-currency-panel">
+        <div className="panel-heading">
+          <div>
+            <h2>Döviz Sepeti</h2>
+            <p>Satış, maliyet ve kâr stok kartı dövizinde ayrı tutulur; EUR ana görünüm Halkbank alış kurlarıyla hesaplanır.</p>
+          </div>
+        </div>
+        <div className="table-scroll">
+          <table className="control-table sales-table">
+            <thead>
+              <tr>
+                <th>Döviz</th>
+                <th>Net Satış</th>
+                <th>Maliyet</th>
+                <th>Brüt Kâr</th>
+                <th>Satır</th>
+              </tr>
+            </thead>
+            <tbody>
+              {["EUR", "USD", "GBP", "TRY"].map((currency) => {
+                const item = currencyBasket[currency];
+                if (!item.lineCount && !item.netSales) return null;
+                const currencyMoney = new Intl.NumberFormat("tr-TR", { style: "currency", currency: currency === "TRY" ? "TRY" : currency, maximumFractionDigits: 0 });
+                const fmt = (value) => currencyMoney.format(Math.round(value));
+                return (
+                  <tr key={currency}>
+                    <th><strong>{currency}</strong></th>
+                    <td>{fmt(item.netSales)}</td>
+                    <td>{fmt(item.cost)}</td>
+                    <td className={item.profit >= 0 ? "positive" : "negative"}><strong>{fmt(item.profit)}</strong></td>
+                    <td>{money.format(item.lineCount)}</td>
+                  </tr>
+                );
+              })}
+              {currencyBasket.INCELEME.lineCount > 0 && (
+                <tr>
+                  <th><strong>İNCELEME</strong></th>
+                  <td colSpan={3}>Kur veya maliyet kanıtı eksik satırlar EUR toplamına dahil edilmez</td>
+                  <td>{money.format(currencyBasket.INCELEME.lineCount)}</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* Monthly Sales Ledger Table */}
+      <section className="panel sales-table-panel">
+        <div className="sales-table-head">
+          <div>
+            <h2>Aylık Satış ve Kârlılık Defteri</h2>
+            <p>{filtered.length} dönem gösteriliyor · KDV hariç uzlaşmalı defter</p>
+          </div>
+          <div className="sales-filters">
+            <label className="filter-select-label">
+              <IconFilter size={16} />
+              <select
+                aria-label="Maliyet kapsam filtresi"
+                value={view}
+                onChange={(e) => setView(e.target.value)}
+              >
+                <option value="all">Tüm dönemler</option>
+                <option value="healthy">Kapsamı yeterli (&gt;=%{minimumCoverage})</option>
+                <option value="risk">Kapsam riski (&lt;%{minimumCoverage})</option>
+              </select>
+            </label>
+
+            <select
+              aria-label="Satış sıralaması"
+              value={sort}
+              onChange={(e) => setSort(e.target.value)}
+            >
+              <option value="month">Aya göre sırala</option>
+              <option value="sales">Net Satışa göre sırala</option>
+              <option value="profit">Kâra göre sırala</option>
+              <option value="margin">Net Marja göre sırala</option>
+              <option value="productListMargin">Ürün Liste Marjına göre sırala</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="table-scroll">
+          <table className="control-table sales-table">
+            <thead>
+              <tr>
+                <th>Ay</th>
+                <th>Brüt Satış</th>
+                <th>İade</th>
+                <th>İskonto</th>
+                <th>Net Satış</th>
+                <th>Maliyet</th>
+                <th>Esas Brüt Kâr</th>
+                <th>Net Marj</th>
+                <th>Liste Brüt Marjı</th>
+                <th>Maliyet Kapsamı</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((row) => (
+                <tr key={row.month}>
+                  <th><strong>{row.monthName}{row.eurFrozen ? " 🔒" : ""}</strong></th>
+                  <td className="positive">{formatMoney(row.grossSales)}</td>
+                  <td className="negative">−{formatMoney(row.returns)}</td>
+                  <td className="negative">−{formatMoney(row.discounts)}</td>
+                  <td><strong>{formatReportMoney(row, "netSales", row.netSales)}</strong></td>
+                  <td>{formatReportMoney(row, "cost", row.v2Cost)}</td>
+                  <td className={(row.eurProfit ?? row.profit) >= 0 ? "positive" : "negative"}>
+                    <strong>{formatReportMoney(row, "profit", row.profit)}</strong>
+                  </td>
+                  <td>
+                    <span className={`margin-pill ${row.netMargin >= 35 ? "good" : row.netMargin >= 20 ? "warn" : "risk"}`}>
+                      {percent(row.eurAvailable ? row.eurMargin : row.netMargin)}
+                    </span>
+                  </td>
+                  <td>
+                    <strong style={{ color: "var(--amber)" }}>
+                      {row.productListMargin == null ? "—" : percent(row.productListMargin)}
+                    </strong>
+                  </td>
+                  <td>
+                    <span className={row.coveragePct >= minimumCoverage ? "coverage-pill good" : "coverage-pill risk"}>
+                      {percent(row.coveragePct)}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+              {!filtered.length && (
+                <tr>
+                  <td colSpan="10" className="empty-cell" style={{ textAlign: "center", padding: "28px" }}>
+                    Filtrelere uygun satış dönemi bulunamadı.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+            <tfoot>
+              <tr>
+                <th>Toplam</th>
+                <td>{formatMoney(totals.grossSales)}</td>
+                <td className="negative">−{formatMoney(totals.returns)}</td>
+                <td className="negative">−{formatMoney(totals.discounts)}</td>
+                <td><strong>{eurActive ? formatEur(totals.eurNetSales) : formatMoney(totals.netSales)}</strong></td>
+                <td>{eurActive ? formatEur(totals.eurCost) : formatMoney(totals.v2Cost)}</td>
+                <td className={(eurActive ? totals.eurProfit : totals.profit) >= 0 ? "positive" : "negative"}>
+                  <strong>{eurActive ? formatEur(totals.eurProfit) : formatMoney(totals.profit)}</strong>
+                </td>
+                <td>{percent(eurActive ? totals.eurOverallMargin : totals.overallMargin)}</td>
+                <td>
+                  <strong style={{ color: "var(--amber)" }}>
+                    {totals.avgProductListMargin == null ? "—" : percent(totals.avgProductListMargin)}
+                  </strong>
+                </td>
+                <td>
+                  <span className={totals.overallCoverage >= minimumCoverage ? "coverage-pill good" : "coverage-pill risk"}>
+                    {percent(totals.overallCoverage)}
+                  </span>
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </section>
+    </main>
+  );
 }
