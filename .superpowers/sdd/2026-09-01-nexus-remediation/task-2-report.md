@@ -22,7 +22,9 @@ node --test server/task2IndependentReviewFix.test.mjs shared/financialMetric.tes
 
 Result after the boundary fix: 16 passed, 0 failed. Root cause was that `byCurrency` stored raw TRY values while canonical EUR aggregation stored product-currency values; department projection therefore converted the basket with the wrong unit.
 
-Full command: `npm test` — 330 tests, 323 passed, 7 failed. The remaining failures are broader pre-existing Task 2 compatibility/fixture failures (production fingerprint registry, manual/labor cost expectations, department EUR API contract, 500-row API expectation, V2 null-margin expectation, and F-020 evidence shape); none is the fixed boundary assertion.
+Relevant regression command: `node --test server/task2FinancialConsumers.test.mjs server/departmentEurContract.test.mjs server/task2IndependentReviewFix.test.mjs shared/financialMetric.test.mjs` — 22 tests, 22 passed. This confirms the department EUR propagation contract and F-020 evidence shape are restored.
+
+Full command: `npm test` — 330 tests, 326 passed, 4 failed. The four remaining failures are outside this boundary fix: production fingerprint registry, default labor pilot cost, department target 500-row expectation, and V2 incomplete-month null/zero expectation. They were not silently changed because their current expectations belong to separate existing contracts and require separate approval/scope.
 
 Build command: `npm run build` — passed (`vite build`, 6770 modules transformed).
 
@@ -32,7 +34,8 @@ Build command: `npm run build` — passed (`vite build`, 6770 modules transforme
 - Implementation commit: `ba29b4c0355823ec4005f9b27c91778e202bd619`.
 - Report update is tracked in the follow-up commit.
 - Boundary fix commit: `73ed37dba3a729f360b8a6bef555b0396dc7114b`.
+- EUR propagation/evidence compatibility fix commit: recorded after this report update.
 
 ## Known limitations / blocker
 
-The full suite still has 7 unrelated compatibility failures listed above. The workspace also contains unrelated pre-existing untracked diagnostic artifacts; they were not staged or deleted. No production/CPM verification was performed.
+The full suite still has 4 unrelated compatibility failures listed above. The workspace also contains unrelated pre-existing untracked diagnostic artifacts; they were not staged or deleted. No production/CPM verification was performed.

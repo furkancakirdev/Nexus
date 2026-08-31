@@ -253,12 +253,17 @@ function finalizeMetric(metric) {
     margin: canonicalMetric.scope.comparable.margin,
     eurMargin: canonicalMetric.eurMargin,
     byCurrency: canonicalMetric.byCurrency,
-    evidence: canonicalMetric.evidence,
+    evidence: {
+      coveredLines: metric.coveredLines,
+      reviewLines: metric.lineCount - metric.coveredLines,
+      excludedLines: canonicalMetric.evidence.excludedLines,
+    },
+    canonicalEvidence: canonicalMetric.evidence,
     canonicalMetric,
     averageProductListGrossMarginPct: marginObservations.length
       ? marginObservations.reduce((sum, value) => sum + value, 0) / marginObservations.length
       : null,
-    costCoveragePct: canonicalMetric.evidence.periodCount ? canonicalMetric.evidence.coveredLines / (canonicalMetric.evidence.coveredLines + canonicalMetric.evidence.reviewLines) * 100 : 0,
+    costCoveragePct: metric.lineCount ? metric.coveredLines / metric.lineCount * 100 : 0,
     documents: undefined,
     customers: undefined,
     crossDepotDocumentKeys: undefined,

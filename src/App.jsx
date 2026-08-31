@@ -156,6 +156,7 @@ export function App() {
   });
   const [year, setYear] = useState(2026);
   const [rows, setRows] = useState(fallbackRows);
+  const [eurRateSets, setEurRateSets] = useState({});
   const [targetState, setTargetState] = useState({
     rows: [],
     mode: "loading",
@@ -234,6 +235,7 @@ export function App() {
     ]).then(([overview, targets]) => {
       if (cancelled) return;
       setRows(overview.rows?.length ? overview.rows : fallbackRows);
+      setEurRateSets(overview.eurRateSets || {});
       setMode(overview.mode || "demo");
       setTargetState(targets);
     }).catch(() => {
@@ -438,9 +440,9 @@ export function App() {
           onNavigate={setActivePage}
         />
       ) : activePage === "sales" ? (
-        <SalesPage rows={calculatedRows} year={year} mode={mode} minimumCoverage={appSettings.minimumCoverage} pilotCardCostRates={appSettings.pilotCardCostRates} />
+        <SalesPage rows={calculatedRows} year={year} mode={mode} minimumCoverage={appSettings.minimumCoverage} pilotCardCostRates={appSettings.pilotCardCostRates} eurRateSets={eurRateSets} />
       ) : activePage === "departments" ? (
-        <DepartmentAnalysisPage year={year} mode={mode} consolidatedRows={calculatedRows} minimumCoverage={appSettings.minimumCoverage} />
+        <DepartmentAnalysisPage year={year} mode={mode} consolidatedRows={calculatedRows} minimumCoverage={appSettings.minimumCoverage} eurRateSets={eurRateSets} />
       ) : activePage === "audit" ? (
         <AuditPage year={year} mode={mode} pilotCardCostRates={appSettings.pilotCardCostRates} settings={appSettings} costOverrides={costOverrides} onSaveCostOverrides={saveCostOverrides} />
       ) : activePage === "settings" ? (
@@ -468,6 +470,7 @@ export function App() {
       ) : activePage === "approval" ? (
         <ApprovalPage
           rows={enrichedRows}
+          eurRateSets={eurRateSets}
           targetRows={targetState.rows}
           targetMode={targetState.mode}
           targetError={targetState.error}
