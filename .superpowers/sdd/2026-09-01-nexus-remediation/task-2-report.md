@@ -34,7 +34,7 @@ Build command: `npm run build` — passed (`vite build`, 6770 modules transforme
 - Implementation commit: `ba29b4c0355823ec4005f9b27c91778e202bd619`.
 - Report update is tracked in the follow-up commit.
 - Boundary fix commit: `73ed37dba3a729f360b8a6bef555b0396dc7114b`.
-- EUR propagation/evidence compatibility fix commit: recorded after this report update.
+- EUR propagation/evidence compatibility fix commit: `7a24a060c2d4f51ff75206c56ed31a23c681fcf4`.
 
 ## Known limitations / blocker
 
