@@ -43,7 +43,7 @@ Build command: `npm run build` — passed (`vite build`, 6772 modules transforme
 - Final P1 fix commit is created after this verification and includes the monthly-all projection, Sales EUR fail-closed selection, Audit null display, and regressions.
 - Final remaining review-fix commit is created after this verification and includes canonical monthly chart/reconciliation consumption plus the null-review regression.
 - Final closure commit: `b9cad89` (`fix(finance): close final Task 2 consumer findings`) includes the Reports server projection, null-safe DepartmentAnalysis formatting, behavioral regressions, and the verification record.
-- Final review follow-up commit: pending; includes only the Sales canonical EUR field correction, App Reports EUR-rate wiring/state reset, focused regressions, and this report update.
+- Final review follow-up commit: `19dee70` (`fix(finance): close final EUR wiring findings`) includes only the Sales canonical EUR field correction, App Reports EUR-rate wiring/state reset, focused regressions, and this report update.
 
 ## Known limitations / blocker
 
