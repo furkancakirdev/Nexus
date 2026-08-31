@@ -34,4 +34,4 @@ The browser session was unauthenticated, so the API returned the explicit error 
 
 ## Commit
 
-- Task 3 commit: `6a918ae` (`fix(ui): complete Nexus Task 3 remediation`).
+- Task 3 commit: `4172f36` (`fix(ui): complete Nexus Task 3 remediation`).
