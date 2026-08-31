@@ -230,7 +230,7 @@ export function buildOverviewRows(ledger) {
       netSales: canonicalMetric.try.netSales,
       cost: confirmed.cost,
       coveredNetSales: confirmed.netSales,
-      reviewNetSales: canonicalMetric.scope.review.netSales,
+      reviewNetSales: canonicalMetric.scope.costReview.netSales,
       byCurrency: canonicalMetric.byCurrency,
       canonicalMetric,
       profit: confirmed.profit,

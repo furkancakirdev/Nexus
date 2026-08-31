@@ -20,16 +20,19 @@ Focused command:
 node --test server/task2IndependentReviewFix.test.mjs shared/financialMetric.test.mjs
 ```
 
-Result: 15 passed, 1 failed. The remaining failure is the pre-existing boundary assertion comparing the department EUR basket projection with the canonical EUR aggregate in `shared/financialMetric.test.mjs`; TRY/canonical and focused review assertions pass. The failure must be resolved before claiming GREEN or merging.
+Result after the boundary fix: 16 passed, 0 failed. Root cause was that `byCurrency` stored raw TRY values while canonical EUR aggregation stored product-currency values; department projection therefore converted the basket with the wrong unit.
 
-No full `npm test` or build claim is made because the focused suite is not fully green in this interrupted pass.
+Full command: `npm test` — 330 tests, 323 passed, 7 failed. The remaining failures are broader pre-existing Task 2 compatibility/fixture failures (production fingerprint registry, manual/labor cost expectations, department EUR API contract, 500-row API expectation, V2 null-margin expectation, and F-020 evidence shape); none is the fixed boundary assertion.
+
+Build command: `npm run build` — passed (`vite build`, 6770 modules transformed).
 
 ## Commits
 
 - Base: `409172f` (`fix(finance): close Task 1 metric contract review findings`)
 - Implementation commit: `ba29b4c0355823ec4005f9b27c91778e202bd619`.
 - Report update is tracked in the follow-up commit.
+- Boundary fix commit: recorded after verification; see `git log -1`.
 
 ## Known limitations / blocker
 
-The department EUR basket compatibility assertion still needs one focused reconciliation fix. The workspace also contains unrelated pre-existing untracked diagnostic artifacts; they were not staged or deleted. No production/CPM verification was performed.
+The full suite still has 7 unrelated compatibility failures listed above. The workspace also contains unrelated pre-existing untracked diagnostic artifacts; they were not staged or deleted. No production/CPM verification was performed.

@@ -152,8 +152,12 @@ export function aggregateFinancialMetric(rows = [], options = {}) {
     metric.try.cost += cost;
     metric.try.profit = metric.try.netSales - metric.try.cost;
     metric.try.margin = metric.try.netSales === 0 ? null : metric.try.profit / metric.try.netSales * 100;
-    addToCurrencyBasket(metric.byCurrency, reviewLine.basket, { netSales, cost });
-    addToCurrencyBasket(periodMetric.byCurrency, reviewLine.basket, { netSales, cost });
+    addToCurrencyBasket(metric.byCurrency, reviewLine.basket, {
+      netSales: reviewLine.netSales, cost: reviewLine.cost,
+    });
+    addToCurrencyBasket(periodMetric.byCurrency, reviewLine.basket, {
+      netSales: reviewLine.netSales, cost: reviewLine.cost,
+    });
     if (review) {
       metric.evidence.eurReviewLines += 1;
       periodMetric.evidence.eurReviewLines += 1;
@@ -184,6 +188,14 @@ export function aggregateFinancialMetric(rows = [], options = {}) {
   }, metric.eur);
   metric.evidence.periodCount = seenPeriods.size;
   metric.evidence.currencyCount = seenCurrencies.size;
+  metric.scope.comparable = {
+    lines: metric.scope.included.lines,
+    netSales: metric.try.netSales,
+    cost: metric.scope.confirmed.cost,
+    profit: metric.try.profit - metric.scope.costReview.netSales,
+    margin: metric.try.netSales === 0 ? null
+      : (metric.try.profit - metric.scope.costReview.netSales) / metric.try.netSales * 100,
+  };
   return finishMetric(metric);
 }
 
