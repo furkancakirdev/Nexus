@@ -7,7 +7,10 @@ import {
 import {
   buildExchangeRateIndex,
   buildRateSet,
+  decorateBasketEur,
 } from "../shared/eurReporting.mjs";
+import { buildOverviewRows, decorateOverviewRowsEur } from "../server/ledgerApi.mjs";
+import { buildDepartmentAnalysis } from "../server/departmentAnalysis.mjs";
 
 const RATES = buildRateSet(buildExchangeRateIndex([
   { rateDate: "2026-01-15", rateCurrency: "EUR", halkbankBuyingRate: 40, halkbankSellingRate: 40.2, exchangeSourceId: "EUR-1" },
@@ -57,6 +60,66 @@ test("identical ledger aggregation has one stable overview and department shape"
   assert.equal(overview.eurMargin, 60);
 });
 
+test("existing overview and department boundaries reconcile with the canonical contract", () => {
+  const ledger = {
+    rows: [
+      { documentDate: "2026-02-15", documentNo: "S-1", documentType: 17, productCode: "P-1", isSale: true, grossAmount: 500, discountAmount: 0, netAmount: 500, signedNetSales: 500, signedVatAmount: 0, signedInvoiceTotalInclVat: 500, financeV2: { productCurrency: "USD", reviewReason: null, lineCostTryExVat: 200, lineCostCurrencyExVat: 8 }, documentSellingRate: 25, department: "service", attributionConfidence: "confirmed", commercialOwner: "OWNER", productCurrency: "USD", lineCost: 200, purchaseNo: "P-1", customerCode: "C-1", rootId: "S-1" },
+      { documentDate: "2026-02-16", documentNo: "R-1", documentType: 18, productCode: "P-1", isSale: false, grossAmount: 0, discountAmount: 0, netAmount: 100, signedNetSales: -100, signedVatAmount: 0, signedInvoiceTotalInclVat: -100, financeV2: { productCurrency: "USD", reviewReason: null, lineCostTryExVat: -40, lineCostCurrencyExVat: -1.6 }, documentSellingRate: 25, department: "service", attributionConfidence: "confirmed", commercialOwner: "OWNER", productCurrency: "USD", lineCost: -40, purchaseNo: "P-1", customerCode: "C-1", rootId: "R-1" },
+      { documentDate: "2026-02-17", documentNo: "Q-1", documentType: 17, productCode: "P-1", isSale: true, grossAmount: 50, discountAmount: 0, netAmount: 50, signedNetSales: 50, signedVatAmount: 0, signedInvoiceTotalInclVat: 50, financeV2: { productCurrency: "USD", reviewReason: "missing-cost" }, documentSellingRate: 25, department: "service", attributionConfidence: "confirmed", commercialOwner: "OWNER", productCurrency: "USD", customerCode: "C-1", rootId: "Q-1" },
+      { documentDate: "2026-02-18", documentNo: "X-1", documentType: 17, productCode: "KOMISYON", isSale: true, grossAmount: 900, discountAmount: 0, netAmount: 900, signedNetSales: 900, signedVatAmount: 0, signedInvoiceTotalInclVat: 900, financeV2: { productCurrency: "USD", reviewReason: null, lineCostTryExVat: 300, lineCostCurrencyExVat: 12 }, documentSellingRate: 25, department: "service", attributionConfidence: "confirmed", commercialOwner: "OWNER", productCurrency: "USD", lineCost: 300, purchaseNo: "X-1", customerCode: "C-1", rootId: "X-1" },
+    ],
+  };
+  const index = buildExchangeRateIndex([
+    { rateDate: "2026-02-28", rateCurrency: "EUR", halkbankBuyingRate: 50, halkbankSellingRate: 50.2 },
+    { rateDate: "2026-02-28", rateCurrency: "USD", halkbankBuyingRate: 35, halkbankSellingRate: 35.2 },
+  ]);
+  const rateSet = buildRateSet(index, "2026-02-28");
+  const overview = decorateOverviewRowsEur(buildOverviewRows(ledger), { index, year: 2026, reportDate: "2026-02-28" }).rows[0];
+  const department = buildDepartmentAnalysis({ ledger, year: 2026 }).totals;
+  const departmentEur = decorateBasketEur(department.byCurrency, rateSet).eurEquivalent;
+  const canonical = aggregateFinancialMetric(ledger.rows.map((row) => ({
+    period: "2026-02",
+    signedNetSalesTry: row.signedNetSales,
+    productCurrency: row.financeV2.productCurrency,
+    documentSellingRate: row.documentSellingRate,
+    financeV2: row.financeV2,
+    excluded: row.productCode === "KOMISYON",
+  })), { rateSets: { "2026-02": rateSet }, basisId: "cross-path-1" });
+  const canonicalCovered = aggregateFinancialMetric(ledger.rows.slice(0, 2).map((row) => ({
+    period: "2026-02",
+    signedNetSalesTry: row.signedNetSales,
+    productCurrency: row.financeV2.productCurrency,
+    documentSellingRate: row.documentSellingRate,
+    financeV2: row.financeV2,
+  })), { rateSets: { "2026-02": rateSet }, basisId: "cross-path-covered-1" });
+
+  for (const field of ["netSales", "cost", "profit"]) {
+    assert.equal(overview[field === "netSales" ? "coveredNetSales" : field], canonicalCovered.try[field]);
+    assert.equal(department[field], field === "profit"
+      ? canonical.try[field] - canonical.scope.review.netSales
+      : canonical.try[field]);
+    assert.ok(Math.abs(departmentEur[field] - canonical.eur[field]) < 1e-12);
+    assert.ok(Math.abs(overview.eurEquivalent[field] - canonicalCovered.eur[field]) < 1e-12);
+  }
+  assert.equal(overview.margin, canonicalCovered.try.profit / canonicalCovered.try.netSales * 100);
+  assert.equal(department.margin, department.profit / department.netSales * 100);
+  assert.equal(overview.reviewNetSales, canonical.scope.review.netSales);
+  assert.equal(canonical.scope.excluded.lines, 1);
+  assert.equal(canonical.scope.excluded.netSales, 900);
+  assert.equal(overview.byCurrency.USD.lineCount, canonicalCovered.byCurrency.USD.lineCount);
+  assert.equal(department.byCurrency.USD.lineCount, canonical.byCurrency.USD.lineCount);
+  assert.deepEqual(reconcileFinancialMetrics(
+    { netSales: overview.coveredNetSales, cost: overview.cost, profit: overview.profit },
+    canonicalCovered.try,
+    { basisId: canonicalCovered.basisId },
+  ), { status: "MATCH", basisId: "cross-path-covered-1", deltas: { netSales: 0, cost: 0, profit: 0 } });
+  assert.deepEqual(reconcileFinancialMetrics(
+    { netSales: department.netSales, cost: department.cost, profit: department.profit },
+    canonical.try,
+    { basisId: canonical.basisId },
+  ), { status: "MISMATCH", basisId: "cross-path-1", deltas: { netSales: 0, cost: 0, profit: -50 } });
+});
+
 test("missing cost and missing document rate are fail-closed review rows", () => {
   const result = aggregateFinancialMetric([
     coveredRow({ id: "missing-cost", financeV2: null }),
@@ -81,6 +144,31 @@ test("missing period rate evidence is fail-closed review without EUR leakage", (
   assert.equal(result.byCurrency.INCELEME.netSales, 500);
 });
 
+test("an exact-period rate set cannot fall back to a single rate set", () => {
+  const result = aggregateFinancialMetric([coveredRow({ period: "2026-03" })], {
+    rateSets: RATE_SETS,
+    rateSet: RATES,
+  });
+  assert.equal(result.status, "INCELEME");
+  assert.equal(result.eur.netSales, 0);
+  assert.equal(result.eur.complete, false);
+});
+
+test("review rows preserve known signed TRY cost and profit while excluding EUR", () => {
+  const result = aggregateFinancialMetric([coveredRow({
+    period: "2026-03",
+    financeV2: { reviewReason: null, lineCostTryExVat: 200, lineCostCurrencyExVat: 8 },
+  })], { rateSets: RATE_SETS });
+  assert.equal(result.status, "INCELEME");
+  assert.equal(result.scope.review.netSales, 500);
+  assert.equal(result.scope.review.cost, 200);
+  assert.equal(result.scope.review.profit, 300);
+  assert.equal(result.try.netSales, 500);
+  assert.equal(result.try.cost, 200);
+  assert.equal(result.try.profit, 300);
+  assert.equal(result.eur.netSales, 0);
+});
+
 test("signed returns reverse cost and profit without losing the negative sign", () => {
   const result = aggregateFinancialMetric([
     coveredRow({ signedNetSalesTry: -500, financeV2: { reviewReason: null, lineCostTryExVat: -200, lineCostCurrencyExVat: -8 } }),
@@ -94,6 +182,7 @@ test("signed returns reverse cost and profit without losing the negative sign", 
 });
 
 test("excluded rows remain observable but are outside comparable totals", () => {
+  const baseline = aggregateFinancialMetric([coveredRow()], { rateSets: RATE_SETS });
   const result = aggregateFinancialMetric([
     coveredRow(),
     coveredRow({ id: "excluded", excluded: true, signedNetSalesTry: 900 }),
@@ -103,6 +192,10 @@ test("excluded rows remain observable but are outside comparable totals", () => 
   assert.equal(result.scope.excluded.lines, 1);
   assert.equal(result.scope.excluded.netSales, 900);
   assert.equal(result.evidence.excludedLines, 1);
+  assert.equal(result.eur.netSales, baseline.eur.netSales);
+  assert.equal(result.eur.profit, baseline.eur.profit);
+  assert.equal(result.eur.complete, baseline.eur.complete);
+  assert.deepEqual(result.byCurrency, baseline.byCurrency);
 });
 
 test("zero EUR denominator produces a null margin", () => {

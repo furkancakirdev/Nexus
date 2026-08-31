@@ -43,9 +43,10 @@ function createPeriodMetric() {
   };
 }
 
-function selectRateSet(rateSets, period, fallback) {
-  if (rateSets instanceof Map) return rateSets.get(period) || fallback || null;
-  return rateSets?.[period] || fallback || null;
+function selectRateSet(rateSets, period, fallback, singlePeriod) {
+  if (rateSets instanceof Map) return rateSets.get(period) || null;
+  if (rateSets && typeof rateSets === "object") return rateSets[period] || null;
+  return singlePeriod && period === singlePeriod.period ? fallback || null : null;
 }
 
 function isExcluded(row) {
@@ -133,15 +134,16 @@ export function aggregateFinancialMetric(rows = [], options = {}) {
 
     const line = classifyLine(row);
     const periodMetric = metric.byPeriod[period] ||= createPeriodMetric();
-    const rateSet = selectRateSet(options.rateSets, period, options.rateSet);
+    const rateSet = selectRateSet(options.rateSets, period, options.rateSet, options.rateSets == null && text(options.period) ? { period: text(options.period) } : null);
     const eurCovered = line.covered && addEur(periodMetric, line, rateSet);
     const review = !line.covered || !eurCovered;
+    const knownTryCost = signedTryCost(row);
     const reviewLine = review
-      ? { basket: "INCELEME", netSales, cost: 0, covered: false, reason: line.reason || "missing-exchange-rate" }
+      ? { basket: "INCELEME", netSales, cost: knownTryCost, covered: false, reason: line.reason || "missing-exchange-rate" }
       : line;
-    const cost = review ? 0 : signedTryCost(row);
+    const cost = review ? knownTryCost : signedTryCost(row);
     addScope(metric.scope.included, netSales, cost);
-    if (review) addScope(metric.scope.review, netSales);
+    if (review) addScope(metric.scope.review, netSales, cost);
     metric.try.netSales += netSales;
     metric.try.cost += cost;
     metric.try.profit = metric.try.netSales - metric.try.cost;

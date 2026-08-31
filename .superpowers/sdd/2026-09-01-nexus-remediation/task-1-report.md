@@ -100,3 +100,75 @@ The implementation reuses `classifyEurLine`, `convertToEur`, `emptyCurrencyBaske
 ## Unmet requirements
 
 None within the approved Task 1 scope. Production and CPM verification were intentionally not performed, as required.
+
+## Fix round 1 — review findings
+
+Date: 2026-09-01
+
+### Files changed
+
+- `shared/financialMetric.mjs`
+- `shared/financialMetric.test.mjs`
+- This report
+
+No route, React/UI, security, deployment, credential, or CPM path was changed.
+
+### Findings addressed
+
+1. Added a real cross-path contract test using the existing `buildOverviewRows` / `decorateOverviewRowsEur` functions from `server/ledgerApi.mjs` and `buildDepartmentAnalysis` from `server/departmentAnalysis.mjs`, plus the existing `decorateBasketEur` primitive. One synthetic ledger now asserts covered TRY/EUR sales, cost, profit, margins, USD basket counts, nonzero review/excluded totals, and reconciliation results. The test records the existing department review-profit divergence explicitly as `MISMATCH` with an unrounded `profit: -50` delta; it does not claim route migration that Task 1 did not authorize.
+2. RED evidence now includes reproducible contract assertions in addition to the original missing-module error. The first fix-round RED run was:
+
+   ```text
+   node --test shared/financialMetric.test.mjs
+   tests 12, pass 9, fail 3
+   failures: existing boundary EUR representation (4.48 vs 4.4799999999999995), supplied rateSet fallback returned TAMAM instead of INCELEME, and review scope cost was 0 instead of 200
+   ```
+
+   After strengthening the fixture with nonzero review/excluded rows, the remaining old-path RED assertion was `240 !== 290`: the existing department boundary subtracts uncovered review sales from profit, whereas the new Task 1 contract preserves known signed TRY review cost/profit. This is the strongest reproducible old-path evidence without changing routes. The final test records that limitation as an explicit reconciliation mismatch rather than falsifying equality.
+3. When `rateSets` is supplied, period lookup now requires an exact key and does not fall back to `options.rateSet`. `options.rateSet` is accepted only when `options.period` explicitly selects the single period. Added a missing-period-with-fallback regression test.
+4. Review rows now preserve finite signed TRY cost from approved manual cost or `financeV2.lineCostTryExVat` in `scope.review`, top-level `try`, and the `INCELEME` basket, while remaining excluded from EUR totals. Added a focused regression test covering TRY sales, cost, profit, and zero EUR leakage.
+5. The excluded-row test now compares EUR net sales, EUR profit, EUR completeness, and the full currency baskets against a baseline, proving excluded rows cannot alter any comparable EUR result.
+
+### Fix-round verification
+
+Focused RED/GREEN test command:
+
+```text
+node --test shared/financialMetric.test.mjs
+```
+
+Final observed output:
+
+```text
+tests 12, pass 12, fail 0, cancelled 0, skipped 0
+```
+
+Full suite:
+
+```text
+npm test
+```
+
+Final observed output:
+
+```text
+tests 390, pass 390, fail 0, cancelled 0, skipped 0
+```
+
+Build:
+
+```text
+npm run build
+```
+
+Final observed output:
+
+```text
+Vite transformed 6771 modules; built successfully in 6.21s; exit code 0
+```
+
+### Unresolved constraints
+
+- The existing overview and department consumers are not migrated in this fix round because the approved Task 1 scope forbids route/UI changes. The cross-path test therefore documents their current review-profit mismatch and provides the canonical target for the next consumer slice.
+- JavaScript decimal representation remains unchanged as required; the cross-path test uses a tight tolerance for equivalent floating-point EUR arithmetic and reconciliation deltas remain unrounded.
+- No production, CPM, deployment, or credential verification was performed.
