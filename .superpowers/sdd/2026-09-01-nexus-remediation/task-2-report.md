@@ -27,7 +27,8 @@ No full `npm test` or build claim is made because the focused suite is not fully
 ## Commits
 
 - Base: `409172f` (`fix(finance): close Task 1 metric contract review findings`)
-- Review-fix commit: `ba29b4c0355823ec4005f9b27c91778e202bd619`.
+- Implementation commit: `ba29b4c0355823ec4005f9b27c91778e202bd619`.
+- Report update is tracked in the follow-up commit.
 
 ## Known limitations / blocker
 
