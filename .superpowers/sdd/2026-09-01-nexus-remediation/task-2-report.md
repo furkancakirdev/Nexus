@@ -32,7 +32,8 @@ Build command: `npm run build` — passed (`vite build`, 6770 modules transforme
 
 - Base: `409172f` (`fix(finance): close Task 1 metric contract review findings`)
 - Earlier Task 2 implementation/fix commits remain in ancestry, including `73ed37d`, `7a24a06`, `14f4040`, and `01e3d57`.
-- This pass commit is created after verification and includes the Reports projection, Task 2 behavior tests, and this report.
+- `cce425c` — `fix(finance): complete Task 2 canonical report projections` (Reports projection and Task 2 behavior tests).
+- Follow-up report-only commit records this final verification state.
 
 ## Known limitations / blocker
 
