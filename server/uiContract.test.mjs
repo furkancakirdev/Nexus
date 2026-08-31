@@ -65,3 +65,37 @@ test("CPM Denetim ilk görünümü ekonomik karar kolonlarına odaklanır", asyn
   assert.match(auditSource, /aria-expanded=\{expanded===row\.id\}/);
   assert.match(auditSource, /aria-controls=\{`audit-detail-\$\{row\.id\}`\}/);
 });
+
+test("Task 3 chart consumers expose visible, accessible series and explicit states", async () => {
+  const reportsSource = await source("src/ReportsPage.jsx");
+  const summarySource = await source("src/SummaryPage.jsx");
+  const departmentSource = await source("src/DepartmentAnalysisPage.jsx");
+
+  assert.match(reportsSource, /Legend/);
+  assert.match(reportsSource, /role="img" aria-label="Marka satış ve kâr grafiği"/);
+  assert.match(reportsSource, /role="status"/);
+  assert.match(reportsSource, /role="alert"/);
+  assert.match(summarySource, /Legend/);
+  assert.match(summarySource, /role="img" aria-label="Aylık satış ve kârlılık grafiği"/);
+  assert.match(departmentSource, /role="img" aria-label="Departman aylık net satış ve kâr grafiği"/);
+  assert.match(departmentSource, /role="status"/);
+  assert.match(departmentSource, /role="alert"/);
+});
+
+test("Task 3 visual contract uses theme-safe chart colors, separated values, and contained responsive chrome", async () => {
+  const styles = await source("src/styles.css");
+
+  assert.match(styles, /--chart-sales:/);
+  assert.match(styles, /--chart-profit:/);
+  assert.match(styles, /--chart-service:/);
+  assert.match(styles, /--chart-parts:/);
+  assert.match(styles, /--chart-review:/);
+  assert.match(styles, /data-theme="dark"[^}]*--chart-sales:/s);
+  assert.match(styles, /\.label-value\s*\{[^}]*display:\s*grid;[^}]*gap:\s*(?:[3-9]|1[0-9])px/s);
+  assert.match(styles, /\.info-banner[^}]*gap:\s*(?:1[0-9]|[2-9][0-9])px/s);
+  assert.match(styles, /@media\s*\(max-width:\s*768px\)/);
+  assert.match(styles, /@media\s*\(max-width:\s*768px\)[\s\S]*?\.topbar[^}]*min-width:\s*0/s);
+  assert.match(styles, /\.topbar\s*>\s*\*[^}]*min-width:\s*0/);
+  assert.match(styles, /\.brand__copy\s*\{[^}]*display:\s*grid/s);
+  assert.match(styles, /\.brand__copy\s+small\s*\{[^}]*display:\s*block/s);
+});
