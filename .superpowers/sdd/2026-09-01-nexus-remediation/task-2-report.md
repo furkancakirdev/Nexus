@@ -17,6 +17,8 @@ This pass completes the independent-review fixes for F-015, F-018, F-019 and F-0
 - Terra final fix adds `projectCanonicalMetric` for UI projections, removes SalesPage local totals/category arithmetic and zero coercions, and makes DepartmentAnalysisPage format null financial values as unavailable with review status gating.
 - Final review closure moves Reports discount/return/dealer/service summary projection to the server, removes the Reports consumer-side financial reduce, and uses the shared null-safe canonical formatter for DepartmentAnalysis KPI/table/comparison values.
 - Added behavioral coverage for the Department null rendering contract and Reports canonical projection/no-reduce contract; no SummaryPage changes were included.
+- Final review closure adds the required `eurComplete` projection field before Sales top-period selection, passes `eurRateSets` from App to Reports, and clears stale canonical EUR metric/rate-set state when the overview refresh falls back after failure.
+- Added regressions for complete-EUR top-period selection, Reports EUR-rate wiring, and failed overview refresh state clearing.
 - SummaryPage was not changed in this fix branch.
 
 ## Verification
@@ -27,7 +29,7 @@ Focused command:
 node --test server/task2FinancialConsumers.test.mjs server/departmentEurContract.test.mjs server/task2IndependentReviewFix.test.mjs shared/financialMetric.test.mjs
 ```
 
-Result: **30 tests, 30 passed, 0 failed**.
+Result: **33 tests, 33 passed, 0 failed**.
 
 Full command: `npm test` — **335 tests, 331 passed, 4 failed**. Task 2 tests were green. Remaining failures are out of scope and unchanged: `production fingerprint registry executes the three approved queries` (CPM fingerprint fixture), `default labor pilot cost matches the Nexus zero-percent setting`, `departman hedef API ekran ayrıntısının 500 satır sınırından etkilenmez`, and `V2 kanıtı eksik ayda profit üretmez ve tüm net satışı incelemeye ayırır`.
 
@@ -41,6 +43,7 @@ Build command: `npm run build` — passed (`vite build`, 6772 modules transforme
 - Final P1 fix commit is created after this verification and includes the monthly-all projection, Sales EUR fail-closed selection, Audit null display, and regressions.
 - Final remaining review-fix commit is created after this verification and includes canonical monthly chart/reconciliation consumption plus the null-review regression.
 - Final closure commit: `b9cad89` (`fix(finance): close final Task 2 consumer findings`) includes the Reports server projection, null-safe DepartmentAnalysis formatting, behavioral regressions, and the verification record.
+- Final review follow-up commit: pending; includes only the Sales canonical EUR field correction, App Reports EUR-rate wiring/state reset, focused regressions, and this report update.
 
 ## Known limitations / blocker
 

@@ -243,6 +243,8 @@ export function App() {
     }).catch(() => {
       if (cancelled) return;
       setRows(fallbackRows);
+      setEurRateSets({});
+      setCanonicalMetric(null);
       setMode("demo");
       setTargetState({
         rows: [],
@@ -492,6 +494,7 @@ export function App() {
           year={year}
           rows={enrichedRows}
           canonicalMetric={canonicalMetric}
+          eurRateSets={eurRateSets}
         />
       ) : (
       <main className="page" id="top">

@@ -54,6 +54,16 @@ test("F-015 exposes the EUR-selected top month instead of sorting the TL fallbac
   assert.equal(eurTop.month, 2);
   const salesSource = await readFile(new URL("../src/SalesPage.jsx", import.meta.url), "utf8");
   assert.match(salesSource, /selectCanonicalTopPeriod/);
+  assert.match(salesSource, /eurComplete:\s*row\.eurAvailable/);
+});
+
+test("F-015 complete EUR rows select the top period through the canonical field contract", () => {
+  const canonical = { status: "TAMAM", eur: { complete: true } };
+  const selected = selectCanonicalTopPeriod([
+    { month: 1, eurAvailable: true, eurEquivalent: { netSales: 100 } },
+    { month: 2, eurAvailable: true, eurEquivalent: { netSales: 200 } },
+  ].map((item) => ({ ...item, eurComplete: item.eurAvailable })), canonical);
+  assert.equal(selected.month, 2);
 });
 
 test("F-018 audit projections expose canonical calculated cost and signed gross profit", () => {
@@ -165,6 +175,16 @@ test("Reports consumes server projections without consumer-side financial reduce
   const source = await readFile(new URL("../src/ReportsPage.jsx", import.meta.url), "utf8");
   assert.doesNotMatch(source, /\.reduce\(/);
   assert.match(source, /projections\.summary\?\.dealerNetSales/);
+});
+
+test("Reports receives EUR rate sets from App wiring", async () => {
+  const source = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+  assert.match(source, /<ReportsPage[\s\S]*eurRateSets=\{eurRateSets\}/);
+});
+
+test("overview failure clears stale canonical EUR state before fallback rows", async () => {
+  const source = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+  assert.match(source, /\.catch\(\(\) => \{[\s\S]*setEurRateSets\(\{\}\);[\s\S]*setCanonicalMetric\(null\);/);
 });
 
 test("Sales EUR top month fails closed when any period lacks complete evidence", () => {

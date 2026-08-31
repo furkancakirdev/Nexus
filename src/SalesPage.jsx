@@ -170,7 +170,9 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
   }, [normalizedRows, canonicalMetric]);
 
   const topSalesMonth = useMemo(() => selectCanonicalTopPeriod(normalizedRows.map((row) => ({
-    ...row, eurEquivalent: row.eurAvailable ? { netSales: row.eurNetSales } : null,
+    ...row,
+    eurComplete: row.eurAvailable === true,
+    eurEquivalent: row.eurAvailable ? { netSales: row.eurNetSales } : null,
   })), canonicalMetric), [normalizedRows, canonicalMetric]);
 
   // Döviz sepetleri: tüm ayların byCurrency toplamları. EUR/USD/GBP/TRY
