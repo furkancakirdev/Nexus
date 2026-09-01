@@ -35,5 +35,5 @@ The browser session was unauthenticated and showed the overview as `Veri kullanÄ
 
 ## Review-fix commit
 
-- Focused code/test commit: `41be39900508251c6950ba1d4fe99f011e40b17b2`.
-- Report/assets commit: pending after this report update.
+- Focused code/test/screenshot commit: `41be39900508251c6950ba1d4fe99f011e40b17b2`.
+- Report commit: `80009a8d1adc11d1523fef513f26cd6c0728da33`.
