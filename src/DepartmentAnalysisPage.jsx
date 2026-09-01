@@ -34,6 +34,18 @@ const DEPARTMENTS = {
   review: { name: "İnceleme Gerekli", color: "var(--chart-review)", center: "—" },
 };
 
+export function getDepartmentChartSeries(department) {
+  const series = [];
+  if (department !== "parts" && department !== "review") series.push({ name: "Servis net satış", color: DEPARTMENTS.service.color });
+  if (department !== "service" && department !== "review") series.push({ name: "Yedek Parça net satış", color: DEPARTMENTS.parts.color });
+  if (department === "all" || department === "review") series.push({ name: "İnceleme gerekli", color: DEPARTMENTS.review.color });
+  series.push({
+    name: department === "service" ? "Servis kâr" : department === "parts" ? "Yedek Parça kâr" : "Toplam kâr",
+    color: "var(--chart-profit)",
+  });
+  return series;
+}
+
 const emptyMetric = {
   grossSales: null, returns: null, discounts: null, netSales: null, cost: null, profit: null,
   margin: null, eurMargin: null, documentCount: 0, customerCount: 0, crossDepotSales: 0,
@@ -128,6 +140,7 @@ export function DepartmentAnalysisPage({ year, mode: appMode, consolidatedRows =
     ? "Uzlaşma kanıtı bekleniyor"
     : `Net fark ${formatMoney(reconciliation.difference)}`;
   const hasFinancialData = data.totals?.lineCount > 0;
+  const chartSeries = useMemo(() => getDepartmentChartSeries(department), [department]);
 
   const detailRows = useMemo(() => (data.detailRows || []).filter((row) => {
     if (department !== "all" && row.department !== department) return false;
@@ -228,8 +241,10 @@ export function DepartmentAnalysisPage({ year, mode: appMode, consolidatedRows =
       <section className="panel pilot-flow"><div className="panel-heading"><div><h2>Yeni CPM Atıf Akışı</h2><p>Az önce eklenen alanların Nexus tarafından nasıl yorumlandığı</p></div></div><div className="pilot-flow__steps"><div><span>1</span><strong>Satış Siparişi</strong><small>SATICINO + MASRAFKOD</small></div><IconChevronRight /><div><span>2</span><strong>Kaynak Bağlantısı</strong><small>SONKAYNAK*</small></div><IconChevronRight /><div><span>3</span><strong>Teslimat</strong><small>DEPOKOD · MRK/YTM</small></div><IconChevronRight /><div><span>4</span><strong>Nexus Analizi</strong><small>Ciro, maliyet, kâr, kanıt</small></div></div></section>
       <section className="panel pilot-orders"><div className="panel-heading"><div><h2>Algılanan Gerçek Pilot Siparişleri</h2><p>`SSP-00979` silindi ve kalıcı dışlama listesinde; burada yalnız yeni gerçek siparişler görünür.</p></div><button className="secondary-button" onClick={() => setRefreshToken((value) => value + 1)}><IconRefresh size={16} />Şimdi kontrol et</button></div><div className="table-scroll"><table><thead><tr><th>Sipariş</th><th>Tarih</th><th>Müşteri</th><th>Ticari sorumlu</th><th>Departman</th><th>Teslimat deposu</th><th>Durum</th></tr></thead><tbody>{(data.pilotOrders || []).map((order) => <tr key={`${order.documentNo}-${order.customerCode}`}><th>{order.documentNo}</th><td>{formatDate(order.documentDate)}</td><td>{order.customerCode}</td><td><strong>{order.ownerName}</strong><small>{order.ownerCode}</small></td><td><DepartmentBadge department={order.department} /></td><td>{order.depot?.name || "Belirsiz"}</td><td><span className={`evidence-pill evidence-pill--${order.status === "ready" ? "confirmed" : "review"}`}>{order.status === "ready" ? "Analize hazır" : "İncele"}</span></td></tr>)}{!data.pilotOrders?.length && <tr><td colSpan="7" className="empty-cell">Henüz gerçek pilot siparişi algılanmadı.</td></tr>}</tbody></table></div></section>
     </>}
-    <AccessibleChartLegend label="Departman satış ve kâr serileri" items={[{ name: "Servis net satış", color: DEPARTMENTS.service.color }, { name: "Yedek Parça net satış", color: DEPARTMENTS.parts.color }, { name: "İnceleme gerekli", color: DEPARTMENTS.review.color }, { name: "Toplam kâr", color: "var(--chart-profit)" }]} />
-    <AccessibleChartLegend label="Teslimat deposu serileri" items={[{ name: "Merkez Depo", color: "var(--chart-service)" }, { name: "Yatmarin Depo", color: "var(--chart-parts)" }, { name: "Belirsiz", color: "var(--chart-review)" }]} />
+    {tab === "overview" && hasFinancialData && <>
+      <AccessibleChartLegend label="Departman satış ve kâr serileri" items={chartSeries} />
+      <AccessibleChartLegend label="Teslimat deposu serileri" items={[{ name: "Merkez Depo", color: "var(--chart-service)" }, { name: "Yatmarin Depo", color: "var(--chart-parts)" }, { name: "Belirsiz", color: "var(--chart-review)" }]} />
+    </>}
   </main>;
 }
 

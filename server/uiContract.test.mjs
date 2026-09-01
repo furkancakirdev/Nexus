@@ -136,3 +136,42 @@ test("Task 3 charts render semantic legends outside image wrappers and consume s
   assert.equal(departmentMarkup.includes('class="department-notice info-banner"'), true);
   assert.equal(departmentMarkup.includes('class="label-value"'), true);
 });
+
+test("Summary renders an explicit overview error instead of pilot or empty chart state", async (t) => {
+  const vite = await createServer({ configFile: resolve(process.cwd(), "vite.config.mjs") });
+  t.after(() => vite.close());
+  const summary = await vite.ssrLoadModule("/src/SummaryPage.jsx");
+  const markup = renderToStaticMarkup(React.createElement(summary.SummaryPage, {
+    rows: [{ month: 1, monthName: "Ocak", sales: 100, returns: 0, discounts: 0, estimatedCost: 40 }],
+    settings: {}, employees: [], targetRows: [], annualPool: 0, year: 2026, mode: "error", onNavigate: () => {},
+  }));
+
+  assert.match(markup, /role="alert"/);
+  assert.match(markup, /Yönetici özeti verileri okunamadı/);
+  assert.doesNotMatch(markup, /Pilot veri/);
+  assert.doesNotMatch(markup, /role="img" aria-label="Aylık satış ve kârlılık grafiği"/);
+  assert.doesNotMatch(markup, /Aylık grafik için veri bulunamadı/);
+});
+
+test("Department semantic legend follows the visible chart series and chart presence", async (t) => {
+  const vite = await createServer({ configFile: resolve(process.cwd(), "vite.config.mjs") });
+  t.after(() => vite.close());
+  const department = await vite.ssrLoadModule("/src/DepartmentAnalysisPage.jsx");
+
+  assert.deepEqual(department.getDepartmentChartSeries("service").map((item) => item.name), ["Servis net satış", "Servis kâr"]);
+  assert.deepEqual(department.getDepartmentChartSeries("parts").map((item) => item.name), ["Yedek Parça net satış", "Yedek Parça kâr"]);
+  assert.deepEqual(department.getDepartmentChartSeries("review").map((item) => item.name), ["İnceleme gerekli", "Toplam kâr"]);
+  assert.deepEqual(department.getDepartmentChartSeries("all").map((item) => item.name), ["Servis net satış", "Yedek Parça net satış", "İnceleme gerekli", "Toplam kâr"]);
+
+  const legendMarkup = renderToStaticMarkup(React.createElement(department.AccessibleChartLegend, {
+    label: "Departman satış ve kâr serileri",
+    items: department.getDepartmentChartSeries("parts"),
+  }));
+  assert.equal((legendMarkup.match(/<li/g) || []).length, 2);
+  assert.match(legendMarkup, /Yedek Parça net satış/);
+  assert.match(legendMarkup, /Yedek Parça kâr/);
+  assert.doesNotMatch(legendMarkup, /Servis net satış|İnceleme gerekli/);
+
+  const initialMarkup = renderToStaticMarkup(React.createElement(department.DepartmentAnalysisPage, { year: 2026, mode: "demo" }));
+  assert.doesNotMatch(initialMarkup, /class="chart-legend"/);
+});
