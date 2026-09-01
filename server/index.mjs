@@ -53,8 +53,8 @@ async function getPool() {
     requestTimeout: 90_000,
     options: {
       instanceName: process.env.CPM_SQL_INSTANCE || "MARLINSQL",
-      encrypt: false,
-      trustServerCertificate: true,
+      encrypt: true,
+      trustServerCertificate: false,
       readOnlyIntent: true,
       appName: "Marlin Nexus ReadOnly",
     },
