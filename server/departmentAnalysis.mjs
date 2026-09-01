@@ -593,7 +593,11 @@ export function buildDepartmentAnalysis({
     })),
     detailRows: normalized
       .slice()
-      .sort((a, b) => b[ROW_SORT_TIME] - a[ROW_SORT_TIME] || b.netSales - a.netSales)
+      .sort((a, b) => (
+        b[ROW_SORT_TIME] - a[ROW_SORT_TIME]
+        || b.netSales - a.netSales
+        || String(b.id).localeCompare(String(a.id), "tr")
+      ))
       .slice(0, 500),
     excludedTestRows: excludedTestRows.map((row) => ({
       ...row,

@@ -1238,17 +1238,76 @@ test("departman belge defteri status depo arama birleşimini ve toplam sayıyı 
 
   await withApiServer(router, async (baseUrl) => {
     const response = await fetch(
-      `${baseUrl}/api/department-analysis?year=2026&status=confirmed&depot=MRK&search=M%C3%BC%C5%9Fteri&page=1&pageSize=10`,
+      `${baseUrl}/api/department-analysis?year=2026&status=confirmed&depot=MRK&search=SF-001&page=1&pageSize=10`,
     );
     const payload = await response.json();
 
     assert.equal(response.status, 200);
-    assert.equal(payload.detailPagination.totalRows, 2);
+    assert.equal(payload.detailPagination.totalRows, 1);
     assert.equal(payload.detailPagination.totalPages, 1);
-    assert.deepEqual(payload.detailRows.map((row) => row.documentNo), ["SI-001", "SF-001"]);
+    assert.deepEqual(payload.detailRows.map((row) => row.documentNo), ["SF-001"]);
     assert.equal(payload.detailRows.every((row) => (
       row.attributionStatus === "confirmed" && row.fulfillmentDepotCode === "MRK"
     )), true);
+  });
+});
+
+test("departman belge defteri küçük sayfalarda toplamı, tie-break sırasını ve sayfa ayrımını korur", async () => {
+  const base = apiFixtureLedger().rows[0];
+  const rows = [
+    ...Array.from({ length: 10 }, (_, index) => index + 11),
+    ...Array.from({ length: 10 }, (_, index) => index + 1),
+  ].map((index) => ({
+    ...base,
+    rootId: `page-${String(index).padStart(2, "0")}`,
+    documentNo: `SF-PAGE-${String(index).padStart(2, "0")}`,
+    documentDate: "2026-03-15T10:00:00.000Z",
+    signedNetSales: 100,
+    netAmount: 100,
+  }));
+  const service = createLedgerService({
+    loadYear: async () => ({
+      rows,
+      totals: { netSales: 2_000, rowCount: rows.length },
+      quality: {},
+      quarantinedRows: [],
+      reviewRequiredRows: [],
+      excludedTestRows: [],
+      pilotOrders: [],
+      excludedPilotOrders: [],
+    }),
+  });
+  const router = createUnifiedLedgerRouter({
+    ledgerService: service,
+    getAppState: async () => ({}),
+  });
+
+  await withApiServer(router, async (baseUrl) => {
+    const [pageOne, pageTwo] = await Promise.all([
+      fetch(`${baseUrl}/api/department-analysis?year=2026&page=1&pageSize=10`)
+        .then((response) => response.json()),
+      fetch(`${baseUrl}/api/department-analysis?year=2026&page=2&pageSize=10`)
+        .then((response) => response.json()),
+    ]);
+
+    for (const payload of [pageOne, pageTwo]) {
+      assert.equal(payload.detailPagination.totalRows, 20);
+      assert.equal(payload.detailPagination.totalPages, 2);
+      assert.equal(payload.detailPagination.pageSize, 10);
+    }
+    assert.deepEqual(
+      pageOne.detailRows.map((row) => row.documentNo),
+      Array.from({ length: 10 }, (_, index) => `SF-PAGE-${String(20 - index).padStart(2, "0")}`),
+    );
+    assert.deepEqual(
+      pageTwo.detailRows.map((row) => row.documentNo),
+      Array.from({ length: 10 }, (_, index) => `SF-PAGE-${String(10 - index).padStart(2, "0")}`),
+    );
+    assert.equal(
+      new Set(pageOne.detailRows.map((row) => row.documentNo))
+        .intersection(new Set(pageTwo.detailRows.map((row) => row.documentNo))).size,
+      0,
+    );
   });
 });
 
