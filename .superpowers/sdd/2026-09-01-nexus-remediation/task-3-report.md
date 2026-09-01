@@ -34,4 +34,4 @@ The browser session was unauthenticated and displayed pilot/fallback content; no
 
 ## Review-fix commit
 
-- This report records the focused Task 3 review-fix pass; commit hash is added after the final verification commit.
+- Focused code/test commit: `be5a675019b8c7a8515472f0c04083152c7d7ac0`.
