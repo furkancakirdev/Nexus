@@ -12,6 +12,8 @@ Task 3 was implemented in the isolated workspace using the approved plan at `doc
 - Chart accessibility: each in-scope chart keeps its visible Recharts legend and now has a separate semantic `ul[aria-label]` legend outside the chart `role="img"` wrapper; DOM tests verify the placement and list items.
 - Explicit states: Reports and Department Analysis expose loading/error states; Summary now distinguishes loading, overview error, pilot/demo, and empty chart states. Summary error rendering uses an explicit alert and does not render a chart or pilot badge.
 - Department legend: the semantic department legend is rendered only when the overview chart has financial data and derives only the currently visible series for `all`, `service`, `parts`, or `review`.
+- Delivery-depot chart: fixed dark hex fills and axis/grid colors were replaced with the shared `--chart-*`, `--chart-grid`, and `--muted` theme tokens. The Recharts bars and semantic legend now consume the same exported series definitions, preserving dark/high-contrast parity.
+- Reports brand legend: the semantic brand legend now renders only when the active view is the visible summary brand chart with loaded, non-error, non-empty brand data.
 - Responsive containment: added 768px containment rules for topbar children, brand text, page-heading content, KPI grids, and report layout. Long department owner names retain full text through `title` and `aria-label`.
 
 Task 2 canonical financial fields and fail-closed behavior were preserved. No server/shared financial logic, arithmetic, security, RBAC, CPM, credentials, or production files were changed.
@@ -19,21 +21,21 @@ Task 2 canonical financial fields and fail-closed behavior were preserved. No se
 ## Tests and build
 
 - RED: `node --test server/uiContract.test.mjs` failed on the new behavioral tests for Summary error state and Department filtered legend.
-- GREEN: `node --test server/uiContract.test.mjs` — 8 passed, 0 failed.
+- GREEN: `node --test server/uiContract.test.mjs` — 10 passed, 0 failed, including depot color parity and Reports active/data visibility cases.
 - Build: `npm run build` — passed; 6772 modules transformed.
 - Diff hygiene: `git diff --check` — passed.
 
 ## Screenshot evidence and limitations
 
-The local Vite/server preview was started and inspected in the in-app browser. A fresh screenshot/DOM inspection used an exact `390x844` viewport and replaced `task-3-mobile.png`:
+The local Vite/server preview was started and inspected in the in-app browser. A fresh screenshot/DOM inspection used an exact `390x844` browser viewport and replaced `task-3-mobile.png`. The first browser content screenshot measured `375x811`; it was rejected and not claimed. A viewport clip was then captured and verified with `ffprobe` as physically `390x844`:
 
 - `task-3-desktop.png`
 - `task-3-tablet.png`
 - `task-3-mobile.png` (fresh exact-size capture)
 
-The browser session was unauthenticated and showed the overview as `Veri kullanılamıyor` with fallback/pilot-shaped populated values; no authenticated live CPM dataset was available. Therefore this evidence does not claim authenticated live financial data or production populated-series contrast. The captured mobile DOM contained the chart and semantic legend; the legend had two items, was outside the chart `role="img"` subtree, and was visible in the screenshot. Measured values were `innerWidth=390`, `innerHeight=844`; the screenshot was captured with `fullPage=false` at that viewport. `body.scrollWidth` was `1265` before responsive viewport application and was not used as a responsive-pass claim.
+The browser session was unauthenticated and showed the overview as `Veri kullanılamıyor` with fallback/pilot-shaped populated values; no authenticated live CPM dataset was available. Therefore this evidence does not claim authenticated live financial data or production populated-series contrast. The captured mobile DOM contained the chart and semantic legend; the legend had two items, was outside the chart `role="img"` subtree, and was visible in the screenshot. Browser DOM measured `innerWidth=390`, `innerHeight=844`; `ffprobe` measured the saved file as `390x844` (`yuvj420p`).
 
 ## Review-fix commit
 
-- Focused code/test/screenshot commit: `41be39900508251c6950ba1d4fe99f011e40b17b2`.
-- Report commit: `80009a8d1adc11d1523fef513f26cd6c0728da33`.
+- Focused code/test/screenshot commit: `10592a35bb0d8f82d56f0a65d26894cbc0159eb5`.
+- Report commit: pending after this update.
