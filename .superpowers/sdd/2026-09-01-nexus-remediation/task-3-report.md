@@ -33,9 +33,9 @@ The local Vite/server preview was started and inspected in the in-app browser. A
 - `task-3-tablet.png`
 - `task-3-mobile.png` (fresh exact-size capture)
 
-The browser session was unauthenticated and showed the overview as `Veri kullanılamıyor` with fallback/pilot-shaped populated values; no authenticated live CPM dataset was available. Therefore this evidence does not claim authenticated live financial data or production populated-series contrast. The captured mobile DOM contained the chart and semantic legend; the legend had two items, was outside the chart `role="img"` subtree, and was visible in the screenshot. Browser DOM measured `innerWidth=390`, `innerHeight=844`; `ffprobe` measured the saved file as `390x844` (`yuvj420p`).
+The browser session was unauthenticated and showed the overview error state `Veri kullanılamıyor`; SummaryPage correctly hid the chart and semantic legend. The exact `390x844` capture and DOM inspection verify responsive containment and error-state rendering only. Authenticated populated chart/legend behavior and dark-theme contrast were not verified; this evidence makes no claim about them. Browser DOM measured `innerWidth=390`, `innerHeight=844`; `ffprobe` measured the saved file as `390x844` (`yuvj420p`).
 
 ## Review-fix commit
 
 - Focused code/test/screenshot commit: `10592a35bb0d8f82d56f0a65d26894cbc0159eb5`.
-- Report commit: pending after this update.
+- Report commit: this update.
