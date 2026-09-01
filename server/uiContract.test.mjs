@@ -70,6 +70,17 @@ test("CPM Denetim ilk görünümü ekonomik karar kolonlarına odaklanır", asyn
   assert.match(auditSource, /aria-controls=\{`audit-detail-\$\{row\.id\}`\}/);
 });
 
+test("departman belge defteri filtrelerini server pagination sözleşmesine taşır", async () => {
+  const departmentSource = await source("src/DepartmentAnalysisPage.jsx");
+
+  for (const parameter of ["department", "month", "status", "depot", "search", "page", "pageSize"]) {
+    assert.match(departmentSource, new RegExp(`params\\.set\\("${parameter}"`));
+  }
+  assert.match(departmentSource, /detailPagination\.totalRows/);
+  assert.match(departmentSource, /detailPagination\.totalPages/);
+  assert.doesNotMatch(departmentSource, /const detailRows = useMemo\(\(\) => \(data\.detailRows/);
+});
+
 test("Task 3 chart consumers expose visible, accessible series and explicit states", async () => {
   const reportsSource = await source("src/ReportsPage.jsx");
   const summarySource = await source("src/SummaryPage.jsx");

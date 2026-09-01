@@ -1192,6 +1192,66 @@ test("departman hedef API ekran ayrıntısının 500 satır sınırından etkile
   });
 });
 
+test("departman belge araması seçili yılın 500 dışındaki eski ekonomik satırını bulur", async () => {
+  const service = createLedgerService({
+    loadYear: async () => {
+      const base = apiFixtureLedger().rows[0];
+      const rows = Array.from({ length: 501 }, (_, index) => ({
+        ...base,
+        rootId: `old-search-${index}`,
+        documentNo: index === 0 ? "SF-OLD-0001" : `SF-NEW-${index}`,
+        documentDate: `2026-01-${String(Math.min(index + 1, 28)).padStart(2, "0")}T10:00:00.000Z`,
+      }));
+      return {
+        rows,
+        totals: { netSales: 50100, rowCount: 501 },
+        quality: {}, quarantinedRows: [], reviewRequiredRows: [],
+        excludedTestRows: [], pilotOrders: [], excludedPilotOrders: [],
+      };
+    },
+  });
+  const router = createUnifiedLedgerRouter({
+    ledgerService: service,
+    getAppState: async () => ({}),
+  });
+
+  await withApiServer(router, async (baseUrl) => {
+    const response = await fetch(
+      `${baseUrl}/api/department-analysis?year=2026&search=SF-OLD-0001&page=1&pageSize=10`,
+    );
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.detailRows.length, 1);
+    assert.equal(payload.detailRows[0].documentNo, "SF-OLD-0001");
+    assert.equal(payload.detailPagination.totalRows, 1);
+  });
+});
+
+test("departman belge defteri status depo arama birleşimini ve toplam sayıyı sunucuda uygular", async () => {
+  const ledger = apiFixtureLedger();
+  const service = createLedgerService({ loadYear: async () => ledger });
+  const router = createUnifiedLedgerRouter({
+    ledgerService: service,
+    getAppState: async () => ({}),
+  });
+
+  await withApiServer(router, async (baseUrl) => {
+    const response = await fetch(
+      `${baseUrl}/api/department-analysis?year=2026&status=confirmed&depot=MRK&search=M%C3%BC%C5%9Fteri&page=1&pageSize=10`,
+    );
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.detailPagination.totalRows, 2);
+    assert.equal(payload.detailPagination.totalPages, 1);
+    assert.deepEqual(payload.detailRows.map((row) => row.documentNo), ["SI-001", "SF-001"]);
+    assert.equal(payload.detailRows.every((row) => (
+      row.attributionStatus === "confirmed" && row.fulfillmentDepotCode === "MRK"
+    )), true);
+  });
+});
+
 test("sunucu bağımsız audit economics SQL yolunu içermez", async () => {
   const source = await readFile(new URL("./index.mjs", import.meta.url), "utf8");
   assert.doesNotMatch(source, /\bauditSamplesSql\b/);

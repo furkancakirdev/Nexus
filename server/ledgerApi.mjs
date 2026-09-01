@@ -26,6 +26,7 @@ const EXCLUDED_INCOME_CODES = new Set(["KOMISYON", "GD-0187", "GD-0079", "PDI"])
 const overviewRowsCache = new WeakMap();
 const auditRowsCache = new WeakMap();
 const departmentAnalysisCache = new WeakMap();
+const departmentDetailRowsCache = new WeakMap();
 const AUDIT_SORT_TIME = Symbol("auditSortTime");
 
 function number(value) {
@@ -765,6 +766,66 @@ export function buildCachedDepartmentAnalysis(options = {}) {
   return analysis;
 }
 
+const DEPARTMENT_DETAIL_CHUNK_SIZE = 500;
+
+function completeDepartmentDetailRows({ ledger, analysisOptions, analysis }) {
+  if (!ledger || !Array.isArray(ledger.rows)) return analysis?.detailRows || [];
+  let cached = departmentDetailRowsCache.get(analysis);
+  if (cached) return cached;
+  if (ledger.rows.length <= DEPARTMENT_DETAIL_CHUNK_SIZE) {
+    cached = analysis?.detailRows || [];
+  } else {
+    cached = [];
+    for (let start = 0; start < ledger.rows.length; start += DEPARTMENT_DETAIL_CHUNK_SIZE) {
+      const chunk = buildDepartmentAnalysis({
+        ...analysisOptions,
+        ledger: { ...ledger, rows: ledger.rows.slice(start, start + DEPARTMENT_DETAIL_CHUNK_SIZE) },
+      });
+      cached.push(...(chunk.detailRows || []));
+    }
+    cached.sort((left, right) => (
+      Date.parse(right.documentDate) - Date.parse(left.documentDate)
+      || number(right.netSales) - number(left.netSales)
+      || String(right.id).localeCompare(String(left.id), "tr")
+    ));
+  }
+  departmentDetailRowsCache.set(analysis, cached);
+  return cached;
+}
+
+function filterDepartmentDetailRows(rows, query = {}) {
+  const page = positiveInteger(query.page, 1);
+  const pageSize = Math.min(100, Math.max(10, positiveInteger(query.pageSize, 50)));
+  const department = ["service", "parts", "review"].includes(query.department)
+    ? query.department
+    : "";
+  const month = Math.min(12, Math.max(0, number(query.month)));
+  const status = ["confirmed", "inferred", "review"].includes(query.status)
+    ? query.status
+    : "";
+  const depot = ["MRK", "YTM", "—"].includes(query.depot) ? query.depot : "";
+  const search = normalizedCode(String(query.search || "").trim().slice(0, 80));
+  const filtered = rows.filter((row) => {
+    const haystack = normalizedCode([
+      row.documentNo, row.customerCode, row.customerName, row.productCode,
+      row.productName, row.commercialOwner, row.commercialOwnerName,
+    ].join(" "));
+    return (!department || row.department === department)
+      && (!month || row.month === month)
+      && (!status || row.attributionStatus === status)
+      && (!depot || row.fulfillmentDepotCode === depot)
+      && (!search || haystack.includes(search));
+  });
+  const offset = (page - 1) * pageSize;
+  return {
+    page,
+    pageSize,
+    totalRows: filtered.length,
+    totalPages: Math.ceil(filtered.length / pageSize),
+    rows: filtered.slice(offset, offset + pageSize),
+  };
+}
+
 /**
  * Hedef API'si ve yönetim onayları için aynı nihai-defter sonucunu üretir.
  */
@@ -1050,17 +1111,23 @@ export function createUnifiedLedgerRouter({
       if (!snapshot.value) {
         return response.status(503).json({
           year, departments: [], months: [], detailRows: [], pilotOrders: [],
+          detailPagination: { page: 1, pageSize: 50, totalRows: 0, totalPages: 0 },
           mode: "unavailable", ...metadata(snapshot),
           error: "Gerçek CPM bağlantısı yapılandırılmadığı için departman analizi üretilemedi.",
         });
       }
-      const analysis = buildCachedDepartmentAnalysis({
+      const analysisOptions = {
         ledger: snapshot.value,
         year,
         pilotCardCostRates: state.settings?.pilotCardCostRates || {},
         costOverrides: Array.isArray(state.costOverrides) ? state.costOverrides : [],
         requireApproval: state.settings?.requireManagementApprovalForManualCost !== false,
-      });
+      };
+      const analysis = buildCachedDepartmentAnalysis(analysisOptions);
+      const detailPage = filterDepartmentDetailRows(
+        completeDepartmentDetailRows({ ledger: snapshot.value, analysisOptions, analysis }),
+        request.query,
+      );
       const scopeNetSales = economicScopeNetSales(snapshot.value);
       // EUR raporlama katmanı: departman, ay ve toplam sepetleri kur setiyle süslenir.
       const rateIndex = buildExchangeRateIndex(snapshot.value.exchangeRates);
@@ -1108,6 +1175,13 @@ export function createUnifiedLedgerRouter({
       response.setHeader("Cache-Control", "no-store");
       return response.json({
         ...analysis,
+        detailRows: detailPage.rows,
+        detailPagination: {
+          page: detailPage.page,
+          pageSize: detailPage.pageSize,
+          totalRows: detailPage.totalRows,
+          totalPages: detailPage.totalPages,
+        },
         mode: "live",
         ...metadata(snapshot),
         source: "CPM salt okunur + Nexus yönetilen kurallar",
@@ -1122,6 +1196,7 @@ export function createUnifiedLedgerRouter({
       logger.error("Marlin Nexus department ledger read failed:", error);
       return response.status(500).json({
         year, departments: [], months: [], detailRows: [], pilotOrders: [],
+        detailPagination: { page: 1, pageSize: 50, totalRows: 0, totalPages: 0 },
         mode: "error", ...retainedMetadata(ledgerService, year),
         error: "Departman analizi birleşik defterden okunamadı.",
       });

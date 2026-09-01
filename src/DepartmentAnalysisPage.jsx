@@ -91,18 +91,31 @@ export function DepartmentAnalysisPage({ year, mode: appMode, consolidatedRows =
   const [statusFilter, setStatusFilter] = useState("all");
   const [depotFilter, setDepotFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const [detailPage, setDetailPage] = useState(1);
   const [expandedRow, setExpandedRow] = useState(null);
 
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
     const params = new URLSearchParams({ year });
+    if (department !== "all") params.set("department", department);
+    if (month !== "0") params.set("month", month);
+    if (statusFilter !== "all") params.set("status", statusFilter);
+    if (depotFilter !== "all") params.set("depot", depotFilter);
+    if (search.trim()) params.set("search", search.trim());
+    params.set("page", String(detailPage));
+    params.set("pageSize", "25");
     fetch(`/api/department-analysis?${params}`, { signal: controller.signal })
       .then((response) => response.json())
       .then((result) => { setData(result); setLoading(false); })
       .catch((error) => { if (error.name !== "AbortError") { setData((current) => ({ ...current, mode: "error", error: "Departman verileri okunamadı." })); setLoading(false); } });
     return () => controller.abort();
-  }, [year, refreshToken, externalRefreshToken]);
+  }, [year, refreshToken, externalRefreshToken, department, month, statusFilter, depotFilter, search, detailPage]);
+
+  useEffect(() => {
+    setDetailPage(1);
+    setExpandedRow(null);
+  }, [year, department, month, statusFilter, depotFilter, search]);
 
   const monthRows = useMemo(() => (data.months || []).map((item) => {
     const project = (metric) => ({
@@ -148,14 +161,8 @@ export function DepartmentAnalysisPage({ year, mode: appMode, consolidatedRows =
   const hasFinancialData = data.totals?.lineCount > 0;
   const chartSeries = useMemo(() => getDepartmentChartSeries(department), [department]);
 
-  const detailRows = useMemo(() => (data.detailRows || []).filter((row) => {
-    if (department !== "all" && row.department !== department) return false;
-    if (month !== "0" && String(row.month) !== month) return false;
-    if (statusFilter !== "all" && row.attributionStatus !== statusFilter) return false;
-    if (depotFilter !== "all" && row.fulfillmentDepotCode !== depotFilter) return false;
-    const haystack = `${row.documentNo} ${row.customerCode} ${row.customerName} ${row.productCode} ${row.productName} ${row.commercialOwner} ${row.commercialOwnerName}`.toLocaleLowerCase("tr-TR");
-    return !search.trim() || haystack.includes(search.trim().toLocaleLowerCase("tr-TR"));
-  }), [data.detailRows, department, month, statusFilter, depotFilter, search]);
+  const detailRows = data.detailRows || [];
+  const detailPagination = data.detailPagination || { page: 1, pageSize: 25, totalRows: 0, totalPages: 0 };
 
   const depotRows = useMemo(() => ["service", "parts"].map((id) => {
     const rows = (data.depotMatrix || []).filter((item) => item.department === id);
@@ -233,8 +240,9 @@ export function DepartmentAnalysisPage({ year, mode: appMode, consolidatedRows =
     </section>}
 
     {tab === "ledger" && <section className="panel department-ledger">
-      <div className="department-ledger__head"><div><p className="eyebrow">İzlenebilir ekonomik satırlar</p><h2>Departman Belge Defteri</h2><p>{money.format(detailRows.length)} satır gösteriliyor · API en güncel 500 satırı getirir</p></div><div className="ledger-filters"><label className="search-control"><IconSearch size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Belge, müşteri, ürün veya sorumlu ara" /></label><label><IconFilter size={16} /><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">Tüm atıflar</option><option value="confirmed">Teyitli</option><option value="inferred">Kullanıcı eşlemesi</option><option value="review">İnceleme gerekli</option></select></label><select value={depotFilter} onChange={(event) => setDepotFilter(event.target.value)}><option value="all">Tüm depolar</option><option value="MRK">Merkez Depo</option><option value="YTM">Yatmarin Depo</option><option value="—">Belirsiz depo</option></select></div></div>
+      <div className="department-ledger__head"><div><p className="eyebrow">İzlenebilir ekonomik satırlar</p><h2>Departman Belge Defteri</h2><p>{money.format(detailRows.length)} / {money.format(detailPagination.totalRows)} satır gösteriliyor · seçili yılın tamamı aranır</p></div><div className="ledger-filters"><label className="search-control"><IconSearch size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Belge, müşteri, ürün veya sorumlu ara" /></label><label><IconFilter size={16} /><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">Tüm atıflar</option><option value="confirmed">Teyitli</option><option value="inferred">Kullanıcı eşlemesi</option><option value="review">İnceleme gerekli</option></select></label><select value={depotFilter} onChange={(event) => setDepotFilter(event.target.value)}><option value="all">Tüm depolar</option><option value="MRK">Merkez Depo</option><option value="YTM">Yatmarin Depo</option><option value="—">Belirsiz depo</option></select></div></div>
       <div className="table-scroll"><table className="department-ledger-table"><thead><tr><th aria-label="Detay" /><th>Belge / tarih</th><th>Departman</th><th>Ticari sorumlu</th><th>Müşteri</th><th>Ürün</th><th>Net satış</th><th>Maliyet</th><th>Brüt kâr</th><th>Teslimat</th><th>Kanıt</th></tr></thead><tbody>{detailRows.map((row) => <FragmentRow key={row.id} row={row} expanded={expandedRow === row.id} onToggle={() => setExpandedRow(expandedRow === row.id ? null : row.id)} />)}{!detailRows.length && <tr><td colSpan="11" className="empty-cell">Filtrelere uyan ekonomik satır bulunamadı.</td></tr>}</tbody></table></div>
+      {detailPagination.totalPages > 1 && <nav className="table-pagination" aria-label="Belge defteri sayfaları"><button type="button" className="secondary-button" disabled={detailPage <= 1} onClick={() => setDetailPage((page) => page - 1)}>Önceki</button><span>Sayfa {detailPage} / {detailPagination.totalPages}</span><button type="button" className="secondary-button" disabled={detailPage >= detailPagination.totalPages} onClick={() => setDetailPage((page) => page + 1)}>Sonraki</button></nav>}
     </section>}
 
     {tab === "pilot" && <>
