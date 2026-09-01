@@ -47,7 +47,7 @@ function DepartmentTooltip({ active, payload, label }) {
 }
 
 function MetricCard({ icon: Icon, tone = "blue", label, value, detail }) {
-  return <article className="department-kpi"><span className={`department-kpi__icon ${tone}`}><Icon size={19} /></span><small>{label}</small><strong>{value}</strong><p>{detail}</p></article>;
+  return <article className="department-kpi"><span className={`department-kpi__icon ${tone}`}><Icon size={19} /></span><div className="label-value"><small>{label}</small><strong>{value}</strong><p>{detail}</p></div></article>;
 }
 
 function QualityBar({ label, value, detail, tone = "blue" }) {
@@ -57,6 +57,10 @@ function QualityBar({ label, value, detail, tone = "blue" }) {
 function DepartmentBadge({ department }) {
   const meta = DEPARTMENTS[department] || DEPARTMENTS.review;
   return <span className={`department-badge department-badge--${department || "review"}`}><i style={{ background: meta.color }} />{meta.name}</span>;
+}
+
+export function AccessibleChartLegend({ label, items }) {
+  return <ul className="chart-legend" aria-label={label}>{items.map((item) => <li key={item.name}><i aria-hidden="true" style={{ background: item.color }} /><span>{item.name}</span></li>)}</ul>;
 }
 
 export function DepartmentAnalysisPage({ year, mode: appMode, consolidatedRows = [], minimumCoverage = 80, externalRefreshToken = 0, eurRateSets = {} }) {
@@ -172,7 +176,7 @@ export function DepartmentAnalysisPage({ year, mode: appMode, consolidatedRows =
       {metricEurActive && <span className="reconciliation-chip good" title={selectedRateEvidence?.weekendOrHolidayNote || undefined}><IconCircleCheck size={16} />EUR · {currencyEvidenceCount} döviz sepeti · Halkbank alış kuru</span>}
     </section>
 
-    {!activeSource && <section className="department-notice"><IconAlertTriangle size={20} /><div><strong>Gerçek departman rakamları henüz okunamıyor.</strong><p>Sayfa ve veri sözleşmesi hazır. CPM salt-okunur bağlantısı geldiğinde aynı ekran gerçek sonuçları gösterecek; örnek finansal dağılım üretilmiyor.</p></div></section>}
+    {!activeSource && <section className="department-notice info-banner"><IconAlertTriangle size={20} /><div><strong>Gerçek departman rakamları henüz okunamıyor.</strong><p>Sayfa ve veri sözleşmesi hazır. CPM salt-okunur bağlantısı geldiğinde aynı ekran gerçek sonuçları gösterecek; örnek finansal dağılım üretilmiyor.</p></div></section>}
     {loading && <div className="department-state department-state--loading" role="status" aria-live="polite">Departman verileri yükleniyor…</div>}
     {data.mode === "error" && <div className="department-state department-state--error" role="alert">{data.error || "Departman verileri okunamadı."}</div>}
 
@@ -224,6 +228,8 @@ export function DepartmentAnalysisPage({ year, mode: appMode, consolidatedRows =
       <section className="panel pilot-flow"><div className="panel-heading"><div><h2>Yeni CPM Atıf Akışı</h2><p>Az önce eklenen alanların Nexus tarafından nasıl yorumlandığı</p></div></div><div className="pilot-flow__steps"><div><span>1</span><strong>Satış Siparişi</strong><small>SATICINO + MASRAFKOD</small></div><IconChevronRight /><div><span>2</span><strong>Kaynak Bağlantısı</strong><small>SONKAYNAK*</small></div><IconChevronRight /><div><span>3</span><strong>Teslimat</strong><small>DEPOKOD · MRK/YTM</small></div><IconChevronRight /><div><span>4</span><strong>Nexus Analizi</strong><small>Ciro, maliyet, kâr, kanıt</small></div></div></section>
       <section className="panel pilot-orders"><div className="panel-heading"><div><h2>Algılanan Gerçek Pilot Siparişleri</h2><p>`SSP-00979` silindi ve kalıcı dışlama listesinde; burada yalnız yeni gerçek siparişler görünür.</p></div><button className="secondary-button" onClick={() => setRefreshToken((value) => value + 1)}><IconRefresh size={16} />Şimdi kontrol et</button></div><div className="table-scroll"><table><thead><tr><th>Sipariş</th><th>Tarih</th><th>Müşteri</th><th>Ticari sorumlu</th><th>Departman</th><th>Teslimat deposu</th><th>Durum</th></tr></thead><tbody>{(data.pilotOrders || []).map((order) => <tr key={`${order.documentNo}-${order.customerCode}`}><th>{order.documentNo}</th><td>{formatDate(order.documentDate)}</td><td>{order.customerCode}</td><td><strong>{order.ownerName}</strong><small>{order.ownerCode}</small></td><td><DepartmentBadge department={order.department} /></td><td>{order.depot?.name || "Belirsiz"}</td><td><span className={`evidence-pill evidence-pill--${order.status === "ready" ? "confirmed" : "review"}`}>{order.status === "ready" ? "Analize hazır" : "İncele"}</span></td></tr>)}{!data.pilotOrders?.length && <tr><td colSpan="7" className="empty-cell">Henüz gerçek pilot siparişi algılanmadı.</td></tr>}</tbody></table></div></section>
     </>}
+    <AccessibleChartLegend label="Departman satış ve kâr serileri" items={[{ name: "Servis net satış", color: DEPARTMENTS.service.color }, { name: "Yedek Parça net satış", color: DEPARTMENTS.parts.color }, { name: "İnceleme gerekli", color: DEPARTMENTS.review.color }, { name: "Toplam kâr", color: "var(--chart-profit)" }]} />
+    <AccessibleChartLegend label="Teslimat deposu serileri" items={[{ name: "Merkez Depo", color: "var(--chart-service)" }, { name: "Yatmarin Depo", color: "var(--chart-parts)" }, { name: "Belirsiz", color: "var(--chart-review)" }]} />
   </main>;
 }
 

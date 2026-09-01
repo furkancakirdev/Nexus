@@ -300,6 +300,9 @@ h2 { margin-bottom: 4px; font-size: 20px; line-height: 1.25; }
 .label-value { min-width: 0; display: grid; gap: 5px; }
 .label-value > small { color: var(--muted); }
 .label-value > strong { min-width: 0; overflow-wrap: anywhere; }
+.chart-legend { margin: 8px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 10px 16px; list-style: none; color: var(--muted); font-size: 12px; }
+.chart-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.chart-legend i { width: 10px; height: 10px; flex: 0 0 auto; border-radius: 2px; }
 .source-badge { padding: 4px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; }
 .source-badge--live { color: #0d7140; background: #e7f5ed; }
 .source-badge--demo, .source-badge--loading { color: #9c5b0a; background: #fff3df; }
@@ -978,6 +981,8 @@ tfoot { font-weight: 700; background: #f7f9fc; }
 .department-kpi > small { min-width: 0; color: var(--muted); font-size: 10px; font-weight: 600; text-transform: uppercase; overflow-wrap: anywhere; }
 .department-kpi > strong { min-width: 0; align-self: end; font-size: 20px; line-height: 1.08; overflow-wrap: anywhere; }
 .department-kpi > p { grid-column: 1 / -1; align-self: end; margin: 12px 0 0; padding-top: 9px; border-top: 1px solid #e7ecf2; color: var(--muted); font-size: 10px; }
+.department-kpi > .label-value { min-width: 0; display: grid; gap: 5px; }
+.department-kpi > .label-value > p { margin: 0; padding-top: 8px; border-top: 1px solid var(--line); }
 
 .department-tabs { min-height: 46px; padding: 0 4px; display: flex; align-items: end; gap: 4px; border-bottom: 1px solid var(--line); overflow-x: auto; }
 .department-tabs button { min-height: 42px; padding: 8px 14px; border: 0; border-bottom: 3px solid transparent; color: var(--muted); background: transparent; cursor: pointer; white-space: nowrap; }
@@ -1103,6 +1108,7 @@ tfoot { font-weight: 700; background: #f7f9fc; }
 .excluded-actors > p { margin: 0; color: var(--muted); font-size: 10px; }
 .empty-cell { height: 110px; color: var(--muted); text-align: center !important; }
 .info-banner { gap: 14px; }
+.department-notice.info-banner { margin: 0; padding: 13px 15px; }
 
 .pilot-readiness-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 10px; }
 .pilot-status { min-height: 116px; padding: 14px; display: flex; align-items: flex-start; gap: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }

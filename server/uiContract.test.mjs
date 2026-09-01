@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import test from "node:test";
+import { createServer } from "vite";
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 
 async function source(relativePath) {
   return readFile(new URL(`../${relativePath}`, import.meta.url), "utf8");
@@ -98,4 +102,37 @@ test("Task 3 visual contract uses theme-safe chart colors, separated values, and
   assert.match(styles, /\.topbar\s*>\s*\*[^}]*min-width:\s*0/);
   assert.match(styles, /\.brand__copy\s*\{[^}]*display:\s*grid/s);
   assert.match(styles, /\.brand__copy\s+small\s*\{[^}]*display:\s*block/s);
+});
+
+test("Task 3 charts render semantic legends outside image wrappers and consume spacing classes", async (t) => {
+  const vite = await createServer({ configFile: resolve(process.cwd(), "vite.config.mjs") });
+  t.after(() => vite.close());
+  const reports = await vite.ssrLoadModule("/src/ReportsPage.jsx");
+  const summary = await vite.ssrLoadModule("/src/SummaryPage.jsx");
+  const department = await vite.ssrLoadModule("/src/DepartmentAnalysisPage.jsx");
+
+  for (const [legend, label, names] of [
+    [reports.AccessibleChartLegend, "Marka satış ve kâr serileri", ["Net satış", "Kâr"]],
+    [summary.AccessibleChartLegend, "Aylık satış ve kârlılık serileri", ["Satış", "Kâr"]],
+    [department.AccessibleChartLegend, "Departman satış ve kâr serileri", ["Servis net satış", "Toplam kâr"]],
+  ]) {
+    const markup = renderToStaticMarkup(React.createElement(legend, { label, items: names.map((name) => ({ name, color: "#fff" })) }));
+    assert.equal(markup.startsWith(`<ul class="chart-legend" aria-label="${label}">`), true);
+    assert.equal((markup.match(/<li/g) || []).length, names.length);
+    for (const name of names) assert.equal(markup.includes(`>${name}</span>`), true);
+  }
+
+  const summaryMarkup = renderToStaticMarkup(React.createElement(summary.SummaryPage, {
+    rows: [{ month: 1, monthName: "Ocak", sales: 100, returns: 0, discounts: 0, estimatedCost: 40 }],
+    settings: {}, employees: [], targetRows: [], annualPool: 0, year: 2026, mode: "live", onNavigate: () => {},
+  }));
+  const summaryImage = summaryMarkup.indexOf('role="img" aria-label="Aylık satış ve kârlılık grafiği"');
+  const summaryLegend = summaryMarkup.indexOf('class="chart-legend" aria-label="Aylık satış ve kârlılık serileri"');
+  assert.ok(summaryImage >= 0);
+  assert.ok(summaryLegend > summaryImage);
+  assert.equal(summaryMarkup.includes('class="label-value"'), true);
+
+  const departmentMarkup = renderToStaticMarkup(React.createElement(department.DepartmentAnalysisPage, { year: 2026, mode: "demo" }));
+  assert.equal(departmentMarkup.includes('class="department-notice info-banner"'), true);
+  assert.equal(departmentMarkup.includes('class="label-value"'), true);
 });
