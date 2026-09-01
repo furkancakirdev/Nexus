@@ -101,18 +101,30 @@ test("role isolation authenticates sessions and restricts reporting, operations,
 
   assert.equal((await fetch(`${baseUrl}/api/overview`)).status, 401);
   assert.equal((await fetch(`${baseUrl}/api/health`)).status, 401);
+  for (const route of ["/api/sales-cases", "/api/inventory-research"]) {
+    assert.equal((await fetch(`${baseUrl}${route}`)).status, 401);
+  }
 
   const reporting = await login(baseUrl, "reporting");
   assert.equal(reporting.response.status, 200);
   assert.equal((await fetch(`${baseUrl}/api/overview`, { headers: { cookie: reporting.cookie } })).status, 200);
+  for (const route of ["/api/sales-cases", "/api/inventory-research"]) {
+    assert.equal((await fetch(`${baseUrl}${route}`, { headers: { cookie: reporting.cookie } })).status, 403);
+  }
   assert.equal((await fetch(`${baseUrl}/api/approvals?year=2026`, { headers: { cookie: reporting.cookie } })).status, 403);
   assert.equal((await fetch(`${baseUrl}/api/app-state`, { headers: { cookie: reporting.cookie } })).status, 403);
 
   const operational = await login(baseUrl, "operational");
   assert.equal((await fetch(`${baseUrl}/api/overview`, { headers: { cookie: operational.cookie } })).status, 403);
+  for (const route of ["/api/sales-cases", "/api/inventory-research"]) {
+    assert.notEqual((await fetch(`${baseUrl}${route}`, { headers: { cookie: operational.cookie } })).status, 403);
+  }
 
   const admin = await login(baseUrl, "admin");
   assert.equal((await fetch(`${baseUrl}/api/overview`, { headers: { cookie: admin.cookie } })).status, 200);
+  for (const route of ["/api/sales-cases", "/api/inventory-research"]) {
+    assert.notEqual((await fetch(`${baseUrl}${route}`, { headers: { cookie: admin.cookie } })).status, 403);
+  }
   assert.equal((await fetch(`${baseUrl}/api/app-state`, { headers: { cookie: admin.cookie } })).status, 200);
   const write = await fetch(`${baseUrl}/api/app-state`, {
     method: "PUT",

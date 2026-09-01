@@ -8,6 +8,8 @@ Task 6 için repo içinde `task-6-brief.md` bulunamadı. Bu rapor, `docs/superpo
 
 - Dört atomik capability merkezi olarak tanımlandı: `reporting:read`, `operations:read`, `approvals:manage`, `settings:manage`.
 - `admin` dört capability’ye sahip; reporting yalnızca raporlama okumasına, operational yalnızca operasyon okumasına sahip.
+- Rota matrisi: `/api/overview`, `/api/reconciliation/invoices`, `/api/department-analysis`, `/api/department-targets`, `/api/audit-ledger` ve `/api/audit-samples` → `reporting:read`; `/api/ledger-refresh`, `/api/sales-cases` ve `/api/inventory-research` → `operations:read`.
+- Task 6 düzeltmesi: `/api/sales-cases` ve `/api/inventory-research` reporting rolüne 403, operational/admin rollerine handler erişimi verir; unauthenticated istekler 401 kalır.
 - Eksik veya tanımsız capability/rota default-deny davranışıyla reddediliyor.
 - Auth sırası korunuyor: authenticate → CSRF/Origin → authorize → handler.
 - `createApp` ile gerçek Express kompozisyonu test edilebilir hale getirildi; router, state store, health handler ve identity provider injection destekleniyor.
@@ -31,7 +33,7 @@ Komut:
 node --test server/task6RoleIsolation.test.mjs server/auth.test.mjs server/authBoundary.test.mjs server/approvalApi.test.mjs server/approvalUiContract.test.mjs server/cpmReadOnly.test.mjs server/task5Security.test.mjs server/settingsPolicy.test.mjs server/uiContract.test.mjs
 ```
 
-Sonuç: 47 test, 46 geçti, 1 kaldı.
+Sonuç: 47 test, 46 geçti, 1 kaldı. Task 6 role-isolation testi 4/4 geçti; kalan tek hata aşağıdaki mevcut Task 5 CPM fingerprint fixture uyuşmazlığıdır.
 
 Kalan hata mevcut Task 5 CPM fingerprint fixture uyuşmazlığıdır: `production fingerprint registry executes the three approved queries` → `fingerprint-mismatch`. Bu Task 6’da değiştirilmedi veya gevşetilmedi.
 

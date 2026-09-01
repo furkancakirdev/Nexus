@@ -158,8 +158,10 @@ const departmentTargetLoader = createDepartmentTargetLoader({
         ? CAPABILITIES.APPROVALS_MANAGE
         : request.path === "/api/ledger-refresh"
           ? CAPABILITIES.OPERATIONS_READ
-          : ["/api/overview", "/api/reconciliation/invoices", "/api/department-analysis", "/api/department-targets", "/api/audit-ledger", "/api/audit-samples", "/api/sales-cases", "/api/inventory-research"].includes(request.path)
+          : ["/api/overview", "/api/reconciliation/invoices", "/api/department-analysis", "/api/department-targets", "/api/audit-ledger", "/api/audit-samples"].includes(request.path)
             ? CAPABILITIES.REPORTING_READ
+            : ["/api/sales-cases", "/api/inventory-research"].includes(request.path)
+              ? CAPABILITIES.OPERATIONS_READ
             : null;
     if (!capability) return response.status(403).json({ error: "API rotası için yetki politikası tanımlı değil." });
     return authorizeCapability(capability)(request, response, next);
