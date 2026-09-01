@@ -175,3 +175,31 @@ test("Department semantic legend follows the visible chart series and chart pres
   const initialMarkup = renderToStaticMarkup(React.createElement(department.DepartmentAnalysisPage, { year: 2026, mode: "demo" }));
   assert.doesNotMatch(initialMarkup, /class="chart-legend"/);
 });
+
+test("Department delivery-depot chart and semantic legend share theme tokens", async (t) => {
+  const vite = await createServer({ configFile: resolve(process.cwd(), "vite.config.mjs") });
+  t.after(() => vite.close());
+  const department = await vite.ssrLoadModule("/src/DepartmentAnalysisPage.jsx");
+  const depotSeries = department.DELIVERY_DEPOT_CHART_SERIES;
+
+  assert.deepEqual(depotSeries.map((item) => item.name), ["Merkez Depo", "Yatmarin Depo", "Belirsiz"]);
+  assert.deepEqual(depotSeries.map((item) => item.color), ["var(--chart-service)", "var(--chart-parts)", "var(--chart-review)"]);
+  const markup = renderToStaticMarkup(React.createElement(department.AccessibleChartLegend, {
+    label: "Teslimat deposu serileri", items: depotSeries,
+  }));
+  for (const item of depotSeries) assert.match(markup, new RegExp(`background:${item.color.replace(/[()]/g, "\\$&")}`));
+});
+
+test("Reports brand semantic legend follows the active visible chart", async (t) => {
+  const vite = await createServer({ configFile: resolve(process.cwd(), "vite.config.mjs") });
+  t.after(() => vite.close());
+  const reports = await vite.ssrLoadModule("/src/ReportsPage.jsx");
+
+  assert.equal(reports.isBrandChartVisible({ active: "summary", loading: false, error: null, brand: [{ name: "Acme" }] }), true);
+  assert.equal(reports.isBrandChartVisible({ active: "brand", loading: false, error: null, brand: [{ name: "Acme" }] }), false);
+  assert.equal(reports.isBrandChartVisible({ active: "summary", loading: true, error: null, brand: [{ name: "Acme" }] }), false);
+  assert.equal(reports.isBrandChartVisible({ active: "summary", loading: false, error: null, brand: [] }), false);
+
+  const initialMarkup = renderToStaticMarkup(React.createElement(reports.ReportsPage, { year: 2026, rows: [], settings: {}, employees: [], targetRows: [], annualPool: 0 }));
+  assert.doesNotMatch(initialMarkup, /class="chart-legend"/);
+});
