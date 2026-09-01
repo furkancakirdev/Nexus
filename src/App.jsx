@@ -28,6 +28,7 @@ import { SettingsPage } from "./SettingsPage";
 import { GoalsPage, PILOT_EMPLOYEES } from "./GoalsPage";
 import { ApprovalPage } from "./ApprovalPage";
 import { ReportsPage } from "./ReportsPage";
+import { apiFetch } from "./api.js";
 import { SummaryPage } from "./SummaryPage";
 import { SalesPage } from "./SalesPage";
 import { DepartmentAnalysisPage } from "./DepartmentAnalysisPage";
@@ -346,7 +347,7 @@ export function App() {
     : null;
 
   const persistState = (nextSettings, nextEmployees, nextCostOverrides = costOverrides) => {
-    return fetch("/api/app-state", {
+    return apiFetch("/api/app-state", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

@@ -11,6 +11,7 @@ import {
   IconShieldCheck,
   IconWallet,
 } from "@tabler/icons-react";
+import { apiFetch } from "./api.js";
 
 const months = [
   "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
@@ -89,7 +90,7 @@ export function ApprovalPage({
           .filter((month) => Number.isInteger(month) && month >= 1 && month <= 12);
         if (legacyMonths.length) {
           const results = await Promise.all(legacyMonths.map((month) => (
-            fetch(`/api/approvals/${year}/${month}`, { method: "PUT" })
+            apiFetch(`/api/approvals/${year}/${month}`, { method: "PUT" })
           )));
           if (!results.every((result) => result.ok)) {
             throw new Error("Eski aylık onayların sunucu migrasyonu tamamlanamadı.");
@@ -182,7 +183,7 @@ export function ApprovalPage({
     setActionMonth(selected.month);
     setError(null);
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `/api/approvals/${year}/${selected.month}`,
         { method: "PUT" },
       );
@@ -203,7 +204,7 @@ export function ApprovalPage({
     setActionMonth(selected.month);
     setError(null);
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `/api/approvals/${year}/${selected.month}/reopen`,
         { method: "POST" },
       );

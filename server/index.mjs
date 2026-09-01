@@ -14,14 +14,24 @@ import { createApprovalRouter } from "./approvalApi.mjs";
 import { createStateStore } from "./stateStore.mjs";
 import { executeSqlReadWithDeadlockRetry } from "./sqlReadRetry.mjs";
 import { serializeSettings } from "../shared/settingsPolicy.mjs";
+import { createAuth } from "./auth.mjs";
+import { authorizeCapability, CAPABILITIES } from "./capabilities.mjs";
 
-const app = express();
-const port = Number(process.env.PORT || 4318);
-const host = process.env.HOST || "127.0.0.1";
-const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const dataFile = process.env.APP_STATE_FILE || path.join(rootDir, "data", "app-state.json");
-const stateStore = createStateStore(dataFile);
-app.use(express.json({ limit: "1mb" }));
+export function createApp({
+  auth: authOptions,
+  stateStore: injectedStateStore,
+  ledgerService: injectedLedgerService,
+  ledgerRouter: injectedLedgerRouter,
+  approvalRouter: injectedApprovalRouter,
+  healthHandler,
+  staticRoot,
+} = {}) {
+  const app = express();
+  const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+  const dataFile = process.env.APP_STATE_FILE || path.join(rootDir, "data", "app-state.json");
+  const stateStore = injectedStateStore || createStateStore(dataFile);
+  const auth = authOptions?.middleware ? authOptions : createAuth(authOptions);
+  app.use(express.json({ limit: "1mb" }));
 
 let poolPromise;
 const salesCaseCache = new Map();
@@ -101,7 +111,7 @@ async function loadFinalInvoiceLedger(year) {
   });
 }
 
-const ledgerService = createLedgerService({ loadYear: loadFinalInvoiceLedger });
+const ledgerService = injectedLedgerService || createLedgerService({ loadYear: loadFinalInvoiceLedger });
 
 async function getStoredAppState() {
   return stateStore.read();
@@ -112,12 +122,12 @@ const departmentTargetLoader = createDepartmentTargetLoader({
   getAppState: getStoredAppState,
 });
 
-app.use(createUnifiedLedgerRouter({
-  ledgerService,
-  getAppState: getStoredAppState,
-  departmentTargetLoader,
-}));
-app.use(createApprovalRouter({
+  const realLedgerRouter = injectedLedgerRouter || createUnifiedLedgerRouter({
+    ledgerService,
+    getAppState: getStoredAppState,
+    departmentTargetLoader,
+  });
+  const realApprovalRouter = injectedApprovalRouter || createApprovalRouter({
   store: stateStore,
   loadDepartmentTargets: async (year, options) => {
     const result = await departmentTargetLoader(year, options);
@@ -130,9 +140,35 @@ app.use(createApprovalRouter({
     }
     return result.payload;
   },
-}));
+  });
 
-app.get("/api/health", async (_request, response) => {
+  app.post("/api/session/login", auth.login);
+  app.use((request, response, next) => {
+    if (!request.path.startsWith("/api/")) return next();
+    return auth.middleware(request, response, next);
+  });
+  app.get("/api/session", (request, response) => response.json({ user: request.user }));
+  app.post("/api/session/logout", auth.logout);
+  app.use((request, response, next) => {
+    if (!request.path.startsWith("/api/") || request.path.startsWith("/api/session")) return next();
+    if (request.path === "/api/health") return next();
+    const capability = request.path.startsWith("/api/app-state")
+      ? CAPABILITIES.SETTINGS_MANAGE
+      : request.path.startsWith("/api/approvals")
+        ? CAPABILITIES.APPROVALS_MANAGE
+        : request.path === "/api/ledger-refresh"
+          ? CAPABILITIES.OPERATIONS_READ
+          : ["/api/overview", "/api/reconciliation/invoices", "/api/department-analysis", "/api/department-targets", "/api/audit-ledger", "/api/audit-samples", "/api/sales-cases", "/api/inventory-research"].includes(request.path)
+            ? CAPABILITIES.REPORTING_READ
+            : null;
+    if (!capability) return response.status(403).json({ error: "API rotası için yetki politikası tanımlı değil." });
+    return authorizeCapability(capability)(request, response, next);
+  });
+  app.use(realLedgerRouter);
+  app.use(realApprovalRouter);
+
+app.get("/api/health", async (request, response) => {
+  if (healthHandler) return healthHandler(request, response);
   try {
     const pool = await getPool();
     if (!pool) return response.json({ connected: false, mode: "demo", readOnly: true });
@@ -220,17 +256,26 @@ app.put("/api/app-state", async (request, response) => {
   }
 });
 
-app.use(express.static(path.join(rootDir, "dist")));
-app.use((request, response, next) => {
+  if (staticRoot !== null) app.use(express.static(staticRoot || path.join(rootDir, "dist")));
+  app.use((request, response, next) => {
   if (request.method !== "GET" || request.path.startsWith("/api/")) return next();
   return response.sendFile(path.join(rootDir, "dist", "index.html"));
-});
+  });
 
+  app.locals.ledgerService = ledgerService;
+  return app;
+}
+
+const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMain) {
+const port = Number(process.env.PORT || 4318);
+const host = process.env.HOST || "127.0.0.1";
+const app = createApp();
 app.listen(port, host, () => {
   console.log(`Marlin Nexus · Yönetim Sistemi http://${host}:${port}`);
   const startedAt = Date.now();
   const currentYear = new Date().getFullYear();
-  void ledgerService.prewarm([currentYear, currentYear - 1]).then((results) => {
+  void app.locals.ledgerService.prewarm([currentYear, currentYear - 1]).then((results) => {
     const durationMs = Date.now() - startedAt;
     for (const result of results) {
       if (result.status === "fulfilled") {
@@ -252,3 +297,4 @@ app.listen(port, host, () => {
     console.error("Marlin Nexus ledger prewarm process failed:", error);
   });
 });
+}
