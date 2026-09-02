@@ -68,30 +68,30 @@ def validate_release_manifest(manifest):
     for key in ("releaseId", "buildId", "buildVersion"):
         if not isinstance(manifest.get(key), str) or not manifest[key].strip():
             errors.append(f"{key[0].lower() + key[1:]}-missing")
-    if not SOURCE_COMMIT.fullmatch(str(manifest.get("sourceCommit", ""))):
+    if not isinstance(manifest.get("sourceCommit"), str) or not SOURCE_COMMIT.fullmatch(manifest["sourceCommit"]):
         errors.append("source-commit-invalid")
-    if not IMAGE_DIGEST.fullmatch(str(manifest.get("imageDigest", ""))):
+    if not isinstance(manifest.get("imageDigest"), str) or not IMAGE_DIGEST.fullmatch(manifest["imageDigest"]):
         errors.append("image-digest-invalid")
-    if not IMAGE_DIGEST.fullmatch(str(manifest.get("composeConfigHash", ""))):
+    if not isinstance(manifest.get("composeConfigHash"), str) or not IMAGE_DIGEST.fullmatch(manifest["composeConfigHash"]):
         errors.append("compose-config-hash-invalid")
-    if not SHA256_HEX.fullmatch(str(manifest.get("artifactSha256", ""))):
+    if not isinstance(manifest.get("artifactSha256"), str) or not SHA256_HEX.fullmatch(manifest["artifactSha256"]):
         errors.append("artifact-digest-invalid")
 
     cpm = manifest.get("cpm")
-    if not isinstance(cpm, dict) or not cpm.get("database") or not cpm.get("company"):
+    if not isinstance(cpm, dict) or not isinstance(cpm.get("database"), str) or not cpm["database"].strip() or not isinstance(cpm.get("company"), str) or not cpm["company"].strip():
         errors.append("cpm-evidence-missing")
     ssh = manifest.get("ssh")
-    if not isinstance(ssh, dict) or not SSH_HOST_KEY.fullmatch(str(ssh.get("hostKey", ""))):
+    if not isinstance(ssh, dict) or not isinstance(ssh.get("hostKey"), str) or not SSH_HOST_KEY.fullmatch(ssh["hostKey"]):
         errors.append("ssh-host-key-invalid")
     tls = manifest.get("tls")
     ca_file = tls.get("caFile", "") if isinstance(tls, dict) else ""
-    if not ca_file or re.search(r"(?:^|[\\/\s])(?:insecure|--insecure|-k)(?:$|[\\/\s])", ca_file, re.IGNORECASE):
+    if not isinstance(ca_file, str) or not ca_file.strip() or re.search(r"(?:^|[\\/\s])(?:insecure|--insecure|-k)(?:$|[\\/\s])", ca_file, re.IGNORECASE):
         errors.append("tls-ca-invalid")
 
     previous = manifest.get("previous")
-    if not isinstance(previous, dict) or not previous.get("releaseId") or not IMAGE_DIGEST.fullmatch(str(previous.get("imageDigest", ""))):
+    if not isinstance(previous, dict) or not isinstance(previous.get("releaseId"), str) or not previous["releaseId"].strip() or not isinstance(previous.get("imageDigest"), str) or not IMAGE_DIGEST.fullmatch(previous["imageDigest"]):
         errors.append("rollback-manifest-missing")
-    if not isinstance(previous, dict) or not SHA256_HEX.fullmatch(str(previous.get("artifactSha256", ""))):
+    if not isinstance(previous, dict) or not isinstance(previous.get("artifactSha256"), str) or not SHA256_HEX.fullmatch(previous["artifactSha256"]):
         errors.append("rollback-artifact-digest-missing")
     return sorted(set(errors))
 

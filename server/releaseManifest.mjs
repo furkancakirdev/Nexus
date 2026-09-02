@@ -14,7 +14,7 @@ export function validateReleaseManifest(manifest = {}) {
   const errors = [];
   const release = manifest && typeof manifest === "object" ? manifest : {};
   if (!nonEmpty(release.releaseId)) errors.push("release-id-missing");
-  if (!/^[0-9a-f]{40}$/i.test(String(release.sourceCommit || ""))) errors.push("source-commit-invalid");
+  if (typeof release.sourceCommit !== "string" || !/^[0-9a-f]{40}$/i.test(release.sourceCommit)) errors.push("source-commit-invalid");
   if (!nonEmpty(release.buildId) || !nonEmpty(release.buildVersion)) errors.push("build-identity-missing");
   if (!imageDigest(release.imageDigest)) errors.push("image-digest-invalid");
   if (!imageDigest(release.composeConfigHash)) errors.push("compose-config-hash-invalid");
@@ -23,10 +23,10 @@ export function validateReleaseManifest(manifest = {}) {
   if (!nonEmpty(release.cpm?.database) || !nonEmpty(release.cpm?.company)) {
     errors.push("cpm-target-missing");
   }
-  if (!/^SHA256:[A-Za-z0-9+/=]+$/.test(String(release.ssh?.hostKey || ""))) {
+  if (typeof release.ssh?.hostKey !== "string" || !/^SHA256:[A-Za-z0-9+/=]+$/.test(release.ssh.hostKey)) {
     errors.push("ssh-host-key-missing");
   }
-  const caFile = String(release.tls?.caFile || "");
+  const caFile = release.tls?.caFile;
   if (!nonEmpty(caFile) || /(?:^|[\\/\s])(?:insecure|--insecure|-k)(?:$|[\\/\s])/i.test(caFile)) {
     errors.push("tls-ca-missing");
   }

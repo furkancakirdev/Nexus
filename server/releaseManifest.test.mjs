@@ -74,6 +74,25 @@ test("rejects mutable or bypass-like release values", () => {
   assert.ok(result.errors.includes("ssh-host-key-missing"));
 });
 
+test("rejects numeric digest, CPM, and rollback contract values", () => {
+  for (const field of ["sourceCommit", "imageDigest", "composeConfigHash", "artifactSha256"]) {
+    const result = validateReleaseManifest({ ...validManifest, [field]: 123 });
+    assert.equal(result.valid, false, `${field} must be an actual string`);
+  }
+  const cpmResult = validateReleaseManifest({ ...validManifest, cpm: { database: 123, company: "01" } });
+  assert.ok(cpmResult.errors.includes("cpm-target-missing"));
+  const tlsResult = validateReleaseManifest({ ...validManifest, tls: { caFile: 123 } });
+  assert.ok(tlsResult.errors.includes("tls-ca-missing"));
+  const sshResult = validateReleaseManifest({ ...validManifest, ssh: { hostKey: 123 } });
+  assert.ok(sshResult.errors.includes("ssh-host-key-missing"));
+  const rollbackResult = validateReleaseManifest({
+    ...validManifest,
+    previous: { releaseId: 123, imageDigest: 456, artifactSha256: 789 },
+  });
+  assert.ok(rollbackResult.errors.includes("rollback-manifest-missing"));
+  assert.ok(rollbackResult.errors.includes("rollback-artifact-digest-missing"));
+});
+
 test("rejects a missing or malformed Python-compatible SSH host key", () => {
   for (const hostKey of [undefined, "ssh-ed25519 256 SHA256:hostfingerprint", "unverified"]) {
     const result = validateReleaseManifest({
