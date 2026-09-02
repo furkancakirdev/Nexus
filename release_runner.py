@@ -17,6 +17,7 @@ IMMUTABLE_DIGEST = re.compile(r"^sha256:[a-f0-9]{64}$", re.IGNORECASE)
 SOURCE_COMMIT = re.compile(r"^[a-f0-9]{40}$", re.IGNORECASE)
 RELEASE_ID = re.compile(r"^[a-z0-9][a-z0-9-]{2,63}$")
 IMAGE_REPOSITORY = re.compile(r"^[a-z0-9][a-z0-9./_-]*$")
+HOST = re.compile(r"^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(?:\.(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?))*$")
 
 
 def build_runner_config(source=None):
@@ -220,7 +221,7 @@ def build_candidate_compose_override(config):
     """Build a deterministic isolated candidate override; never executes Compose."""
     required = (
         "release_id", "image_repository", "image_digest", "build_id", "build_version",
-        "source_commit", "artifact_sha256", "host_port", "state_host_path",
+        "source_commit", "artifact_sha256", "candidate_port", "state_host_path",
         "cpm_secret_host_path", "session_secret_source", "admin_identity_source",
         "cpm_server", "cpm_instance", "cpm_database", "cpm_company", "public_origin",
     )
@@ -237,11 +238,11 @@ def build_candidate_compose_override(config):
         raise ValueError("candidate-source-commit-invalid")
     if not re.fullmatch(r"[a-f0-9]{64}", str(config["artifact_sha256"]), re.IGNORECASE):
         raise ValueError("candidate-artifact-sha256-invalid")
-    if isinstance(config["host_port"], bool) or not isinstance(config["host_port"], int):
+    if isinstance(config["candidate_port"], bool) or not isinstance(config["candidate_port"], int):
         raise ValueError("candidate-port-invalid")
-    if not 1024 <= config["host_port"] <= 65535:
+    if not 1024 <= config["candidate_port"] <= 65535:
         raise ValueError("candidate-port-invalid")
-    if config["host_port"] == 4318:
+    if config["candidate_port"] == 4318:
         raise ValueError("candidate-port-production-collision")
     for key in ("state_host_path", "cpm_secret_host_path", "session_secret_source", "admin_identity_source"):
         path_value = str(config[key])
@@ -255,7 +256,7 @@ def build_candidate_compose_override(config):
         "image": f'{config["image_repository"]}@{config["image_digest"]}',
         "container_name": candidate_name,
         "restart": "no",
-        "ports": [f'127.0.0.1:{config["host_port"]}:4318'],
+        "ports": [f'127.0.0.1:{config["candidate_port"]}:4318'],
         "environment": {
             "HOST": "0.0.0.0",
             "PORT": "4318",
@@ -293,6 +294,8 @@ def build_candidate_verification_plan(config, year):
     missing = [key for key in required if not config.get(key)]
     if missing:
         raise ValueError("candidate-plan-missing:" + ",".join(missing))
+    if not isinstance(config["host"], str) or not HOST.fullmatch(config["host"]):
+        raise ValueError("candidate-plan-host-invalid")
     if isinstance(config["candidate_port"], bool) or not isinstance(config["candidate_port"], int):
         raise ValueError("candidate-plan-port-invalid")
     if not 1024 <= config["candidate_port"] <= 65535:
@@ -304,26 +307,26 @@ def build_candidate_verification_plan(config, year):
     if not isinstance(year, int) or not 2000 <= year <= 2100:
         raise ValueError("candidate-plan-year-invalid")
 
-    host = shlex.quote(config["host"])
     ca_file = shlex.quote(config["tls_ca_file"])
     auth_payload = shlex.quote(config["auth_payload_file"])
     cookie_jar = shlex.quote(config["cookie_jar"])
     image = shlex.quote(config["image_digest"])
     candidate_name = shlex.quote("marlin-nexus-candidate-" + config["release_id"])
-    base_url = "https://" + config["host"] + ":" + str(config["candidate_port"])
+    base_url = f'https://{config["host"]}:{config["candidate_port"]}'
+    url = lambda path: shlex.quote(base_url + path)
     curl = f"curl --fail --silent --show-error --cacert {ca_file}"
     readiness_curl = f"curl --silent --show-error --cacert {ca_file}"
     return [
         {"name": "inspect-immutable-image", "command": f"docker image inspect --format '{{{{.Id}}}}' {image}"},
         {"name": "inspect-candidate-container", "command": f"docker inspect --format '{{{{.State.Running}}}}' {candidate_name}"},
-        {"name": "health-with-ca", "command": f"{curl} {base_url}/api/health"},
-        {"name": "login-with-ca", "command": f"{curl} -X POST -H 'Content-Type: application/json' --data-binary @{auth_payload} -c {cookie_jar} {base_url}/api/session/login"},
-        {"name": "authenticated-overview-with-ca", "command": f"{curl} -b {cookie_jar} {base_url}/api/overview?year={year}"},
-        {"name": "authenticated-department-analysis-with-ca", "command": f"{curl} -b {cookie_jar} {base_url}/api/department-analysis?year={year}"},
-        {"name": "prewarm-2025", "command": f"{readiness_curl} -b {cookie_jar} {base_url}/api/readiness?year=2025"},
-        {"name": "prewarm-2026", "command": f"{readiness_curl} -b {cookie_jar} {base_url}/api/readiness?year=2026"},
-        {"name": "authenticated-build-info-with-ca", "command": f"{curl} -b {cookie_jar} {base_url}/api/build-info"},
-        {"name": "authenticated-readiness-with-ca", "command": f"{readiness_curl} -b {cookie_jar} {base_url}/api/readiness?year={year}"},
+        {"name": "health-with-ca", "command": f"{curl} {url('/api/health')}"},
+        {"name": "login-with-ca", "command": f"{curl} -X POST -H 'Content-Type: application/json' --data-binary @{auth_payload} -c {cookie_jar} {url('/api/session/login')}"},
+        {"name": "authenticated-overview-with-ca", "command": f"{curl} -b {cookie_jar} {url(f'/api/overview?year={year}')}"},
+        {"name": "authenticated-department-analysis-with-ca", "command": f"{curl} -b {cookie_jar} {url(f'/api/department-analysis?year={year}')}"},
+        {"name": "prewarm-2025", "command": f"{readiness_curl} -b {cookie_jar} {url('/api/readiness?year=2025')}"},
+        {"name": "prewarm-2026", "command": f"{readiness_curl} -b {cookie_jar} {url('/api/readiness?year=2026')}"},
+        {"name": "authenticated-build-info-with-ca", "command": f"{curl} -b {cookie_jar} {url('/api/build-info')}"},
+        {"name": "authenticated-readiness-with-ca", "command": f"{readiness_curl} -b {cookie_jar} {url(f'/api/readiness?year={year}')}"},
     ]
 
 

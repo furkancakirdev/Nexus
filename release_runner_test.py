@@ -11,6 +11,7 @@ from release_runner import (
     validate_runner_config,
     validate_release_gate,
 )
+from release_artifact import validate_release_manifest
 
 
 class ReleaseRunnerContractTests(unittest.TestCase):
@@ -32,6 +33,22 @@ class ReleaseRunnerContractTests(unittest.TestCase):
                 "artifactSha256": "e" * 64,
             },
         }
+
+    def test_python_manifest_rejects_whitespace_padded_identity_and_digests(self):
+        manifest = self._valid_manifest()
+        for field in ("sourceCommit", "imageDigest", "composeConfigHash", "artifactSha256"):
+            candidate = dict(manifest)
+            candidate[field] = f" {manifest[field]} "
+            self.assertIn(
+                {"sourceCommit": "source-commit-invalid", "imageDigest": "image-digest-invalid",
+                 "composeConfigHash": "compose-config-hash-invalid", "artifactSha256": "artifact-digest-invalid"}[field],
+                validate_release_manifest(candidate),
+            )
+        candidate = dict(manifest)
+        candidate["previous"] = {**manifest["previous"], "imageDigest": f" {manifest['previous']['imageDigest']} ", "artifactSha256": f" {manifest['previous']['artifactSha256']} "}
+        errors = validate_release_manifest(candidate)
+        self.assertIn("rollback-manifest-missing", errors)
+        self.assertIn("rollback-artifact-digest-missing", errors)
 
     def test_release_gate_requires_runner_manifest_and_target_capacity(self):
         config = build_runner_config({
@@ -264,7 +281,7 @@ class ReleaseRunnerContractTests(unittest.TestCase):
             "build_version": "2026.09.01",
             "source_commit": "0" * 40,
             "artifact_sha256": "d" * 64,
-            "host_port": 14318,
+            "candidate_port": 14318,
             "state_host_path": "/var/tmp/marlin-nexus-candidate-state",
             "cpm_secret_host_path": "/secure/cpm-credentials.txt",
             "session_secret_source": "/secure/session-secret",
@@ -297,7 +314,7 @@ class ReleaseRunnerContractTests(unittest.TestCase):
             "build_version": "2026.09.01",
             "source_commit": "0" * 40,
             "artifact_sha256": "d" * 64,
-            "host_port": 14318,
+            "candidate_port": 14318,
             "state_host_path": "/var/tmp/candidate-state",
             "cpm_secret_host_path": "/secure/cpm-credentials.txt",
             "session_secret_source": "/secure/session-secret",
@@ -310,8 +327,8 @@ class ReleaseRunnerContractTests(unittest.TestCase):
         }
         for key, value, error in [
             ("image_repository", "marlin-nexus:latest", "candidate-image-repository-invalid"),
-            ("host_port", 4318, "candidate-port-production-collision"),
-            ("host_port", 70000, "candidate-port-invalid"),
+            ("candidate_port", 4318, "candidate-port-production-collision"),
+            ("candidate_port", 70000, "candidate-port-invalid"),
             ("state_host_path", "relative/state", "candidate-state-path-invalid"),
         ]:
             candidate = dict(base)
@@ -369,6 +386,55 @@ class ReleaseRunnerContractTests(unittest.TestCase):
             build_candidate_verification_plan(config, year=2026)
         config["candidate_port"] = "14318"
         with self.assertRaisesRegex(ValueError, "candidate-plan-port-invalid"):
+            build_candidate_verification_plan(config, year=2026)
+
+    def test_candidate_compose_and_verification_contracts_agree_on_port_and_container(self):
+        common = {
+            "release_id": "nexus-20260901-120000",
+            "image_repository": "marlin-nexus-candidate",
+            "image_digest": "sha256:" + "a" * 64,
+            "build_id": "nexus-20260901-120000",
+            "build_version": "2026.09.01",
+            "source_commit": "0" * 40,
+            "artifact_sha256": "d" * 64,
+            "candidate_port": 14318,
+            "state_host_path": "/var/tmp/marlin-nexus-candidate-state",
+            "cpm_secret_host_path": "/secure/cpm-credentials.txt",
+            "session_secret_source": "/secure/session-secret",
+            "admin_identity_source": "/secure/admin-identity",
+            "cpm_server": "192.168.12.17",
+            "cpm_instance": "MARLINSQL",
+            "cpm_database": "Marlin_Uyg",
+            "cpm_company": "01",
+            "public_origin": "https://127.0.0.1:14318",
+        }
+        compose = build_candidate_compose_override(common)
+        plan = build_candidate_verification_plan({
+            "host": "192.168.12.11",
+            "candidate_port": common["candidate_port"],
+            "tls_ca_file": "/secure/marlin-nexus-ca.pem",
+            "auth_payload_file": "/secure/nexus-login.json",
+            "cookie_jar": "/tmp/nexus-candidate.cookies",
+            "image_digest": common["image_digest"],
+            "release_id": common["release_id"],
+        }, year=2026)
+        service = compose["services"]["marlin-profit-sharing"]
+        commands = [step["command"] for step in plan]
+        self.assertEqual(service["ports"], ["127.0.0.1:14318:4318"])
+        self.assertIn("marlin-nexus-candidate-nexus-20260901-120000", commands[1])
+        self.assertTrue(all("https://192.168.12.11:14318" in command for command in commands[2:]))
+
+    def test_candidate_verification_plan_rejects_malformed_host_before_url_construction(self):
+        config = {
+            "host": "192.168.12.11; touch /tmp/pwned",
+            "candidate_port": 14318,
+            "tls_ca_file": "/secure/marlin-nexus-ca.pem",
+            "auth_payload_file": "/secure/nexus-login.json",
+            "cookie_jar": "/tmp/nexus-candidate.cookies",
+            "image_digest": "sha256:" + "a" * 64,
+            "release_id": "nexus-20260901-120000",
+        }
+        with self.assertRaisesRegex(ValueError, "candidate-plan-host-invalid"):
             build_candidate_verification_plan(config, year=2026)
 
     def test_builds_pinned_key_only_transfer_plan_with_remote_digest_check(self):
