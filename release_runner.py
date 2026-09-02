@@ -20,6 +20,12 @@ IMAGE_REPOSITORY = re.compile(r"^[a-z0-9][a-z0-9./_-]*$")
 HOST = re.compile(r"^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(?:\.(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?))*$")
 
 
+def _candidate_name(release_id, error_code):
+    if not isinstance(release_id, str) or not RELEASE_ID.fullmatch(release_id):
+        raise ValueError(error_code)
+    return "marlin-nexus-candidate-" + release_id
+
+
 def build_runner_config(source=None):
     values = dict(os.environ if source is None else source)
     return {
@@ -228,8 +234,7 @@ def build_candidate_compose_override(config):
     missing = [key for key in required if not config.get(key)]
     if missing:
         raise ValueError("candidate-compose-missing:" + ",".join(missing))
-    if not RELEASE_ID.fullmatch(str(config["release_id"])):
-        raise ValueError("candidate-release-id-invalid")
+    candidate_name = _candidate_name(config["release_id"], "candidate-release-id-invalid")
     if not IMAGE_REPOSITORY.fullmatch(str(config["image_repository"])) or ":" in str(config["image_repository"]):
         raise ValueError("candidate-image-repository-invalid")
     if not IMMUTABLE_DIGEST.fullmatch(str(config["image_digest"])):
@@ -250,8 +255,6 @@ def build_candidate_compose_override(config):
         if not is_absolute:
             raise ValueError("candidate-state-path-invalid" if key == "state_host_path" else "candidate-secret-path-invalid")
 
-    release_id = str(config["release_id"])
-    candidate_name = "marlin-nexus-candidate-" + release_id
     service = {
         "image": f'{config["image_repository"]}@{config["image_digest"]}',
         "container_name": candidate_name,
@@ -296,6 +299,7 @@ def build_candidate_verification_plan(config, year):
         raise ValueError("candidate-plan-missing:" + ",".join(missing))
     if not isinstance(config["host"], str) or not HOST.fullmatch(config["host"]):
         raise ValueError("candidate-plan-host-invalid")
+    candidate_name = _candidate_name(config["release_id"], "candidate-plan-release-id-invalid")
     if isinstance(config["candidate_port"], bool) or not isinstance(config["candidate_port"], int):
         raise ValueError("candidate-plan-port-invalid")
     if not 1024 <= config["candidate_port"] <= 65535:
@@ -311,7 +315,7 @@ def build_candidate_verification_plan(config, year):
     auth_payload = shlex.quote(config["auth_payload_file"])
     cookie_jar = shlex.quote(config["cookie_jar"])
     image = shlex.quote(config["image_digest"])
-    candidate_name = shlex.quote("marlin-nexus-candidate-" + config["release_id"])
+    candidate_name = shlex.quote(candidate_name)
     base_url = f'https://{config["host"]}:{config["candidate_port"]}'
     url = lambda path: shlex.quote(base_url + path)
     curl = f"curl --fail --silent --show-error --cacert {ca_file}"

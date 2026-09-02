@@ -424,6 +424,41 @@ class ReleaseRunnerContractTests(unittest.TestCase):
         self.assertIn("marlin-nexus-candidate-nexus-20260901-120000", commands[1])
         self.assertTrue(all("https://192.168.12.11:14318" in command for command in commands[2:]))
 
+    def test_candidate_compose_and_verification_reject_invalid_release_id(self):
+        compose_config = {
+            "release_id": "nexus/20260901",
+            "image_repository": "marlin-nexus-candidate",
+            "image_digest": "sha256:" + "a" * 64,
+            "build_id": "nexus-20260901-120000",
+            "build_version": "2026.09.01",
+            "source_commit": "0" * 40,
+            "artifact_sha256": "d" * 64,
+            "candidate_port": 14318,
+            "state_host_path": "/var/tmp/marlin-nexus-candidate-state",
+            "cpm_secret_host_path": "/secure/cpm-credentials.txt",
+            "session_secret_source": "/secure/session-secret",
+            "admin_identity_source": "/secure/admin-identity",
+            "cpm_server": "192.168.12.17",
+            "cpm_instance": "MARLINSQL",
+            "cpm_database": "Marlin_Uyg",
+            "cpm_company": "01",
+            "public_origin": "https://127.0.0.1:14318",
+        }
+        plan_config = {
+            "host": "192.168.12.11",
+            "candidate_port": 14318,
+            "tls_ca_file": "/secure/marlin-nexus-ca.pem",
+            "auth_payload_file": "/secure/nexus-login.json",
+            "cookie_jar": "/tmp/nexus-candidate.cookies",
+            "image_digest": compose_config["image_digest"],
+            "release_id": compose_config["release_id"],
+        }
+
+        with self.assertRaisesRegex(ValueError, "candidate-release-id-invalid"):
+            build_candidate_compose_override(compose_config)
+        with self.assertRaisesRegex(ValueError, "candidate-plan-release-id-invalid"):
+            build_candidate_verification_plan(plan_config, year=2026)
+
     def test_candidate_verification_plan_rejects_malformed_host_before_url_construction(self):
         config = {
             "host": "192.168.12.11; touch /tmp/pwned",
