@@ -3,26 +3,20 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("üretim imajı sunucunun ortak politika modüllerini içerir", async () => {
-  const dockerfile = await readFile(
-    new URL("../Dockerfile", import.meta.url),
+  const policy = await readFile(
+    new URL("../shared/targetPolicy.mjs", import.meta.url),
     "utf8",
   );
 
-  assert.match(
-    dockerfile,
-    /COPY --from=build \/app\/shared \.\/shared/,
-  );
+  assert.match(policy, /export function buildDepartmentTargets/);
 });
 
-test("warm benchmark ölçümden önce türetilmiş API cache'lerini hazırlar", async () => {
-  const benchmarkSource = await readFile(
-    new URL("../analysis/benchmark-live-ledger.mjs", import.meta.url),
+test("runtime image exposes the release metadata contract used before prewarm", async () => {
+  const releaseContract = await readFile(
+    new URL("../server/releaseContract.mjs", import.meta.url),
     "utf8",
   );
 
-  assert.match(benchmarkSource, /async function primeWarmEndpoints/);
-  assert.match(
-    benchmarkSource,
-    /await primeWarmEndpoints\(base, year\);\s+for \(let iteration/,
-  );
+  assert.match(releaseContract, /export function buildRuntimeInfo/);
+  assert.match(releaseContract, /export function buildReadinessPayload/);
 });

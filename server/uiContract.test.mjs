@@ -19,6 +19,15 @@ test("Katkı ve Performans sayfası menüden yönlendirmeden ve görünüm ayar�
   assert.doesNotMatch(appSource, /Katkı\s*&amp;\s*Performans/);
 });
 
+test("Inventory research is reachable from the main navigation", async () => {
+  const appSource = await source("src/App.jsx");
+  const gateSource = await source("src/sessionGate.js");
+
+  assert.match(appSource, /import \{ InventoryResearchPage \} from "\.\/InventoryResearchPage"/);
+  assert.match(gateSource, /page: "inventory", label: "Stok Araştırması"/);
+  assert.match(appSource, /effectivePage === "inventory"/);
+});
+
 test("departman satırı tam evrak ve aktör kanıtını görünür kılar", async () => {
   const departmentSource = await source("src/DepartmentAnalysisPage.jsx");
 
@@ -62,12 +71,73 @@ test("CPM Denetim ilk görünümü ekonomik karar kolonlarına odaklanır", asyn
   assert.match(auditSource, /colSpan="7"/);
   assert.match(styles, /\.audit-table__profit[\s\S]*position:\s*sticky/);
   assert.match(styles, /\.audit-table__validation[\s\S]*position:\s*sticky/);
+  assert.match(styles, /\.audit-table__cost[\s\S]*position:\s*sticky/);
+  assert.match(styles, /\.audit-table__cost\s*\{[^}]*right:\s*265px/);
+  assert.match(styles, /\.audit-filters\s*\{[^}]*grid-template-columns:\s*minmax\(0,2fr\)\s+repeat\(6,minmax\(0,1fr\)\)\s+auto/);
+  assert.match(styles, /\.audit-filters\s*\{[^}]*min-width:\s*0/);
+  assert.match(styles, /\.audit-workspace\s*\{[^}]*overflow:\s*hidden/);
+  assert.match(auditSource, /audit-table-top-scroll/);
+  assert.match(auditSource, /auditTableTopScrollRef/);
+  assert.match(auditSource, /kapsam dışı dahil/);
+  assert.match(auditSource, /excludedNetAmount/);
+  assert.match(styles, /:root\[data-theme="dark"\] \.audit-table td strong/);
+  assert.match(styles, /:root\[data-theme="dark"\] \.audit-table td strong[^}]*color:\s*#dbe8f5/);
+  assert.match(styles, /:root\[data-theme="dark"\] \.audit-table td small/);
   assert.match(
     styles,
     /\.audit-table thead \.audit-table__profit,[\s\S]{0,240}?position:\s*static/,
   );
   assert.match(auditSource, /aria-expanded=\{expanded===row\.id\}/);
   assert.match(auditSource, /aria-controls=\{`audit-detail-\$\{row\.id\}`\}/);
+});
+
+test("CPM Denetim kapsam dışı farkı iki ondalıkla gösterir", async (t) => {
+  const vite = await createServer({ configFile: resolve(process.cwd(), "vite.config.mjs") });
+  t.after(() => vite.close());
+  const audit = await vite.ssrLoadModule("/src/AuditPage.jsx");
+
+  assert.equal(audit.formatPreciseMoney(617127.456), "617.127,46 TL");
+  assert.equal(audit.formatPreciseMoney(-0.01), "−0,01 TL");
+});
+
+test("Stok hareketi belge kanıtı ile finansal maliyet doğrulamasını ayrı gösterir", async (t) => {
+  const vite = await createServer({ configFile: resolve(process.cwd(), "vite.config.mjs") });
+  t.after(() => vite.close());
+  const inventory = await vite.ssrLoadModule("/src/InventoryResearchPage.jsx");
+
+  assert.deepEqual(inventory.getFinancialValidationLabel({
+    verificationStatus: "verified",
+    financeV2: { costStatus: "review" },
+  }), { document: "Belge: Doğrulandı", cost: "Maliyet: İnceleme gerekli" });
+  assert.deepEqual(inventory.getFinancialValidationLabel({
+    verificationStatus: "verified",
+    financeV2: { costStatus: "covered" },
+  }), { document: "Belge: Doğrulandı", cost: "Maliyet: Kapsandı" });
+});
+
+test("doğrulanmamış stok kaynağı araştırma verisini resmi WAC'tan ayırır", async (t) => {
+  const vite = await createServer({ configFile: resolve(process.cwd(), "vite.config.mjs") });
+  t.after(() => vite.close());
+  const inventory = await vite.ssrLoadModule("/src/InventoryResearchPage.jsx");
+
+  assert.deepEqual(inventory.getInventorySourceNotice({ status: "missing" }), {
+    title: "Resmi stok/WAC kaynağı doğrulanmadı",
+    message: "Aşağıdaki satırlar yalnızca denetim araştırmasıdır; resmi WAC, maliyet ve kâr havuzuna dahil değildir.",
+  });
+  assert.equal(inventory.getInventorySourceNotice({ status: "verified" }), null);
+  assert.equal(inventory.getInventorySourceBadge({ mode: "unavailable", rows: [{ id: "movement-1" }] }), "CPM hareket araştırması · WAC kapalı");
+  assert.equal(inventory.getInventorySourceBadge({ mode: "unavailable", rows: [] }), "Kaynak kullanılamıyor");
+  assert.equal(inventory.buildOpeningEvidenceUrl(2026, 20), "/api/research/inventory-opening-evidence?year=2026&sampleLimit=20");
+  assert.match(await readFile(resolve(process.cwd(), "src/InventoryResearchPage.jsx"), "utf8"), /current\.openingEvidenceDiagnostics/);
+});
+
+test("Departman uzlaşma farkının TRY tabanını açıkça etiketler", async (t) => {
+  const vite = await createServer({ configFile: resolve(process.cwd(), "vite.config.mjs") });
+  t.after(() => vite.close());
+  const department = await vite.ssrLoadModule("/src/DepartmentAnalysisPage.jsx");
+
+  assert.equal(department.formatReconciliationDifference(0, "EUR"), "TRY net fark 0 TL");
+  assert.equal(department.formatReconciliationDifference(null, "EUR"), "Uzlaşma kanıtı bekleniyor");
 });
 
 test("departman belge defteri filtrelerini server pagination sözleşmesine taşır", async () => {
@@ -113,6 +183,79 @@ test("Task 3 visual contract uses theme-safe chart colors, separated values, and
   assert.match(styles, /\.topbar\s*>\s*\*[^}]*min-width:\s*0/);
   assert.match(styles, /\.brand__copy\s*\{[^}]*display:\s*grid/s);
   assert.match(styles, /\.brand__copy\s+small\s*\{[^}]*display:\s*block/s);
+});
+
+test("critical light-theme panels keep readable interactive text in dark mode", async () => {
+  const styles = await source("src/styles.css");
+
+  assert.match(styles, /\.inventory-product\s*\{[^}]*appearance:\s*none/s);
+  assert.match(styles, /\.inventory-product\s*\{[^}]*background:\s*var\(--surface\)[^}]*color:\s*var\(--ink\)/s);
+  assert.match(styles, /:root\[data-theme="dark"\]\s+\.inventory-product\s*\{[^}]*background:\s*var\(--surface\)[^}]*color:\s*var\(--ink\)/s);
+  assert.match(styles, /\.inventory-product\s+strong\s*\{[^}]*margin-right:\s*0\.35rem/s);
+  assert.match(styles, /:root\[data-theme="dark"\]\s+\.summary-attention\s*,[\s\S]*?:root\[data-theme="dark"\]\s+\.summary-attention\s+\.attention-list\s+button\s*\{[^}]*background:\s*var\(--surface\)[^}]*color:\s*var\(--ink\)/s);
+});
+
+test("live shell exposes logout and preserves independent appearance toggles", async () => {
+  const appSource = await source("src/App.jsx");
+
+  assert.match(appSource, /apiFetch\("\/api\/session\/logout"/);
+  assert.match(appSource, /IconLogout/);
+  assert.match(appSource, /aria-label="Çıkış yap"/);
+  assert.match(appSource, /setAppearance\(\(current\) => \(\{ \.\.\.current, highContrast: event\.target\.checked \}\)\)/);
+  assert.match(appSource, /setAppearance\(\(current\) => \(\{ \.\.\.current, reducedMotion: event\.target\.checked \}\)\)/);
+});
+
+test("mobile shell keeps appearance and logout controls reachable", async () => {
+  const styles = await source("src/styles.css");
+  assert.match(styles, /\.topbar\s*>\s*\.icon-button\s*\{[^}]*display:\s*inline-flex/);
+});
+
+test("sales KPI grid uses the responsive sales layout contract", async () => {
+  const salesSource = await source("src/SalesPage.jsx");
+  assert.match(salesSource, /<section className="control-kpis sales-kpis">/);
+});
+
+test("sales currency basket remains renderable when the live payload omits review scope", async (t) => {
+  const vite = await createServer({ configFile: resolve(process.cwd(), "vite.config.mjs") });
+  t.after(() => vite.close());
+  const sales = await vite.ssrLoadModule("/src/SalesPage.jsx");
+
+  assert.deepEqual(sales.normalizeCurrencyBasket({}), {
+    EUR: { lineCount: 0 }, USD: { lineCount: 0 }, GBP: { lineCount: 0 },
+    TRY: { lineCount: 0 }, INCELEME: { lineCount: 0 },
+  });
+  assert.deepEqual(sales.normalizeCurrencyBasket({ EUR: { lineCount: 2 } }), {
+    EUR: { lineCount: 2 },
+    USD: { lineCount: 0 },
+    GBP: { lineCount: 0 },
+    TRY: { lineCount: 0 },
+    INCELEME: { lineCount: 0 },
+  });
+  assert.deepEqual(sales.normalizeCurrencyBasket({ INCELEME: { lineCount: 3 } }), {
+    EUR: { lineCount: 0 },
+    USD: { lineCount: 0 },
+    GBP: { lineCount: 0 },
+    TRY: { lineCount: 0 },
+    INCELEME: { lineCount: 3 },
+  });
+});
+
+test("dark audit surfaces keep KPI and expanded detail text readable", async () => {
+  const styles = await source("src/styles.css");
+  assert.match(styles, /:root\[data-theme="dark"\] \.audit-kpis article strong[^}]*color:\s*var\(--ink\)/);
+  assert.match(styles, /:root\[data-theme="dark"\] \.audit-detail-row td[^}]*background:\s*var\(--surface\)[^}]*color:\s*var\(--ink\)/);
+  assert.match(styles, /:root\[data-theme="dark"\] \.audit-detail-grid strong[^}]*color:\s*var\(--ink\)/);
+  assert.match(styles, /:root\[data-theme="dark"\] \.audit-detail-grid small[^}]*color:\s*var\(--muted\)/);
+});
+
+test("inventory evidence label does not claim completion without a selected product", async (t) => {
+  const vite = await createServer({ configFile: resolve(process.cwd(), "vite.config.mjs") });
+  t.after(() => vite.close());
+  const inventory = await vite.ssrLoadModule("/src/InventoryResearchPage.jsx");
+
+  assert.equal(inventory.getInventoryEvidenceLabel({ selected: null, reviewCount: 0 }), "Ürün seçilmedi");
+  assert.equal(inventory.getInventoryEvidenceLabel({ selected: { code: "P-1" }, reviewCount: 0 }), "Kanıt zinciri tamam");
+  assert.equal(inventory.getInventoryEvidenceLabel({ selected: { code: "P-1" }, reviewCount: 2 }), "2 kanıt incelenecek");
 });
 
 test("Task 3 charts render semantic legends outside image wrappers and consume spacing classes", async (t) => {
@@ -164,6 +307,21 @@ test("Summary renders an explicit overview error instead of pilot or empty chart
   assert.doesNotMatch(markup, /Aylık grafik için veri bulunamadı/);
 });
 
+test("Inventory research labels opening diagnostics as sample-scoped", async (t) => {
+  const vite = await createServer({ configFile: resolve(process.cwd(), "vite.config.mjs") });
+  t.after(() => vite.close());
+  const inventory = await vite.ssrLoadModule("/src/InventoryResearchPage.jsx");
+
+  assert.equal(
+    inventory.getOpeningEvidenceScopeLabel({ scope: "sample", sampleLimit: 5 }),
+    "Örneklem tanısı · en fazla 5 satır",
+  );
+  assert.equal(
+    inventory.getOpeningEvidenceScopeLabel({ scope: "full" }),
+    "Açılış kanıtı tanısı",
+  );
+});
+
 test("Department semantic legend follows the visible chart series and chart presence", async (t) => {
   const vite = await createServer({ configFile: resolve(process.cwd(), "vite.config.mjs") });
   t.after(() => vite.close());
@@ -185,6 +343,57 @@ test("Department semantic legend follows the visible chart series and chart pres
 
   const initialMarkup = renderToStaticMarkup(React.createElement(department.DepartmentAnalysisPage, { year: 2026, mode: "demo" }));
   assert.doesNotMatch(initialMarkup, /class="chart-legend"/);
+});
+
+test("authenticated navigation follows capability boundaries and guards direct routes", async (t) => {
+  const vite = await createServer({ configFile: resolve(process.cwd(), "vite.config.mjs") });
+  t.after(() => vite.close());
+  const gate = await vite.ssrLoadModule("/src/sessionGate.js");
+  const operational = { role: "operational", capabilities: ["operations:read"] };
+  const reporting = { role: "reporting", capabilities: ["reporting:read"] };
+  const admin = { role: "admin", capabilities: ["reporting:read", "operations:read", "approvals:manage", "settings:manage"] };
+
+  assert.deepEqual(gate.navItemsFor(operational).map((item) => item.page), ["inventory"]);
+  assert.equal(gate.canAccessPage(operational, "summary"), false);
+  assert.equal(gate.canAccessPage(operational, "inventory"), true);
+  assert.equal(gate.canAccessPage(reporting, "summary"), true);
+  assert.equal(gate.canAccessPage(reporting, "settings"), false);
+  assert.equal(gate.canAccessPage(admin, "settings"), true);
+  assert.equal(gate.firstAccessiblePage(operational, "summary"), "inventory");
+});
+
+test("overview response policy never substitutes pilot finance data for blocked or empty responses", async (t) => {
+  const vite = await createServer({ configFile: resolve(process.cwd(), "vite.config.mjs") });
+  t.after(() => vite.close());
+  const gate = await vite.ssrLoadModule("/src/sessionGate.js");
+  const blocked = gate.overviewStateForResponse({ ok: false, status: 403, payload: { error: "forbidden" } });
+  const unavailable = gate.overviewStateForResponse({ ok: false, status: 503, payload: { error: "unavailable" } });
+  const empty = gate.overviewStateForResponse({ ok: true, status: 200, payload: { rows: [], mode: "demo" } });
+
+  for (const state of [blocked, unavailable, empty]) {
+    assert.deepEqual(state.rows, []);
+    assert.deepEqual(state.eurRateSets, {});
+    assert.equal(state.canonicalMetric, null);
+    assert.equal(JSON.stringify(state).includes("1.025.450.000"), false);
+    assert.equal(JSON.stringify(state).includes("Pilot veri"), false);
+  }
+  assert.equal(blocked.mode, "blocked");
+  assert.equal(unavailable.mode, "error");
+  assert.equal(empty.mode, "empty");
+});
+
+test("policy modal open guard is idempotent across single and rapid repeated activation", async (t) => {
+  const vite = await createServer({ configFile: resolve(process.cwd(), "vite.config.mjs") });
+  t.after(() => vite.close());
+  const gate = await vite.ssrLoadModule("/src/sessionGate.js");
+  const guard = gate.createIdempotentOpenGuard();
+
+  assert.equal(guard.open(), true);
+  assert.equal(guard.open(), false);
+  assert.equal(guard.isOpen(), true);
+  guard.close();
+  assert.equal(guard.isOpen(), false);
+  assert.equal(guard.open(), true);
 });
 
 test("Department delivery-depot chart and semantic legend share theme tokens", async (t) => {

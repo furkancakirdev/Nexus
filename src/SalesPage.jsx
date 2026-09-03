@@ -34,12 +34,20 @@ const eurFormat = new Intl.NumberFormat("tr-TR", { style: "currency", currency: 
 const percent = (value) => value === null || value === undefined ? "—" : `%${Number(value).toFixed(1).replace(".", ",")}`;
 const formatMoney = (value) => value === null || value === undefined || !Number.isFinite(value) ? "—" : `${money.format(Math.round(value))} TL`;
 const formatEur = (value) => value === null || value === undefined || !Number.isFinite(value) ? "—" : eurFormat.format(Math.round(value));
+const sumNullable = (...values) => values.every((value) => Number.isFinite(value)) ? values.reduce((sum, value) => sum + value, 0) : null;
 // EUR karşılığı yoksa (demo/bağlantısız mod) TL gösterimine düşer.
 const formatReportMoney = (row, field, fallback) => {
+  if (["cost", "profit"].includes(field) && row?.canonicalMetric && row.canonicalMetric.status !== "TAMAM") return "—";
   const eurValue = row?.eurEquivalent?.[field];
   if (typeof eurValue === "number" && Number.isFinite(eurValue)) return formatEur(eurValue);
   return formatMoney(fallback);
 };
+
+export function normalizeCurrencyBasket(basket = {}) {
+  return Object.fromEntries([
+    "EUR", "USD", "GBP", "TRY", "INCELEME",
+  ].map((currency) => [currency, { lineCount: 0, ...(basket?.[currency] || {}) }]));
+}
 
 function CustomSalesTooltip({ active, payload, label, moneyFormatter = formatMoney }) {
   if (!active || !payload?.length) return null;
@@ -71,6 +79,7 @@ function CustomSalesTooltip({ active, payload, label, moneyFormatter = formatMon
 export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80, eurRateSets = {}, canonicalMetric = null }) {
   const [view, setView] = useState("all");
   const [sort, setSort] = useState("month");
+  const [showSecondaryMetrics, setShowSecondaryMetrics] = useState(false);
 
   const normalizedRows = useMemo(() => {
     return rows.map((row) => {
@@ -140,14 +149,15 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
   }, [normalizedRows, view, sort, minimumCoverage]);
 
   const totals = useMemo(() => {
+    const canonicalTotals = projectCanonicalMetric(canonicalMetric, "TRY");
     const base = {
       grossSales: canonicalMetric?.grossSales ?? null,
       returns: canonicalMetric?.returns ?? null,
       discounts: canonicalMetric?.discounts ?? null,
-      netSales: canonicalMetric?.try?.netSales ?? null,
-      v2Cost: canonicalMetric?.try?.cost ?? null,
+      netSales: canonicalTotals.netSales,
+      v2Cost: canonicalTotals.cost,
       uncoveredNetSales: canonicalMetric?.scope?.costReview?.netSales ?? null,
-      profit: canonicalMetric?.try?.profit ?? null,
+      profit: canonicalTotals.profit,
       lineCount: canonicalMetric?.evidence?.coveredLines ?? null,
       costCoveredLines: canonicalMetric?.evidence?.coveredLines ?? null,
       eurNetSales: canonicalMetric?.eur?.complete ? canonicalMetric.eur.netSales : null,
@@ -156,7 +166,7 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
       eurHasAny: canonicalMetric?.eur?.complete === true && canonicalMetric?.status === "TAMAM",
     };
 
-    const overallMargin = canonicalMetric?.scope?.comparable?.margin ?? null;
+    const overallMargin = canonicalTotals.margin;
     const overallCoverage = canonicalMetric?.costCoveragePct ?? null;
     const eurOverallMargin = canonicalMetric?.eur?.complete ? canonicalMetric.eurMargin : null;
 
@@ -177,7 +187,7 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
 
   // Döviz sepetleri: tüm ayların byCurrency toplamları. EUR/USD/GBP/TRY
   // doğrudan toplanmaz; her sepet kendi dövizinde raporlanır.
-  const currencyBasket = canonicalMetric?.byCurrency || { INCELEME: { lineCount: 0 } };
+  const currencyBasket = normalizeCurrencyBasket(canonicalMetric?.byCurrency);
 
   const eurActive = canonicalMetric?.eur?.complete === true && canonicalMetric?.status === "TAMAM";
   const reportMoney = eurActive ? formatEur : formatMoney;
@@ -214,8 +224,8 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
         <p className="eur-rate-note" role="note">{weekendNote}</p>
       )}
 
-      {/* Top V2 KPI Grid */}
-      <section className="control-kpis sales-kpis-grid">
+      {/* Ana KPI'lar; ikincil metrikler aşağıdaki açılır gruptadır. */}
+      <section className="control-kpis sales-kpis">
         <article>
           <span><IconChartBar size={22} /></span>
           <div>
@@ -230,7 +240,7 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
           <div>
             <small>İadeler ve İskontolar</small>
             <strong style={{ color: "var(--red)" }}>
-              −{formatMoney(totals.returns + totals.discounts)}
+              {sumNullable(totals.returns, totals.discounts) == null ? "—" : `−${formatMoney(sumNullable(totals.returns, totals.discounts))}`}
             </strong>
             <p>
               İade {formatMoney(totals.returns)} · İskonto {formatMoney(totals.discounts)}
@@ -256,37 +266,42 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
           </div>
         </article>
 
-        <article>
-          <span className="green"><IconTrendingUp size={22} /></span>
-          <div>
-            <small>Esas Brüt Kâr{eurActive ? " · EUR" : ""}</small>
-            <strong style={{ color: "var(--green)" }}>
-              {eurActive ? formatEur(totals.eurProfit) : formatMoney(totals.profit)}
-            </strong>
-            <p>Net kâr marjı {percent(eurActive ? totals.eurOverallMargin : totals.overallMargin)}</p>
-          </div>
-        </article>
+        <div className="sales-kpis__secondary" hidden={!showSecondaryMetrics}>
+          <article>
+            <span className="green"><IconTrendingUp size={22} /></span>
+            <div>
+              <small>Esas Brüt Kâr{eurActive ? " · EUR" : ""}</small>
+              <strong style={{ color: "var(--green)" }}>
+                {eurActive ? formatEur(totals.eurProfit) : formatMoney(totals.profit)}
+              </strong>
+              <p>Net kâr marjı {percent(eurActive ? totals.eurOverallMargin : totals.overallMargin)}</p>
+            </div>
+          </article>
 
-        <article>
-          <span className="amber"><IconFileInvoice size={22} /></span>
-          <div>
-            <small>Ortalama Liste Brüt Marjı</small>
-            <strong style={{ color: "var(--amber)" }}>
-              {totals.avgProductListMargin == null ? "—" : percent(totals.avgProductListMargin)}
-            </strong>
-            <p>Perakende fiyat − döviz maliyeti</p>
-          </div>
-        </article>
+          <article>
+            <span className="amber"><IconFileInvoice size={22} /></span>
+            <div>
+              <small>Ortalama Liste Brüt Marjı</small>
+              <strong style={{ color: "var(--amber)" }}>
+                {totals.avgProductListMargin == null ? "—" : percent(totals.avgProductListMargin)}
+              </strong>
+              <p>Perakende fiyat − döviz maliyeti</p>
+            </div>
+          </article>
 
-        <article>
-          <span className="blue"><IconShieldCheck size={22} /></span>
-          <div>
-            <small>Maliyet / Kur Kapsamı</small>
-            <strong>{percent(totals.overallCoverage)}</strong>
-            <p>{money.format(totals.costCoveredLines)} / {money.format(totals.lineCount)} satır</p>
-          </div>
-        </article>
+          <article>
+            <span className="blue"><IconShieldCheck size={22} /></span>
+            <div>
+              <small>Maliyet / Kur Kapsamı</small>
+              <strong>{percent(totals.overallCoverage)}</strong>
+              <p>{money.format(totals.costCoveredLines)} / {money.format(totals.lineCount)} satır</p>
+            </div>
+          </article>
+        </div>
       </section>
+      <button className="sales-kpis__toggle" type="button" aria-expanded={showSecondaryMetrics} onClick={() => setShowSecondaryMetrics((value) => !value)}>
+        {showSecondaryMetrics ? "Daha az metrik göster" : "İkincil metrikleri göster"}
+      </button>
 
       {/* Main Dual-Axis Chart & Category Breakdown Grid */}
       <section className="sales-charts-layout">

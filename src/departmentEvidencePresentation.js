@@ -22,6 +22,7 @@ const ACTOR_NAMES = Object.freeze({
   CAN: "Can Belikırık",
   EERDOGAN: "Emre Erdoğan",
   EMRE: "Emre Erdoğan",
+  MAYAZ: "Metin Ayaz",
 });
 
 export function normalizeActorCode(value) {

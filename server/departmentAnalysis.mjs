@@ -353,9 +353,12 @@ export function buildDepartmentAnalysis({
     const financeV2 = usesLedger && economic.financeV2 && typeof economic.financeV2 === "object"
       ? economic.financeV2
       : null;
+    const financeV2CostReady = !financeV2
+      || financeV2.costStatus == null
+      || financeV2.costStatus === "covered";
     const evidenceCost = usesLedger
       ? financeV2
-        ? financeV2.reviewReason == null
+        ? financeV2CostReady && financeV2.reviewReason == null
           ? nullableNumber(financeV2.lineCostTryExVat)
           : null
         : nullableNumber(economic.lineCost)
@@ -534,7 +537,20 @@ export function buildDepartmentAnalysis({
       };
     });
   const ownerRows = normalized.filter((row) => row.attributionStatus !== "review" && !row.batchRisk && row.commercialOwner);
-  const ownerTotals = topGroups(ownerRows, (row) => ({
+  const performanceOwnerRows = ownerRows.filter((row) => (
+    row.attributionStatus === "confirmed"
+    && row.ownershipEvidence?.identityMappingRequired !== true
+  ));
+  const ownerTotals = topGroups(performanceOwnerRows, (row) => ({
+    id: row.commercialOwner,
+    name: row.commercialOwnerName,
+    code: row.commercialOwner,
+    department: row.department,
+    departmentName: row.departmentName,
+    active: row.ownerActive,
+    location: row.ownerLocation,
+  }), Number.MAX_SAFE_INTEGER);
+  const ownerEvidenceTotals = topGroups(ownerRows, (row) => ({
     id: row.commercialOwner,
     name: row.commercialOwnerName,
     code: row.commercialOwner,
@@ -544,6 +560,7 @@ export function buildDepartmentAnalysis({
     location: row.ownerLocation,
   }), Number.MAX_SAFE_INTEGER);
   const ownerAssignedNetSales = ownerRows.reduce((sum, row) => sum + row.netSales, 0);
+  const ownerPerformanceNetSales = performanceOwnerRows.reduce((sum, row) => sum + row.netSales, 0);
 
   return {
     year,
@@ -560,6 +577,7 @@ export function buildDepartmentAnalysis({
       sourceOrderCoveragePct: total.netSales ? sourceOrderAmount / total.netSales * 100 : 0,
       reviewAmount,
       ownerAssignedNetSales,
+      ownerPerformanceNetSales,
       ownerUnassignedNetSales: total.netSales - ownerAssignedNetSales,
       unassignedReviewAmount: departments.find((item) => item.id === "review")?.netSales || 0,
       hintedReviewAmount,
@@ -568,7 +586,7 @@ export function buildDepartmentAnalysis({
       testDocuments: [...TEST_DOCUMENTS],
       firstRealPilotDetected: realPilotOrders.length > 0,
     },
-    topOwners: topGroups(normalized.filter((row) => row.attributionStatus !== "review" && !row.batchRisk), (row) => ({
+    topOwners: topGroups(performanceOwnerRows, (row) => ({
       id: row.commercialOwner || row.commercialOwnerName,
       name: row.commercialOwnerName,
       code: row.commercialOwner,
@@ -578,6 +596,7 @@ export function buildDepartmentAnalysis({
       location: row.ownerLocation,
     }), 10),
     ownerTotals,
+    ownerEvidenceTotals,
     topProducts: topGroups(normalized, (row) => ({ id: row.productCode, name: row.productName, code: row.productCode, brand: row.brandName }), 10),
     topCustomers: topGroups(normalized, (row) => ({ id: row.customerCode, name: row.customerName, code: row.customerCode }), 10),
     depotMatrix: ["service", "parts", "review"].flatMap((department) => ["MRK", "YTM", "—"].map((depot) => {

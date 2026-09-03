@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   IconAlertTriangle, IconChevronDown, IconChevronLeft, IconChevronRight, IconChevronUp,
   IconCircleCheck, IconDatabase, IconDownload, IconFileInvoice, IconFilter, IconSearch,
@@ -7,6 +7,7 @@ import {
 import { DOCUMENT_TYPE_LABELS } from "./departmentEvidencePresentation.js";
 
 const money = new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 2 });
+const preciseMoney = new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const integer = new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 0 });
 const months = ["Tümü", "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
 const documentTypes = DOCUMENT_TYPE_LABELS;
@@ -33,6 +34,7 @@ function configuredRate(method, rates) {
 
 function signed(value, isSale) { return Number(value || 0) * (isSale ? 1 : -1); }
 function formatMoney(value) { return `${Number(value || 0) < 0 ? "−" : ""}${money.format(Math.abs(Number(value || 0)))} TL`; }
+export function formatPreciseMoney(value) { return `${Number(value || 0) < 0 ? "−" : ""}${preciseMoney.format(Math.abs(Number(value || 0)))} TL`; }
 
 export function AuditPage({ year, mode, refreshToken = 0, pilotCardCostRates, settings, costOverrides = [], onSaveCostOverrides }) {
   const [filters, setFilters] = useState(initialFilters);
@@ -44,6 +46,30 @@ export function AuditPage({ year, mode, refreshToken = 0, pilotCardCostRates, se
   const [exporting, setExporting] = useState(false);
   const [expanded, setExpanded] = useState(null);
   const [costEditor, setCostEditor] = useState(null);
+  const auditTableTopScrollRef = useRef(null);
+  const auditTableScrollRef = useRef(null);
+
+  useEffect(() => {
+    const topScroll = auditTableTopScrollRef.current;
+    const tableScroll = auditTableScrollRef.current;
+    if (!topScroll || !tableScroll) return undefined;
+    let syncing = false;
+    const sync = (source, target) => {
+      if (syncing) return;
+      syncing = true;
+      target.scrollLeft = source.scrollLeft;
+      syncing = false;
+    };
+    const syncTop = () => sync(topScroll, tableScroll);
+    const syncTable = () => sync(tableScroll, topScroll);
+    topScroll.addEventListener("scroll", syncTop, { passive: true });
+    tableScroll.addEventListener("scroll", syncTable, { passive: true });
+    topScroll.scrollLeft = tableScroll.scrollLeft;
+    return () => {
+      topScroll.removeEventListener("scroll", syncTop);
+      tableScroll.removeEventListener("scroll", syncTable);
+    };
+  }, [data.rows.length]);
 
   useEffect(() => {
     const timer = setTimeout(() => { setDebouncedSearch(filters.search.trim()); setPage(1); }, 350);
@@ -176,7 +202,7 @@ export function AuditPage({ year, mode, refreshToken = 0, pilotCardCostRates, se
     <section className="page-heading audit-heading"><div><p className="eyebrow">Finansal izlenebilirlik</p><h1>CPM Denetim Merkezi</h1><p>Hesaplamaya giren, oranla değerlendirilen, dışlanan ve inceleme bekleyen tüm belge satırlarını doğrulayın.</p></div><span className={`source-badge source-badge--${mode}`}>{mode === "live" ? "CPM canlı · salt okunur" : "Veri kullanılamıyor"}</span></section>
 
     <section className="audit-kpis">
-      <article><span><IconFileInvoice /></span><div><small>Filtrelenen satır</small><strong>{integer.format(data.summary?.totalRows || 0)}</strong><p>{integer.format(data.summary?.filteredNetAmount || 0)} TL net hareket</p></div></article>
+      <article><span><IconFileInvoice /></span><div><small>Filtrelenen satır</small><strong>{integer.format(data.summary?.totalRows || 0)}</strong><p>{integer.format(data.summary?.filteredNetAmount || 0)} TL net hareket · kapsam dışı dahil</p><small>Kapsam dışı: {formatPreciseMoney(data.summary?.excludedNetAmount || 0)}</small></div></article>
       <article><span className="green"><IconCircleCheck /></span><div><small>Doğrulanan</small><strong>{integer.format((data.summary?.verifiedRows || 0) + (data.summary?.configuredRows || 0))}</strong><p>{integer.format(data.summary?.verifiedRows || 0)} fatura · {integer.format(data.summary?.configuredRows || 0)} oran</p></div></article>
       <article><span className="amber"><IconAlertTriangle /></span><div><small>İnceleme / iade kontrolü</small><strong>{integer.format(data.summary?.reviewRows || 0)}</strong><p>{integer.format(data.summary?.returnRiskRows || 0)} satırda müşteri iadesi maliyetten ayıklandı</p></div></article>
       <article><span><IconShieldCheck /></span><div><small>Kapsam dışı</small><strong>{integer.format(data.summary?.excludedRows || 0)}</strong><p>Kâra ve havuza alınmaz</p></div></article>
@@ -195,7 +221,8 @@ export function AuditPage({ year, mode, refreshToken = 0, pilotCardCostRates, se
         {activeFilterCount > 0 && <button className="clear-filter" onClick={resetFilters}><IconX size={15} /> Temizle ({activeFilterCount})</button>}
       </div>
 
-      <div className="table-scroll audit-table-wrap"><table className="audit-table"><thead><tr>
+      <div className="audit-table-top-scroll" ref={auditTableTopScrollRef} tabIndex="0" aria-label="Denetim tablosunda yatay kaydırma" aria-controls="audit-table-scroll"><div /></div>
+      <div className="table-scroll audit-table-wrap" ref={auditTableScrollRef} id="audit-table-scroll"><table className="audit-table"><thead><tr>
         <th aria-label="Detay" /><th>Belge</th><th>Stok / hizmet</th>
         <th>Satış net<small>KDV hariç</small></th>
         <th className="audit-table__cost">Satır maliyeti<small>KDV hariç</small></th>

@@ -51,6 +51,9 @@ export const DEFAULT_IDENTITIES = Object.freeze({
   CAN: {
     name: "Can Belikırık", department: "parts", location: "Merkez Ofis", active: true,
   },
+  MAYAZ: {
+    name: "Metin Ayaz", department: "parts", location: "Merkez Ofis", active: true,
+  },
   EERDOGAN: {
     name: "Emre Erdoğan", department: "parts", location: "Merkez Ofis", active: true,
   },

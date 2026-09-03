@@ -5,6 +5,13 @@ import { calculateDepartmentDistribution } from "./distribution";
 
 const money = new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 0 });
 const compact = new Intl.NumberFormat("tr-TR", { notation: "compact", maximumFractionDigits: 1 });
+const formatAmount = (value) => value == null ? "—" : money.format(value);
+const sumField = (rows, field) => {
+  const values = rows.map((row) => row[field]);
+  return values.some((value) => value == null || !Number.isFinite(Number(value)))
+    ? null
+    : values.reduce((sum, value) => sum + Number(value), 0);
+};
 
 export function AccessibleChartLegend({ label, items }) {
   return <ul className="chart-legend" aria-label={label}>{items.map((item) => <li key={item.name}><i aria-hidden="true" style={{ background: item.color }} /><span>{item.name}</span></li>)}</ul>;
@@ -15,7 +22,7 @@ export function SummaryPage({ rows, settings, employees, targetRows, annualPool,
   const [startMonth,setStartMonth]=useState(1);
   const [endMonth,setEndMonth]=useState(12);
   const isLoading = mode === "loading";
-  const isError = mode === "error";
+  const isError = mode === "error" || mode === "blocked";
   const effectiveRows = isLoading || isError ? [] : rows;
   const effectiveTargetRows = isLoading || isError ? [] : targetRows;
   const distributionResult = useMemo(
@@ -27,26 +34,31 @@ export function SummaryPage({ rows, settings, employees, targetRows, annualPool,
     [employees, settings, effectiveTargetRows],
   );
   const distribution = distributionResult.employees;
-  const chartRows = effectiveRows.map((row) => ({ ...row, profit: row.profit ?? (row.sales - row.returns - row.discounts - row.estimatedCost - (row.uncoveredNetSales || 0)) }));
-  const totals = chartRows.reduce((acc, row) => ({ sales: acc.sales + row.sales, profit: acc.profit + row.profit }), { sales: 0, profit: 0 });
+  const chartRows = effectiveRows.map((row) => ({ ...row, profit: row.profit ?? null }));
+  const totals = { sales: sumField(chartRows, "sales") ?? 0, profit: sumField(chartRows, "profit") };
   const eligible = distribution.filter((employee) => employee.eligible).length;
   const reviewPeriods = effectiveRows.filter((row) => Number(row.uncoveredCostLines || 0) > 0);
   const targetMonths = effectiveTargetRows.filter((row) => row.target > 0);
   const metTargetMonths = targetMonths.filter((row) => row.band !== "none");
   const reportRows=chartRows.filter((row)=>row.month>=startMonth&&row.month<=endMonth);
-  const reportTotals=reportRows.reduce((acc,row)=>({sales:acc.sales+row.sales,returns:acc.returns+row.returns,discounts:acc.discounts+row.discounts,cost:acc.cost+row.estimatedCost,profit:acc.profit+row.profit}),{sales:0,returns:0,discounts:0,cost:0,profit:0});
-  const bestProfit=[...reportRows].sort((a,b)=>b.profit-a.profit)[0];
-  const worstProfit=[...reportRows].sort((a,b)=>a.profit-b.profit)[0];
+  const reportTotals={sales:sumField(reportRows,"sales"),returns:sumField(reportRows,"returns"),discounts:sumField(reportRows,"discounts"),cost:sumField(reportRows,"cost"),profit:sumField(reportRows,"profit")};
+  const rankedProfitRows=reportRows.filter((row)=>row.profit != null);
+  const bestProfit=[...rankedProfitRows].sort((a,b)=>b.profit-a.profit)[0];
+  const worstProfit=[...rankedProfitRows].sort((a,b)=>a.profit-b.profit)[0];
   const firstName=reportRows[0]?.monthName||"—"; const lastName=reportRows.at(-1)?.monthName||"—";
   const narratives={
-    management:`${year} ${firstName}–${lastName} döneminde ${money.format(reportTotals.sales)} TL brüt satış ve ${money.format(reportTotals.profit)} TL dağıtıma esas ${reportTotals.profit>=0?"kâr":"zarar"} oluştu. En güçlü kâr ayı ${bestProfit?.monthName||"—"} (${money.format(bestProfit?.profit||0)} TL), en düşük sonuç ${worstProfit?.monthName||"—"} (${money.format(worstProfit?.profit||0)} TL) oldu.`,
-    sales:`Seçilen dönemde brüt satış ${money.format(reportTotals.sales)} TL oldu. ${money.format(reportTotals.returns)} TL iade ve ${money.format(reportTotals.discounts)} TL iskonto sonrasında net satış ${money.format(reportTotals.sales-reportTotals.returns-reportTotals.discounts)} TL olarak gerçekleşti.`,
-    profit:`Seçilen dönemde ${money.format(reportTotals.profit)} TL esas ${reportTotals.profit>=0?"kâr":"zarar"} oluştu. En yüksek sonuç ${bestProfit?.monthName||"—"}, en düşük sonuç ${worstProfit?.monthName||"—"} ayında kaydedildi.`,
-    cost:`Seçilen dönemin hesaplanan maliyeti ${money.format(reportTotals.cost)} TL oldu. Maliyet/net satış oranı %${reportTotals.sales?((reportTotals.cost/(reportTotals.sales-reportTotals.returns-reportTotals.discounts))*100).toFixed(1).replace(".",","):0}.`,
-    discount:`Seçilen dönemde ${money.format(reportTotals.discounts)} TL iskonto ve ${money.format(reportTotals.returns)} TL satış iadesi oluştu. Toplam ticari düşüş brüt satışın %${reportTotals.sales?(((reportTotals.discounts+reportTotals.returns)/reportTotals.sales)*100).toFixed(1).replace(".",","):0} seviyesindedir.`,
+    management:`${year} ${firstName}–${lastName} döneminde ${formatAmount(reportTotals.sales)} TL brüt satış ve ${formatAmount(reportTotals.profit)} TL dağıtıma esas sonuç oluştu. En güçlü kâr ayı ${bestProfit?.monthName||"—"} (${formatAmount(bestProfit?.profit)} TL), en düşük sonuç ${worstProfit?.monthName||"—"} (${formatAmount(worstProfit?.profit)} TL) oldu.`,
+    sales:`Seçilen dönemde brüt satış ${formatAmount(reportTotals.sales)} TL oldu. ${formatAmount(reportTotals.returns)} TL iade ve ${formatAmount(reportTotals.discounts)} TL iskonto sonrasında net satış ${reportTotals.sales == null || reportTotals.returns == null || reportTotals.discounts == null ? "—" : formatAmount(reportTotals.sales-reportTotals.returns-reportTotals.discounts)} TL olarak gerçekleşti.`,
+    profit:`Seçilen dönemde ${formatAmount(reportTotals.profit)} TL dağıtıma esas sonuç oluştu. En yüksek sonuç ${bestProfit?.monthName||"—"}, en düşük sonuç ${worstProfit?.monthName||"—"} ayında kaydedildi.`,
+    cost:`Seçilen dönemin hesaplanan maliyeti ${formatAmount(reportTotals.cost)} TL oldu.`,
+    discount:`Seçilen dönemde ${formatAmount(reportTotals.discounts)} TL iskonto ve ${formatAmount(reportTotals.returns)} TL satış iadesi oluştu.`,
   };
 
-  const stateText = isLoading ? "Yönetici özeti verileri yükleniyor…" : "Yönetici özeti verileri okunamadı. Canlı veya pilot veri gösterilmiyor.";
+  const stateText = isLoading
+    ? "Yönetici özeti verileri yükleniyor…"
+    : mode === "blocked"
+      ? "Bu yönetici özetini görme yetkiniz yok. Finansal veri gösterilmiyor."
+      : "Yönetici özeti verileri okunamadı. Canlı veya pilot veri gösterilmiyor.";
   return <main className="page summary-page" id="top">
     <section className="page-heading summary-heading"><div><p className="eyebrow">Yönetim özeti</p><h1>Havuz Genel Bakış</h1><p>{year} performansını, departman hedeflerini ve havuz oluşumunu tek ekranda izleyin.</p></div><span className={`source-badge source-badge--${mode}`}>{mode === "live" ? "CPM canlı" : mode === "demo" ? "Pilot veri" : mode === "loading" ? "Veri yükleniyor" : "Veri kullanılamıyor"}</span></section>
     {(isLoading || isError) && <div className={`report-state report-state--${isError ? "error" : "loading"}`} role={isError ? "alert" : "status"} aria-live="polite">{stateText}</div>}

@@ -35,6 +35,21 @@ test("scoped secret artifacts are clean after removal", async () => {
   assert.deepEqual(findings, []);
 });
 
+test("deployment helpers do not contain embedded credentials or TLS bypasses", async () => {
+  const paths = ["deploy.py", "deploy_check.py", ...Array.from({ length: 13 }, (_, index) => `schema_probe${index + 9}.cjs`)];
+  const files = [];
+  for (const relativePath of paths) {
+    try {
+      files.push({ path: relativePath, contents: await readFile(join(root, relativePath), "utf8") });
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+  }
+
+  const findings = detectSecurityFindings(files);
+  assert.deepEqual(findings, []);
+});
+
 test("CPM preflight fails closed without explicit read-only identity and effective permissions", () => {
   assert.equal(evaluateCpmReadOnlyPreflight({}).allowed, false);
   assert.equal(evaluateCpmReadOnlyPreflight({ configuredReadOnly: true }).reason, "missing-read-only-identity");

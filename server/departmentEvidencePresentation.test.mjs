@@ -25,6 +25,7 @@ test("ticari ve muhasebe aktörlerini tam isimle gösterir", () => {
   assert.equal(actorDisplayName("EMRE"), "Emre Erdoğan");
   assert.equal(actorDisplayName("EERDOGAN"), "Emre Erdoğan");
   assert.equal(actorDisplayName("BIRCAN"), "Bircan Çolak");
+  assert.equal(actorDisplayName("MAYAZ"), "Metin Ayaz");
   assert.equal(actorDisplayName("bilinmeyen"), "Tanımsız kullanıcı (BILINMEYEN)");
   assert.equal(actorDisplayName(""), "Belirsiz aktör");
 });

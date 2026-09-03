@@ -6,6 +6,7 @@ import {
   capabilitiesForRole,
   authorizeCapability,
 } from "./capabilities.mjs";
+import { buildFinalInvoiceLedger } from "./finalInvoiceLedger.mjs";
 import { createApp } from "./index.mjs";
 
 const PASSWORDS = {
@@ -62,6 +63,99 @@ async function startApp() {
   return { server, baseUrl: `http://127.0.0.1:${server.address().port}` };
 }
 
+async function startInventoryContractApp() {
+  const ledger = buildFinalInvoiceLedger({
+    economics: [],
+    lineage: [],
+    actorEvents: [],
+    pilotOrders: [],
+  });
+  const app = createApp({
+    auth: { secret: "inventory-contract-test-secret", identityProvider: identityProvider() },
+    stateStore: stateStore(),
+    ledgerService: {
+      async get() {
+        return { value: ledger };
+      },
+    },
+    healthHandler: (_request, response) => response.json({ healthy: true }),
+    staticRoot: null,
+  });
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise((resolve) => server.once("listening", resolve));
+  return { server, baseUrl: `http://127.0.0.1:${server.address().port}` };
+}
+
+function parityRow(overrides = {}) {
+  return {
+    rootId: overrides.rootId || "PARITY-1",
+    documentType: 85,
+    documentNo: overrides.documentNo || "PARITY-1",
+    documentDate: "2026-01-10T00:00:00.000Z",
+    customerCode: "C-PARITY",
+    customerName: "Parity müşterisi",
+    productCode: overrides.productCode || "P-PARITY",
+    productName: "Parity ürünü",
+    quantity: 1,
+    isSale: true,
+    grossAmount: 1000,
+    discountAmount: 0,
+    netAmount: 1000,
+    signedNetSales: 1000,
+    lineCost: 400,
+    costMethod: "priorPurchase",
+    financeV2: {
+      lineCostTryExVat: 400,
+      costStatus: "covered",
+      productCurrency: "TRY",
+      reviewReason: null,
+    },
+    ...overrides,
+  };
+}
+
+async function startParityApp() {
+  const ledger = {
+    rows: [
+      parityRow(),
+      parityRow({
+        rootId: "PARITY-2",
+        documentNo: "PARITY-2",
+        documentDate: "2026-02-10T00:00:00.000Z",
+        productCode: "P-PARITY-USD",
+        financeV2: {
+          lineCostTryExVat: 320,
+          costStatus: "covered",
+          productCurrency: "USD",
+          reviewReason: null,
+        },
+        documentSellingRate: 40,
+        signedNetSales: 800,
+        netAmount: 800,
+        grossAmount: 800,
+        lineCost: 320,
+      }),
+    ],
+    exchangeRates: [
+      { rateDate: "2026-01-31", rateCurrency: "EUR", halkbankBuyingRate: 40, halkbankSellingRate: 40.2 },
+      { rateDate: "2026-01-31", rateCurrency: "USD", halkbankBuyingRate: 80, halkbankSellingRate: 80.2 },
+      { rateDate: "2026-02-28", rateCurrency: "EUR", halkbankBuyingRate: 50, halkbankSellingRate: 50.2 },
+      { rateDate: "2026-02-28", rateCurrency: "USD", halkbankBuyingRate: 100, halkbankSellingRate: 100.2 },
+    ],
+    totals: { netSales: 1800 },
+  };
+  const app = createApp({
+    auth: { secret: "parity-contract-test-secret", identityProvider: identityProvider() },
+    stateStore: stateStore(),
+    ledgerService: { async get() { return { value: ledger, ledgerVersion: "parity", generatedAt: "fixture", cache: { status: "hit" } }; } },
+    healthHandler: (_request, response) => response.json({ healthy: true }),
+    staticRoot: null,
+  });
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise((resolve) => server.once("listening", resolve));
+  return { server, baseUrl: `http://127.0.0.1:${server.address().port}` };
+}
+
 async function login(baseUrl, role) {
   const response = await fetch(`${baseUrl}/api/session/login`, {
     method: "POST",
@@ -100,14 +194,21 @@ test("role isolation authenticates sessions and restricts reporting, operations,
   t.after(() => new Promise((resolve) => server.close(resolve)));
 
   assert.equal((await fetch(`${baseUrl}/api/overview`)).status, 401);
-  assert.equal((await fetch(`${baseUrl}/api/health`)).status, 401);
+  assert.equal((await fetch(`${baseUrl}/api/health`)).status, 200);
   for (const route of ["/api/sales-cases", "/api/inventory-research"]) {
+    assert.equal((await fetch(`${baseUrl}${route}`)).status, 401);
+  }
+  for (const route of ["/api/build-info", "/api/readiness?year=2026"]) {
     assert.equal((await fetch(`${baseUrl}${route}`)).status, 401);
   }
 
   const reporting = await login(baseUrl, "reporting");
   assert.equal(reporting.response.status, 200);
   assert.equal((await fetch(`${baseUrl}/api/overview`, { headers: { cookie: reporting.cookie } })).status, 200);
+  assert.equal((await fetch(`${baseUrl}/api/build-info`, { headers: { cookie: reporting.cookie } })).status, 200);
+  const readiness = await fetch(`${baseUrl}/api/readiness?year=2026`, { headers: { cookie: reporting.cookie } });
+  assert.equal(readiness.status, 200);
+  assert.equal((await readiness.json()).ready, false);
   for (const route of ["/api/sales-cases", "/api/inventory-research"]) {
     assert.equal((await fetch(`${baseUrl}${route}`, { headers: { cookie: reporting.cookie } })).status, 403);
   }
@@ -153,4 +254,57 @@ test("logout clears the injected session and session read is authenticated", asy
   assert.equal(logout.status, 200);
   assert.equal(logout.headers.getSetCookie().length, 2);
   assert.equal((await fetch(`${baseUrl}/api/session`)).status, 401);
+});
+
+test("inventory source contract reaches readiness and inventory research API boundaries", async (t) => {
+  const { server, baseUrl } = await startInventoryContractApp();
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+
+  const session = await login(baseUrl, "admin");
+  const headers = { cookie: session.cookie };
+
+  const readinessResponse = await fetch(`${baseUrl}/api/readiness?year=2026`, { headers });
+  assert.equal(readinessResponse.status, 200);
+  const readiness = await readinessResponse.json();
+  assert.equal(readiness.inventorySource.status, "missing");
+  assert.equal(readiness.inventorySource.financialStatus, "blocked");
+  assert.equal(readiness.inventorySource.reviewReason, "inventory-movement-source-not-collected");
+  assert.ok(readiness.blockers.includes("inventory-source-not-verified"));
+  assert.ok(readiness.blockers.includes("official-cost-coverage-insufficient"));
+
+  const inventoryResponse = await fetch(`${baseUrl}/api/inventory-research?year=2026`, { headers });
+  assert.equal(inventoryResponse.status, 200);
+  const inventory = await inventoryResponse.json();
+  assert.equal(inventory.readOnly, true);
+  assert.equal(inventory.mode, "unavailable");
+  assert.equal(inventory.inventorySource.status, "missing");
+  assert.equal(inventory.inventorySource.evidence.status, "not-collected");
+  assert.equal(inventory.openingEvidenceDiagnostics.status, "not-available");
+  assert.equal(inventory.currentStock.reason, "current-stock-source-not-verified");
+});
+
+test("overview and department API projections preserve multi-currency annual EUR parity", async (t) => {
+  const { server, baseUrl } = await startParityApp();
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const session = await login(baseUrl, "admin");
+  const headers = { cookie: session.cookie };
+
+  const [overviewResponse, departmentResponse] = await Promise.all([
+    fetch(`${baseUrl}/api/overview?year=2026`, { headers }),
+    fetch(`${baseUrl}/api/department-analysis?year=2026`, { headers }),
+  ]);
+  assert.equal(overviewResponse.status, 200);
+  assert.equal(departmentResponse.status, 200);
+  const overview = await overviewResponse.json();
+  const department = await departmentResponse.json();
+
+  assert.equal(overview.readOnly, true);
+  assert.equal(department.readOnly, true);
+  assert.equal(overview.ledgerVersion, department.ledgerVersion);
+  assert.equal(overview.canonicalMetric.try.netSales, department.totals.canonicalMetric.try.netSales);
+  assert.equal(overview.canonicalMetric.eur.netSales, 60);
+  assert.equal(department.totals.canonicalMetric.eur.netSales, 60);
+  assert.equal(department.totals.canonicalMetric.eur.profit, 36);
+  assert.equal(department.totals.canonicalMetric.eur.margin, 60);
+  assert.equal(department.reconciliation.difference, 0);
 });

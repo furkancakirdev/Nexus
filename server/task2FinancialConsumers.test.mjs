@@ -72,6 +72,28 @@ test("F-018 audit projections expose canonical calculated cost and signed gross 
   assert.equal(result.rows[0].grossProfit, 600);
 });
 
+test("audit rows expose the same attribution status contract used by owner totals", () => {
+  const result = filterAuditLedger({ rows: [row({ attributionConfidence: "inferred" })] });
+  assert.equal(result.rows[0].attributionStatus, "inferred");
+});
+
+test("audit source filters distinguish final invoices, transferred sales, and returns", () => {
+  const result = filterAuditLedger({ rows: [
+    row({ rootId: "final", documentType: 85, documentNo: "SF-FINAL" }),
+    row({ rootId: "transferred", documentType: 17, documentNo: "SF-TRANSFERRED" }),
+    row({ rootId: "return", documentType: 18, documentNo: "SR-RETURN", isSale: false, signedNetSales: -100 }),
+  ] });
+
+  assert.equal(result.rows.filter((item) => item.revenueSource === "invoice").length, 1);
+  assert.equal(result.rows.filter((item) => item.revenueSource === "provisional").length, 1);
+  assert.equal(result.rows.filter((item) => item.revenueSource === "return").length, 1);
+  assert.equal(filterAuditLedger({ rows: [
+    row({ rootId: "final", documentType: 85, documentNo: "SF-FINAL" }),
+    row({ rootId: "transferred", documentType: 17, documentNo: "SF-TRANSFERRED" }),
+    row({ rootId: "return", documentType: 18, documentNo: "SR-RETURN", isSale: false, signedNetSales: -100 }),
+  ] }, { source: "provisional" }).summary.totalRows, 1);
+});
+
 test("F-019 department margin is null when canonical denominator is zero", () => {
   const result = buildDepartmentAnalysis({
     year: 2026,
@@ -109,6 +131,44 @@ test("F-018 audit projections fail closed for review and excluded evidence", () 
   assert.equal(review.rows[0].grossProfit, null);
   assert.equal(excluded.rows[0].calculatedCost, null);
   assert.equal(excluded.rows[0].grossProfit, null);
+});
+
+test("overview does not count an explicit review cost as covered V2 evidence", () => {
+  const result = buildOverviewRows({ rows: [row({
+    financeV2: { costStatus: "review", reviewReason: null, lineCostTryExVat: 400, productCurrency: "TRY" },
+  })] })[0];
+
+  assert.equal(result.canonicalMetric.status, "INCELEME");
+  assert.equal(result.canonicalMetric.scope.confirmed.lines, 0);
+  assert.equal(result.v2CostCoveredLines, 0);
+  assert.equal(result.v2ReviewLines, 1);
+});
+
+test("department does not count an explicit review cost as covered evidence", () => {
+  const result = buildDepartmentAnalysis({
+    year: 2026,
+    ledger: { rows: [row({
+      financeV2: { costStatus: "review", reviewReason: null, lineCostTryExVat: 400, productCurrency: "TRY" },
+    })] },
+  });
+  const service = result.departments.find((item) => item.id === "service");
+  assert.equal(service.evidence.coveredLines, 0);
+  assert.equal(service.evidence.reviewLines, 1);
+  assert.equal(service.canonicalMetric.scope.confirmed.lines, 0);
+  assert.equal(service.canonicalMetric.scope.costReview.lines, 1);
+  assert.equal(projectCanonicalMetric(service.canonicalMetric).profit, null);
+});
+
+test("legacy purchase cost is audit-only and cannot be labelled as verified V2 evidence", () => {
+  const result = filterAuditLedger({ rows: [row({
+    lineCost: 55,
+    purchaseNo: "PUR-1",
+    costMethod: "priorPurchase",
+    financeV2: { schemaVersion: 2, costStatus: "review", lineCostTryExVat: null, reviewReason: "movement-source-not-verified" },
+  })] });
+  assert.equal(result.rows[0].verificationStatus, "review");
+  assert.equal(result.rows[0].calculatedCost, null);
+  assert.equal(result.rows[0].grossProfit, null);
 });
 
 test("annual department EUR projection keeps exact period rates", () => {
@@ -177,6 +237,29 @@ test("Reports consumes server projections without consumer-side financial reduce
   assert.match(source, /projections\.summary\?\.dealerNetSales/);
 });
 
+test("Reports projection carries the canonical EUR metric for the same invoice-date evidence", () => {
+  const projection = buildAuditReportProjections(filterAuditLedger({ rows: [row({
+    financeV2: { lineCostTryExVat: 400, costStatus: "covered", productCurrency: "USD", reviewReason: null },
+    documentSellingRate: 40,
+  })] }).rows, {
+    rateSets: { "1": { reportDate: "2026-01-31", eurTryBuyingRate: 40, rates: { USD: { buyingRate: 80 } } } },
+  });
+  const brand = projection.brand[0];
+  assert.equal(brand.canonicalMetric.status, "TAMAM");
+  assert.equal(brand.canonicalMetric.eur.netSales, 50);
+  assert.equal(brand.canonicalMetric.eur.cost, 20);
+  assert.equal(brand.eurEquivalent.profit, 30);
+  assert.equal(brand.eurComplete, true);
+});
+
+test("Reports shows review totals and keeps source-currency baskets separate", async () => {
+  const source = await readFile(new URL("../src/ReportsPage.jsx", import.meta.url), "utf8");
+  assert.match(source, /scope\?\.costReview\?\.netSales/);
+  assert.match(source, /canonicalMetric\?\.byCurrency/);
+  assert.match(source, /İnceleme gerekli.*KDV hariç/s);
+  assert.match(source, /Kaynak dövizi/);
+});
+
 test("Reports receives EUR rate sets from App wiring", async () => {
   const source = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
   assert.match(source, /<ReportsPage[\s\S]*eurRateSets=\{eurRateSets\}/);
@@ -219,6 +302,12 @@ test("selected period and currency reconcile across overview, department, and re
   assert.equal(departmentEur.eurMargin, overviewEur.eurMargin);
 });
 
+test("department EUR projection exposes the canonical EUR margin", async () => {
+  const source = await readFile(new URL("./ledgerApi.mjs", import.meta.url), "utf8");
+  const decorator = source.slice(source.indexOf("const decorateMetricEur"), source.indexOf("analysis.eurRateSet"));
+  assert.match(decorator, /eurEquivalent:\s*canonicalMetric\.eur,[\s\S]{0,180}eurMargin:\s*canonicalMetric\.eurMargin/);
+});
+
 test("critical React consumers read canonical fields without local financial arithmetic", async () => {
   const sources = await Promise.all([
     readFile(new URL("../src/SalesPage.jsx", import.meta.url), "utf8"),
@@ -226,12 +315,26 @@ test("critical React consumers read canonical fields without local financial ari
     readFile(new URL("../src/AuditPage.jsx", import.meta.url), "utf8"),
     readFile(new URL("../src/SummaryPage.jsx", import.meta.url), "utf8"),
     readFile(new URL("../src/ReportsPage.jsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/App.jsx", import.meta.url), "utf8"),
   ]);
   assert.match(sources[0], /topSalesMonth[\s\S]*eurNetSales/);
   assert.match(sources[1], /item\.eurMargin/);
   assert.match(sources[2], /row\.calculatedCost/);
   assert.match(sources[4], /canonicalMetric/);
   assert.doesNotMatch(sources[4], /row\.calculatedCost/);
+  assert.doesNotMatch(sources[3], /estimatedCost/);
+  assert.doesNotMatch(sources[3], /row\.sales\s*-\s*row\.returns/);
+  assert.doesNotMatch(sources[5], /const profit = row\.sales\s*-\s*row\.returns/);
+  assert.match(sources[5], /sumNullable/);
+  assert.doesNotMatch(sources[5], /profit:\s*acc\.profit\s*\+\s*row\.profit/);
   const auditSource = await readFile(new URL("../src/AuditPage.jsx", import.meta.url), "utf8");
   assert.doesNotMatch(auditSource, /row\.calculatedCost\|\|0/);
+});
+
+test("Sales totals do not expose review-only TRY profit as official KPI", async () => {
+  const source = await readFile(new URL("../src/SalesPage.jsx", import.meta.url), "utf8");
+  assert.match(source, /const canonicalTotals = projectCanonicalMetric\(canonicalMetric, "TRY"\);/);
+  assert.match(source, /v2Cost:\s*canonicalTotals\.cost/);
+  assert.match(source, /profit:\s*canonicalTotals\.profit/);
+  assert.match(source, /const overallMargin = canonicalTotals\.margin/);
 });

@@ -129,6 +129,47 @@ test("gross sales and net sales remain separate reconciliation metrics", () => {
   assert.equal(result.totals.netSales, 900);
 });
 
+test("performance owner totals rank only confirmed ownership evidence", () => {
+  const inferredSource = evidence({
+    rootId: 1, documentType: 13, documentNo: "TKL-INFERRED", depth: 1,
+    preparerUser: "MKARA", entryUser: "MKARA",
+  });
+  const confirmedSource = evidence({
+    rootId: 2, documentType: 14, documentNo: "SSP-CONFIRMED", depth: 1,
+    commercialOwner: "FURKAN", departmentCode: "SERVIS",
+  });
+  const result = buildDepartmentAnalysis({
+    year: 2026,
+    economics: [economic({ rootId: 1 }), economic({ rootId: 2, documentNo: "SF-2" })],
+    lineage: [inferredSource, confirmedSource],
+    actorEvents: [actor(inferredSource, "MKARA")],
+  });
+
+  assert.deepEqual(result.ownerTotals.map((item) => item.id), ["FURKAN"]);
+  assert.deepEqual(result.topOwners.map((item) => item.id), ["FURKAN"]);
+  assert.equal(result.ownerEvidenceTotals.some((item) => item.id === "MKARA"), true);
+  assert.equal(result.quality.ownerPerformanceNetSales, 900);
+});
+
+test("mapped MAYAZ evidence is retained for audit but cannot rank as performance without confirmed owner evidence", () => {
+  const source = evidence({
+    documentType: 13, documentNo: "TKL-MAYAZ", depth: 1,
+    preparerUser: "MAYAZ", entryUser: "MAYAZ",
+  });
+  const result = buildDepartmentAnalysis({
+    year: 2026,
+    economics: [economic()],
+    lineage: [source],
+    actorEvents: [actor(source, "MAYAZ")],
+  });
+
+  assert.equal(result.detailRows[0].commercialOwner, "MAYAZ");
+  assert.equal(result.detailRows[0].commercialOwnerName, "Metin Ayaz");
+  assert.equal(result.detailRows[0].ownershipEvidence.identityMappingRequired, false);
+  assert.deepEqual(result.ownerTotals, []);
+  assert.equal(result.ownerEvidenceTotals[0].id, "MAYAZ");
+});
+
 test("former employee mappings remain available for historical attribution", () => {
   const source = evidence({
     documentType: 14, documentNo: "SSP-OLD", depth: 2,
@@ -374,6 +415,6 @@ test("default labor pilot cost matches the Nexus zero-percent setting", () => {
     lineage: [evidence({ preparerUser: "FURKAN", entryUser: "FURKAN" })],
   });
   assert.equal(result.totals.cost, 0);
-  assert.equal(result.totals.profit, 1000);
+  assert.equal(result.totals.profit, 0);
   assert.equal(result.totals.costCoveragePct, 100);
 });

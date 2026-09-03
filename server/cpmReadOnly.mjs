@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { sourceProvenanceByCanonicalIdsSql, sourceProvenanceSql } from "./sourceProvenanceSql.mjs";
+import { cpmMovementCandidateSql, dvzharRateCandidateSql, stkhArType82SampleSql, stkhArType82SummarySql, stkkrtPriceCandidateSql, stksymDevirSampleSql } from "./inventoryOpeningResearchSql.mjs";
 
 const PROHIBITED = new Set([
   "UPDATE", "DELETE", "MERGE", "TRUNCATE", "ALTER", "EXEC", "EXECUTE",
@@ -8,7 +10,16 @@ const PROHIBITED = new Set([
 const PRODUCTION_FINGERPRINTS = Object.freeze({
   "health-database-name": "ac5d97b6cf0381291846c9704e3d148089f8e43926d94b2316a22df3bf8dc180",
   "sales-cases-v1": "1b2f7d7d7df507a1d45bd7d5e43f1f8bd0058f18fbe5ee3e70ef15e481d2e6e7",
-  "final-invoice-ledger-v1": "0573fd329c9142f6d780b5baa322b397d06a13d35076f9798d7cf21a13891e2c",
+  "final-invoice-ledger-v1": "764f8e73266c648f5f1341c03516e68012a8f508aefcfb109fe7aaaf6c8be11d",
+  "source-provenance-candidates-v1": "8e5079912142ed04df94904d2b895d8f7a7802cddc390aa9c8567aa65b25e504",
+  "source-provenance-canonical-ids-v1": "a07fcaca27f54d3a521874a9821931b1c17e57012cff62def25221d9625b7416",
+  "inventory-opening-stkhar-sample-v1": "2fb9be95d8e9fd89dc2a629f5267e644022401b8f5d0a31887a75bcda09c41b5",
+  "inventory-opening-stkhar-summary-v1": "7399f16660720fffec59857c9df50618bef83a4eed6c335d0887e1be426f0f27",
+  "inventory-opening-stksym-sample-v1": "e49d14e69871a3014b2d91228129578f350c73d8eef54135149495c517614cdd",
+  "inventory-opening-stksym-summary-v1": "63d7153af44591c834d6937ebda05f9a85051be749fdb106282a72fba0bf064b",
+  "inventory-movement-candidate-v1": "403be366afc3a68c64758153892d7e37085709ce3dd5d19cd5b1e90a83c47048",
+  "exchange-rate-candidate-v1": "c95d7d6c082fb056811120210db8e1ed92c60d68854ff7cceae3714557a09ad6",
+  "historical-price-candidate-v1": "6acc76d5749cd93dbc3e36e9458c913423cabafe8db85560de89c36d6fcca1e0",
 });
 
 function policyError(reason) {

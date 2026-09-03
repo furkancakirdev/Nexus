@@ -3,9 +3,16 @@ import {
   excludedTestAudit,
   isExcludedTestDocument,
 } from "./testDocumentRegistry.mjs";
+import { attachOfficialMovementCosts } from "../shared/financialCostModel.mjs";
 
 export const FINAL_SALE_TYPES = new Set([17, 85, 91]);
 export const FINAL_RETURN_TYPES = new Set([18]);
+const DEFAULT_INVENTORY_SOURCE = {
+  status: "missing",
+  financialStatus: "blocked",
+  reviewReason: "inventory-movement-source-not-collected",
+  evidence: { status: "not-collected" },
+};
 
 const LINEAGE_DOCUMENT_TYPES = new Set([13, 14, 15, 17, 18, 64, 85, 91]);
 const TERMINAL_CONSUMPTION_LINEAGE_TYPE_VALUES = Object.freeze([13, 14, 15, 17, 64, 85, 91]);
@@ -1167,6 +1174,9 @@ export function isTerminalEconomicRow(row, downstreamRows = []) {
  * @param {Object[]} [input.lineage]
  * @param {Object[]} [input.actorEvents]
  * @param {Object[]} [input.pilotOrders]
+ * @param {Object[]} [input.exchangeRates]
+ * @param {Map} [input.marginObservationsByStockKey]
+ * @param {Map} [input.observationByMovementId]
  * @param {Record<string, Object>} [input.identities]
  */
 export function buildFinalInvoiceLedger({
@@ -1174,6 +1184,10 @@ export function buildFinalInvoiceLedger({
   lineage = [],
   actorEvents = [],
   pilotOrders = [],
+  exchangeRates = [],
+  inventorySource,
+  marginObservationsByStockKey = new Map(),
+  observationByMovementId = new Map(),
   identities = {},
 } = {}) {
   const economicRows = Array.isArray(economics) ? economics : [];
@@ -1252,11 +1266,20 @@ export function buildFinalInvoiceLedger({
     });
     return { ...row, ...linkedReturnOwnership(row, original, directOwnership) };
   });
+  const ledgerRows = Array.isArray(inventorySource?.movements)
+    ? attachOfficialMovementCosts({
+      source: inventorySource,
+      economicRows: rows,
+      movements: inventorySource.movements,
+      marginObservationsByStockKey,
+      observationByMovementId,
+    })
+    : rows;
   const returnCostQuarantines = returnCostResolutions
     .map((resolution) => resolution.quarantine)
     .filter(Boolean);
-  const salesRows = rows.filter((row) => row.isSale);
-  const returnRows = rows.filter((row) => !row.isSale);
+  const salesRows = ledgerRows.filter((row) => row.isSale);
+  const returnRows = ledgerRows.filter((row) => !row.isSale);
   const sum = (items, field) => items.reduce((total, row) => total + number(row[field]), 0);
   const invalidFinancialFieldCounts = Object.fromEntries(FINANCIAL_FIELDS.map((field) => [field, 0]));
   for (const validation of invalidFinancialRows) {
@@ -1276,19 +1299,28 @@ export function buildFinalInvoiceLedger({
   const includedPilotOrders = pilotRows.filter((row) => !isExcludedTestDocument(row));
 
   return {
-    rows,
+    inventorySource: inventorySource && typeof inventorySource === "object"
+      ? {
+        ...inventorySource,
+        evidence: inventorySource.evidence && typeof inventorySource.evidence === "object"
+          ? { ...inventorySource.evidence }
+          : {},
+      }
+      : { ...DEFAULT_INVENTORY_SOURCE, evidence: { ...DEFAULT_INVENTORY_SOURCE.evidence } },
+    exchangeRates: Array.isArray(exchangeRates) ? exchangeRates.map((row) => ({ ...row })) : [],
+    rows: ledgerRows,
     totals: {
       grossSales: sum(salesRows, "grossAmount"),
       returns: sum(returnRows, "netAmount"),
       discounts: sum(salesRows, "discountAmount"),
-      netSales: sum(rows, "signedNetSales"),
-      vatAmount: sum(rows, "signedVatAmount"),
-      invoiceTotalInclVat: sum(rows, "signedInvoiceTotalInclVat"),
-      rowCount: rows.length,
+      netSales: sum(ledgerRows, "signedNetSales"),
+      vatAmount: sum(ledgerRows, "signedVatAmount"),
+      invoiceTotalInclVat: sum(ledgerRows, "signedInvoiceTotalInclVat"),
+      rowCount: ledgerRows.length,
     },
     quality: {
       candidateRows: economicRows.length,
-      terminalRows: rows.length,
+      terminalRows: ledgerRows.length,
       invalidRowsExcluded: economicRows.length - structurallyValidRows.length + invalidFinancialRows.length,
       invalidStructuralRows: economicRows.length - structurallyValidRows.length,
       invalidFinancialRows: invalidFinancialRows.length,

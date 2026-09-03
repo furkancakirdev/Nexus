@@ -135,6 +135,19 @@ test("missing cost and missing document rate are fail-closed review rows", () =>
   assert.equal(result.evidence.reviewLines, 2);
 });
 
+test("explicit review cost status cannot be promoted by a finite legacy-looking cost", () => {
+  const result = aggregateFinancialMetric([coveredRow({
+    financeV2: { costStatus: "review", reviewReason: null, lineCostTryExVat: 200, lineCostCurrencyExVat: 8 },
+  })], { rateSets: RATE_SETS });
+
+  assert.equal(result.status, "INCELEME");
+  assert.equal(result.evidence.coveredLines, 0);
+  assert.equal(result.evidence.reviewLines, 1);
+  assert.equal(result.scope.confirmed.lines, 0);
+  assert.equal(result.scope.review.cost, 200);
+  assert.equal(result.eur.complete, false);
+});
+
 test("missing period rate evidence is fail-closed review without EUR leakage", () => {
   const result = aggregateFinancialMetric([coveredRow({ period: "2026-03" })], { rateSets: RATE_SETS });
   assert.equal(result.status, "INCELEME");

@@ -12,10 +12,43 @@ import {
 import { createLedgerService } from "./ledgerService.mjs";
 import { createApprovalRouter } from "./approvalApi.mjs";
 import { createStateStore } from "./stateStore.mjs";
-import { executeSqlReadWithDeadlockRetry } from "./sqlReadRetry.mjs";
 import { serializeSettings } from "../shared/settingsPolicy.mjs";
 import { createAuth } from "./auth.mjs";
 import { authorizeCapability, CAPABILITIES } from "./capabilities.mjs";
+import { buildReadinessPayload, buildRuntimeInfo } from "./releaseContract.mjs";
+import { buildCpmConnectionConfig } from "./cpmConnectionConfig.mjs";
+import { executeCpmReadOnlyQuery } from "./cpmReadOnly.mjs";
+import { withReadOnlyCpmTransaction } from "./cpmTransaction.mjs";
+import { executeSqlReadWithDeadlockRetry } from "./sqlReadRetry.mjs";
+import { collectCpmSourceProvenance } from "./cpmProvenance.mjs";
+import { sourceProvenanceSql } from "./sourceProvenanceSql.mjs";
+import { buildInventoryOpeningResearchPayload } from "./inventoryOpeningResearch.mjs";
+import { buildComparableYearWacResearch } from "./inventoryResearchApi.mjs";
+import {
+  buildCpmWacMovementCandidates,
+  summarizeCpmMovementCandidates,
+} from "./inventoryMovementSource.mjs";
+import {
+  buildCpmExchangeRateCandidates,
+  DEFAULT_HALK_BANK_CODE,
+} from "./cpmRateSource.mjs";
+import { buildHistoricalFinancialEvidence } from "../shared/historicalFinancialEvidence.mjs";
+import { cpmMovementCandidateSql, dvzharRateCandidateSql, stkhArType82SampleSql, stkhArType82SummarySql, stkkrtPriceCandidateSql, stksymDevirSampleSql, stksymDevirSummarySql } from "./inventoryOpeningResearchSql.mjs";
+
+export function normalizeStoredAppState(state) {
+  const prototype = state !== null && typeof state === "object"
+    ? Object.getPrototypeOf(state)
+    : null;
+  if (
+    !state
+    || typeof state !== "object"
+    || Array.isArray(state)
+    || (prototype !== Object.prototype && prototype !== null)
+  ) return {};
+  return state.settings === null
+    ? { ...state, settings: undefined }
+    : state;
+}
 
 export function createApp({
   auth: authOptions,
@@ -54,22 +87,7 @@ async function getPool() {
   const credentials = await getCredentials();
   if (!credentials) return null;
 
-  poolPromise = sql.connect({
-    server: process.env.CPM_SQL_SERVER || "192.168.12.17",
-    database: process.env.CPM_SQL_DATABASE || "Marlin_Uyg",
-    user: credentials.user,
-    password: credentials.password,
-    connectionTimeout: 8_000,
-    requestTimeout: 90_000,
-    options: {
-      instanceName: process.env.CPM_SQL_INSTANCE || "MARLINSQL",
-      encrypt: true,
-      trustServerCertificate: false,
-      readOnlyIntent: true,
-      appName: "Marlin Nexus ReadOnly",
-    },
-    pool: { min: 0, max: 4, idleTimeoutMillis: 10_000 },
-  }).catch((error) => {
+  poolPromise = sql.connect(buildCpmConnectionConfig({ credentials })).catch((error) => {
     poolPromise = undefined;
     throw error;
   });
@@ -99,22 +117,224 @@ async function getSalesCaseModel(year, forceRefresh = false) {
 async function loadFinalInvoiceLedger(year) {
   const pool = await getPool();
   if (!pool) return null;
-  const result = await executeSqlReadWithDeadlockRetry(() => pool.request()
-    .input("company", sql.VarChar(3), process.env.CPM_SQL_COMPANY || "01")
-    .input("year", sql.Int, year)
-    .query(finalInvoiceLedgerSql));
+  const company = process.env.CPM_SQL_COMPANY || "01";
+  const startDate = new Date(Date.UTC(year, 0, 1));
+  const endDate = new Date(Date.UTC(year + 1, 0, 1));
+  const movementStartDate = new Date(process.env.CPM_INVENTORY_START_DATE || "2022-12-31T00:00:00.000Z");
+  if (!Number.isFinite(movementStartDate.getTime())) throw new Error("CPM_INVENTORY_START_DATE geçersiz.");
+  const result = await executeSqlReadWithDeadlockRetry(() => withReadOnlyCpmTransaction({
+    transactionFactory: async () => new sql.Transaction(pool),
+    isolationLevel: sql.ISOLATION_LEVEL.READ_COMMITTED,
+    executeRead: executeCpmReadOnlyQuery,
+    run: async ({ request, execute }) => {
+      request.input("company", sql.VarChar(3), company);
+      request.input("year", sql.Int, year);
+      request.input("movementStartDate", sql.DateTime2, movementStartDate);
+      const ledger = await execute({ queryId: "final-invoice-ledger-v1", query: finalInvoiceLedgerSql });
+      // Tarihsel WAC/fiyat/kur kanıtı seçili yılın başında kesilmez; hareket
+      // tohumundan rapor dönemi sonuna kadar aynı salt-okunur işlemde okunur.
+      request.input("startDate", sql.DateTime2, movementStartDate);
+      request.input("endDate", sql.DateTime2, endDate);
+      for (const [name, value] of [
+        ["openingDocumentType", 81], ["purchaseDocumentType", 9],
+        ["purchase609DocumentType", 609], ["sale17DocumentType", 17],
+        ["sale85DocumentType", 85], ["sale91DocumentType", 91], ["returnDocumentType", 18],
+      ]) request.input(name, sql.Int, value);
+      const movementCandidates = await execute({ queryId: "inventory-movement-candidate-v1", query: cpmMovementCandidateSql });
+      request.input("bankCode", sql.Int, Number(process.env.CPM_RATE_BANK_CODE || DEFAULT_HALK_BANK_CODE));
+      request.input("rateType0", sql.Int, 0);
+      request.input("rateType1", sql.Int, 1);
+      const rateCandidates = await execute({ queryId: "exchange-rate-candidate-v1", query: dvzharRateCandidateSql });
+      const priceCandidates = await execute({ queryId: "historical-price-candidate-v1", query: stkkrtPriceCandidateSql });
+      return { ledger, movementCandidates, rateCandidates, priceCandidates };
+    },
+  }));
+  const movementRows = result.movementCandidates?.recordsets?.[0] || [];
+  const rateRows = result.rateCandidates?.recordsets?.[0] || [];
+  const priceRows = result.priceCandidates?.recordsets?.[0] || [];
+  const movementEvidence = summarizeCpmMovementCandidates({ rows: movementRows });
+  const movementCandidates = buildCpmWacMovementCandidates({ rows: movementRows });
+  const rateCandidates = buildCpmExchangeRateCandidates({
+    rows: rateRows,
+    bankCode: Number(process.env.CPM_RATE_BANK_CODE || DEFAULT_HALK_BANK_CODE),
+    moduleBankName: String(process.env.CPM_RATE_MODULE_BANK_NAME || "").trim(),
+    buyingRateType: Number(process.env.CPM_RATE_BUYING_TYPE ?? 0),
+    sellingRateType: Number(process.env.CPM_RATE_SELLING_TYPE ?? 1),
+    semanticsVerified: String(process.env.CPM_RATE_SEMANTICS_VERIFIED).toLowerCase() === "true",
+  });
+  const historicalEvidence = buildHistoricalFinancialEvidence({
+    movements: movementCandidates.movements,
+    priceRows,
+    exchangeRates: rateCandidates.exchangeRates,
+  });
+  const comparableYearWac = buildComparableYearWacResearch({
+    movements: historicalEvidence.movements,
+    years: [2024, 2025],
+  });
+  const movementContractVerified = String(process.env.CPM_INVENTORY_SOURCE_CONTRACT_VERIFIED).toLowerCase() === "true";
+  const sourceVerified = movementContractVerified;
+  const movementEvidenceComplete = movementEvidence.mappedRowCount === movementRows.length
+    && movementCandidates.candidateMovementCount === movementRows.length
+    && movementCandidates.reviewCounts.invalidCostRows === 0
+    && movementCandidates.reviewCounts.invalidMovementRows === 0
+    && movementCandidates.reviewCounts.unlinkedReturnRows === 0
+    && movementCandidates.reviewCounts.missingDepotCount === 0;
+  const historicalCurrencyComplete = historicalEvidence.movements.length === movementCandidates.candidateMovementCount
+    && historicalEvidence.movements.every((movement) => {
+      const productCurrency = String(movement.productCurrency || "").trim().toUpperCase();
+      if (!/^[A-Z]{3}$/.test(productCurrency)) return false;
+      if (!["opening", "purchase"].includes(movement.kind) || productCurrency === "TRY") return true;
+      return Number.isFinite(Number(movement.unitCostCurrencyExVat))
+        && Number(movement.unitCostCurrencyExVat) > 0;
+    });
+  const historicalEvidenceComplete = movementEvidenceComplete
+    && historicalCurrencyComplete
+    && historicalEvidence.reviewCounts.review === 0
+    && historicalEvidence.priceRowCount > 0
+    && historicalEvidence.exchangeRateCount > 0;
   return buildFinalInvoiceLedger({
-    economics: result.recordsets[0] || [],
-    lineage: result.recordsets[1] || [],
-    actorEvents: result.recordsets[2] || [],
-    pilotOrders: result.recordsets[3] || [],
+    economics: result.ledger.recordsets[0] || [],
+    lineage: result.ledger.recordsets[1] || [],
+    actorEvents: result.ledger.recordsets[2] || [],
+    pilotOrders: result.ledger.recordsets[3] || [],
+    exchangeRates: rateCandidates.exchangeRates,
+    marginObservationsByStockKey: historicalEvidence.marginObservationsByStockKey,
+    observationByMovementId: historicalEvidence.observationByMovementId,
+    inventorySource: {
+      status: sourceVerified ? "verified" : "candidate",
+      ...(sourceVerified ? { contractVersion: 1 } : {}),
+      financialStatus: sourceVerified && rateCandidates.status === "verified" && historicalEvidenceComplete
+        ? "ready" : "blocked",
+      reviewReason: "movement-source-not-verified",
+      // Tarihsel fiyat/kur ile zenginleştirilmiş hareketler candidate olarak
+      // saklanır; source.status/financialStatus gate'i açılmadan official WAC'a
+      // bağlanmaz. Verified geçişte aynı enriched satırlar EUR maliyetini taşır.
+      movements: historicalEvidence.movements,
+      evidence: {
+        queryId: "inventory-movement-candidate-v1",
+        candidateRowCount: movementRows.length,
+        movementCandidateStatus: movementEvidence.status,
+        movementMappedRowCount: movementEvidence.mappedRowCount,
+        movementKindCounts: movementEvidence.kindCounts,
+        movementUnmappedDocumentTypes: movementEvidence.unmappedDocumentTypes,
+        movementReviewReason: movementEvidence.reviewReason,
+        candidateMovementCount: movementCandidates.candidateMovementCount,
+        movementReviewReasonDetailed: movementCandidates.reviewReason,
+        movementReviewCounts: movementCandidates.reviewCounts,
+        movementEvidenceComplete,
+        movementReviewReasons: movementCandidates.reviewReasons,
+        documentTypes: [...new Set(movementRows.map((row) => Number(row.documentType)).filter(Number.isFinite))].sort((a, b) => a - b),
+        rateCandidateRowCount: rateRows.length,
+        rateCandidateStatus: rateCandidates.status,
+        rateReviewReason: rateCandidates.reviewReason,
+        rateUsableRowCount: rateCandidates.usableRowCount || 0,
+        rateBankCodes: [...new Set(rateRows.map((row) => Number(row.bankCode)).filter(Number.isFinite))].sort((a, b) => a - b),
+        rateBankNames: [...new Set(rateRows.map((row) => String(row.bankName || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "tr")),
+        rateTypes: [...new Set(rateRows.map((row) => Number(row.rateType)).filter(Number.isFinite))].sort((a, b) => a - b),
+        priceCandidateRowCount: priceRows.length,
+        historicalPriceRowCount: historicalEvidence.priceRowCount,
+        historicalExchangeRateCount: historicalEvidence.exchangeRateCount,
+        historicalEvidenceReviewCounts: historicalEvidence.reviewCounts,
+        historicalEvidenceReviewReasons: historicalEvidence.reviewReasons,
+        historicalCurrencyComplete,
+        historicalEvidenceComplete,
+        comparableYearWac,
+      },
+    },
   });
 }
 
 const ledgerService = injectedLedgerService || createLedgerService({ loadYear: loadFinalInvoiceLedger });
 
 async function getStoredAppState() {
-  return stateStore.read();
+  return normalizeStoredAppState(await stateStore.read());
+}
+
+async function loadSourceProvenance(year, canonicalSnapshot = null, ledgerVersion = null) {
+  const pool = await getPool();
+  if (!pool) return { status: "unavailable", reason: "cpm-connection-unavailable" };
+  const company = process.env.CPM_SQL_COMPANY || "01";
+  let candidateRows = null;
+  return collectCpmSourceProvenance({
+    transactionFactory: async () => new sql.Transaction(pool),
+    isolationLevel: sql.ISOLATION_LEVEL.READ_COMMITTED,
+    executeRead: executeCpmReadOnlyQuery,
+    ...(Array.isArray(canonicalSnapshot)
+      ? { canonicalRows: canonicalSnapshot }
+      : {
+        loadCanonical: async ({ request, execute }) => {
+          request.input("company", sql.VarChar(3), company);
+          request.input("year", sql.Int, year);
+          const result = await execute({ queryId: "final-invoice-ledger-v1", query: finalInvoiceLedgerSql });
+          return result.recordsets?.[0] || null;
+        },
+      }),
+    loadSource: async ({ request, execute, canonicalRows }) => {
+      if (Array.isArray(canonicalSnapshot)) {
+        request.input("company", sql.VarChar(3), company);
+        request.input("year", sql.Int, year);
+      }
+      const result = await execute({ queryId: "source-provenance-candidates-v1", query: sourceProvenanceSql });
+      candidateRows = result.recordsets?.[0] || [];
+      const canonicalIds = new Set((canonicalRows || [])
+        .map((row) => row.rootId)
+        .filter((id) => id !== null && id !== undefined)
+        .map((id) => String(id)));
+      return candidateRows.filter((row) => canonicalIds.has(String(row.sourceRowId ?? row.rootId)));
+    },
+    loadCoverage: async ({ request, execute }) => {
+      return candidateRows || execute({ queryId: "source-provenance-candidates-v1", query: sourceProvenanceSql });
+    },
+    versions: {
+      queryContractVersion: "source-provenance-candidates-v1",
+      transformationVersion: "ledger-v1",
+      exclusionsVersion: "retail-exclusions-not-reproduced-v1",
+    },
+    source: {
+      table: "STKHAR",
+      status: "candidate",
+      canonicalBasis: Array.isArray(canonicalSnapshot) ? "ledger-snapshot" : "same-transaction-reread",
+      ledgerVersion,
+    },
+  });
+}
+
+async function loadInventoryOpeningResearch(year, sampleLimit) {
+  const pool = await getPool();
+  if (!pool) {
+    return {
+      ...buildInventoryOpeningResearchPayload({ year, sampleLimit }),
+      status: "missing",
+      reasonCodes: ["cpm-connection-unavailable"],
+    };
+  }
+  const company = process.env.CPM_SQL_COMPANY || "01";
+  const startDate = new Date(Date.UTC(year, 0, 1));
+  const endDate = new Date(Date.UTC(year + 1, 0, 1));
+  const result = await withReadOnlyCpmTransaction({
+    transactionFactory: async () => new sql.Transaction(pool),
+    isolationLevel: sql.ISOLATION_LEVEL.READ_COMMITTED,
+    executeRead: executeCpmReadOnlyQuery,
+    run: async ({ request, execute }) => {
+      request.input("company", sql.VarChar(3), company);
+      request.input("documentType", sql.Int, 82);
+      request.input("sourceKind", sql.VarChar(20), "DEVIR");
+      request.input("startDate", sql.DateTime2, startDate);
+      request.input("endDate", sql.DateTime2, endDate);
+      request.input("sampleLimit", sql.Int, sampleLimit);
+      const summary = await execute({ queryId: "inventory-opening-stkhar-summary-v1", query: stkhArType82SummarySql });
+      const samples = await execute({ queryId: "inventory-opening-stkhar-sample-v1", query: stkhArType82SampleSql });
+      const symSummary = await execute({ queryId: "inventory-opening-stksym-summary-v1", query: stksymDevirSummarySql });
+      const symSamples = await execute({ queryId: "inventory-opening-stksym-sample-v1", query: stksymDevirSampleSql });
+      return {
+        stkhArSummary: summary.recordsets?.[0]?.[0] || null,
+        stkhArRows: samples.recordsets?.[0] || [],
+        stksymSummary: symSummary.recordsets?.[0]?.[0] || null,
+        stksymRows: symSamples.recordsets?.[0] || [],
+      };
+    },
+  });
+  return buildInventoryOpeningResearchPayload({ year, sampleLimit, ...result });
 }
 
 const departmentTargetLoader = createDepartmentTargetLoader({
@@ -126,6 +346,8 @@ const departmentTargetLoader = createDepartmentTargetLoader({
     ledgerService,
     getAppState: getStoredAppState,
     departmentTargetLoader,
+    sourceProvenanceLoader: loadSourceProvenance,
+    inventoryOpeningResearchLoader: loadInventoryOpeningResearch,
   });
   const realApprovalRouter = injectedApprovalRouter || createApprovalRouter({
   store: stateStore,
@@ -144,21 +366,20 @@ const departmentTargetLoader = createDepartmentTargetLoader({
 
   app.post("/api/session/login", auth.login);
   app.use((request, response, next) => {
-    if (!request.path.startsWith("/api/")) return next();
+    if (!request.path.startsWith("/api/") || request.path === "/api/health") return next();
     return auth.middleware(request, response, next);
   });
   app.get("/api/session", (request, response) => response.json({ user: request.user }));
   app.post("/api/session/logout", auth.logout);
   app.use((request, response, next) => {
-    if (!request.path.startsWith("/api/") || request.path.startsWith("/api/session")) return next();
-    if (request.path === "/api/health") return next();
+    if (!request.path.startsWith("/api/") || request.path.startsWith("/api/session") || request.path === "/api/health") return next();
     const capability = request.path.startsWith("/api/app-state")
       ? CAPABILITIES.SETTINGS_MANAGE
       : request.path.startsWith("/api/approvals")
         ? CAPABILITIES.APPROVALS_MANAGE
         : request.path === "/api/ledger-refresh"
           ? CAPABILITIES.OPERATIONS_READ
-          : ["/api/overview", "/api/reconciliation/invoices", "/api/department-analysis", "/api/department-targets", "/api/audit-ledger", "/api/audit-samples"].includes(request.path)
+          : ["/api/overview", "/api/reconciliation/invoices", "/api/reconciliation/invoices/source-rows", "/api/department-analysis", "/api/department-targets", "/api/audit-ledger", "/api/audit-samples", "/api/build-info", "/api/readiness", "/api/research/inventory-opening-evidence"].includes(request.path)
             ? CAPABILITIES.REPORTING_READ
             : ["/api/sales-cases", "/api/inventory-research"].includes(request.path)
               ? CAPABILITIES.OPERATIONS_READ
@@ -168,6 +389,53 @@ const departmentTargetLoader = createDepartmentTargetLoader({
   });
   app.use(realLedgerRouter);
   app.use(realApprovalRouter);
+
+  app.get("/api/build-info", (_request, response) => {
+    response.setHeader("Cache-Control", "no-store");
+    return response.json(buildRuntimeInfo({ env: process.env }));
+  });
+
+  app.get("/api/readiness", async (request, response) => {
+    const year = Number(request.query.year || new Date().getFullYear());
+    if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+      return response.status(400).json({ ready: false, blockers: ["invalid-year"] });
+    }
+    try {
+      const snapshot = await ledgerService.get(year);
+      const runtime = buildRuntimeInfo({
+        env: process.env,
+        connected: Boolean(snapshot.value),
+      });
+      let sourceProvenance = null;
+      if (snapshot.value) {
+        try {
+          sourceProvenance = await loadSourceProvenance(
+            year,
+            snapshot.value.rows,
+            snapshot.ledgerVersion,
+          );
+        } catch (error) {
+          console.error("Marlin Nexus source provenance readiness check failed:", error);
+          sourceProvenance = { status: "unavailable", reason: "provenance-read-failed" };
+        }
+      }
+      const payload = buildReadinessPayload({
+        runtime,
+        inventorySource: snapshot.value?.inventorySource || { status: "missing" },
+        sourceProvenance,
+      });
+      response.setHeader("Cache-Control", "no-store");
+      return response.json({ year, ...payload });
+    } catch (error) {
+      console.error("Marlin Nexus readiness check failed:", error);
+      response.setHeader("Cache-Control", "no-store");
+      return response.status(503).json(buildReadinessPayload({
+        runtime: buildRuntimeInfo({ env: process.env, connected: false }),
+        inventorySource: { status: "unavailable" },
+        sourceProvenance: { status: "unavailable", reason: "readiness-check-failed" },
+      }));
+    }
+  });
 
 app.get("/api/health", async (request, response) => {
   if (healthHandler) return healthHandler(request, response);
@@ -277,7 +545,14 @@ app.listen(port, host, () => {
   console.log(`Marlin Nexus · Yönetim Sistemi http://${host}:${port}`);
   const startedAt = Date.now();
   const currentYear = new Date().getFullYear();
-  void app.locals.ledgerService.prewarm([currentYear, currentYear - 1]).then((results) => {
+  const configuredPrewarmYears = String(process.env.NEXUS_PREWARM_YEARS || "")
+    .split(",")
+    .map((value) => Number(value.trim()))
+    .filter((year) => Number.isInteger(year) && year >= 2000 && year <= 2100);
+  const prewarmYears = configuredPrewarmYears.length >= 2
+    ? [...new Set(configuredPrewarmYears)].slice(0, 2)
+    : [currentYear, currentYear - 1];
+  void app.locals.ledgerService.prewarm(prewarmYears).then((results) => {
     const durationMs = Date.now() - startedAt;
     for (const result of results) {
       if (result.status === "fulfilled") {

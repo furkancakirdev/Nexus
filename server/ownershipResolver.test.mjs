@@ -602,6 +602,20 @@ test("unknown alphabetic actor keeps an explicit full-name placeholder", () => {
   assert.equal(result.evidence.identityMappingRequired, true);
 });
 
+test("MAYAZ resolves to Metin Ayaz as an active parts employee", () => {
+  const source = document({ documentType: 13, documentNo: "TKL-MAYAZ", depth: 3 });
+  const result = resolveCommercialOwnership(caseEvidence({
+    lineage: [source],
+    actorEvents: [actor(source, "MAYAZ")],
+  }));
+
+  assert.equal(result.ownerCode, "MAYAZ");
+  assert.equal(result.ownerName, "Metin Ayaz");
+  assert.equal(result.department, "parts");
+  assert.equal(result.ownerActive, true);
+  assert.equal(result.evidence.identityMappingRequired, false);
+});
+
 test("earliest upstream history event wins when commercial actors conflict", () => {
   const offer = document({
     documentType: 13,

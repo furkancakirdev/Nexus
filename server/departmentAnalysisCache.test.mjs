@@ -42,5 +42,5 @@ test("departman ve hedef API çağrıları ortak cache işlevini kullanır", asy
   ));
   const calls = source.match(/buildCachedDepartmentAnalysis\(\{/g) || [];
 
-  assert.equal(calls.length, 3);
+  assert.equal(calls.length, 2);
 });

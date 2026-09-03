@@ -1,6 +1,11 @@
 services:
   marlin-profit-sharing:
-    build: .
+    build:
+      context: .
+      args:
+        BUILD_ID: ${BUILD_ID:-}
+        BUILD_VERSION: ${NEXUS_BUILD_VERSION:-}
+        BUILD_COMMIT: ${NEXUS_BUILD_COMMIT:-}
     container_name: marlin-profit-sharing
     restart: unless-stopped
     ports:
@@ -12,8 +17,21 @@ services:
       CPM_SQL_INSTANCE: MARLINSQL
       CPM_SQL_DATABASE: Marlin_Uyg
       CPM_SQL_COMPANY: "01"
+      CPM_SQL_ENCRYPT: "false"
+      CPM_EFFECTIVE_READ_ONLY: "true"
+      CPM_RATE_BANK_CODE: "3"
+      CPM_RATE_MODULE_BANK_NAME: "03-Halk Bankası"
+      CPM_RATE_BUYING_TYPE: "0"
+      CPM_RATE_SELLING_TYPE: "1"
+      CPM_RATE_SEMANTICS_VERIFIED: "true"
       CPM_CREDENTIAL_FILE: /run/secrets/cpm-credentials.txt
       APP_STATE_FILE: /app/data/app-state.json
+      BUILD_ID: ${BUILD_ID:-}
+      NEXUS_BUILD_VERSION: ${NEXUS_BUILD_VERSION:-}
+      NEXUS_BUILD_COMMIT: ${NEXUS_BUILD_COMMIT:-}
+      NEXUS_IMAGE_DIGEST: ${NEXUS_IMAGE_DIGEST:-}
+      NEXUS_ARTIFACT_SHA256: ${NEXUS_ARTIFACT_SHA256:-}
+      NEXUS_ACCEPTED_RISKS: ${NEXUS_ACCEPTED_RISKS:-}
     volumes:
       - ./data:/app/data
       - ./secrets/cpm-credentials.txt:/run/secrets/cpm-credentials.txt:ro

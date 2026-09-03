@@ -22,6 +22,10 @@ const eurFormat = new Intl.NumberFormat("tr-TR", { style: "currency", currency: 
 const percent = (value) => value === null || value === undefined || value === "" ? "—" : `%${Number(value).toFixed(1).replace(".", ",")}`;
 const formatMoney = (value) => formatCanonicalValue(value, (amount) => `${money.format(Math.round(amount))} TL`);
 const formatEur = (value) => formatCanonicalValue(value, (amount) => eurFormat.format(Math.round(amount)));
+export function formatReconciliationDifference(value, displayCurrency = "TRY") {
+  if (value === null || value === undefined) return "Uzlaşma kanıtı bekleniyor";
+  return `${displayCurrency === "EUR" ? "TRY net fark" : "Net fark"} ${formatMoney(value)}`;
+}
 const metricValue = (item, key, eurActive) => {
   const metric = projectCanonicalMetric(item?.canonicalMetric, eurActive ? "EUR" : "TRY");
   return eurActive ? formatEur(metric[key]) : formatMoney(metric[key]);
@@ -155,9 +159,6 @@ export function DepartmentAnalysisPage({ year, mode: appMode, consolidatedRows =
   const reconciliation = data.reconciliation || null;
   const canReconcile = data.mode === "live" && appMode === "live";
   const reconciled = canReconcile && reconciliation?.balanced === true;
-  const reconciliationDifference = reconciliation?.difference == null
-    ? "Uzlaşma kanıtı bekleniyor"
-    : `Net fark ${formatMoney(reconciliation.difference)}`;
   const hasFinancialData = data.totals?.lineCount > 0;
   const chartSeries = useMemo(() => getDepartmentChartSeries(department), [department]);
 
@@ -187,6 +188,10 @@ export function DepartmentAnalysisPage({ year, mode: appMode, consolidatedRows =
   const currencyEvidence = selectedMetric?.byCurrency || {};
   const currencyEvidenceCount = Object.entries(currencyEvidence)
     .filter(([currency, basket]) => currency !== "INCELEME" && Number(basket?.netSales || 0) !== 0).length;
+  const reconciliationDifference = formatReconciliationDifference(
+    reconciliation?.difference,
+    metricEurActive ? "EUR" : "TRY",
+  );
   const selectedName = month === "0" ? `${year} geneli` : chartRows[0]?.monthName || "Seçili dönem";
 
   return <main className="page department-page" id="top">

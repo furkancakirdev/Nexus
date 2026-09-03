@@ -9,6 +9,7 @@ import {
   buildRateSet,
 } from "../shared/eurReporting.mjs";
 import { buildInventoryResearchPayload } from "./inventoryResearchApi.mjs";
+import { buildInventoryOpeningResearchPayload } from "./inventoryOpeningResearch.mjs";
 import { aggregateFinancialMetric, FINANCIAL_ROWS } from "../shared/financialMetric.mjs";
 
 const MONTH_NAMES = [
@@ -32,6 +33,22 @@ const AUDIT_SORT_TIME = Symbol("auditSortTime");
 function number(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function minorUnits(value) {
+  if (value === null || value === undefined || value === "" || typeof value === "boolean") return 0n;
+  const normalized = String(value).trim().replace(",", ".");
+  if (!/^-?(?:\d+|\d+\.\d+)$/.test(normalized)) return 0n;
+  const negative = normalized.startsWith("-");
+  const unsigned = negative ? normalized.slice(1) : normalized;
+  const [whole, fraction = ""] = unsigned.split(".");
+  let units = BigInt(whole) * 100n + BigInt((fraction + "00").slice(0, 2));
+  if (fraction[2] && Number(fraction[2]) >= 5) units += 1n;
+  return negative ? -units : units;
+}
+
+function sumMinorUnits(rows, selector) {
+  return rows.reduce((total, row) => total + minorUnits(selector(row)), 0n);
 }
 
 function positiveInteger(value, fallback) {
@@ -125,6 +142,8 @@ function emptyOverviewMonth(month) {
     provisionalNetSales: 0,
     linkedReturnLines: 0,
     unlinkedReturnLines: 0,
+    legacyEstimatedCost: 0,
+    legacyCostLines: 0,
     costMethod: "final-invoice-ledger",
     source: "live",
     byCurrency: null,
@@ -162,6 +181,7 @@ export function buildOverviewRows(ledger) {
     const financeV2 = row.financeV2;
     const v2LineCost = financeV2?.lineCostTryExVat;
     const v2Covered = financeV2?.reviewReason == null
+      && (financeV2?.costStatus == null || financeV2?.costStatus === "covered")
       && typeof v2LineCost === "number"
       && Number.isFinite(v2LineCost);
     if (v2Covered) {
@@ -209,11 +229,10 @@ export function buildOverviewRows(ledger) {
       target.uncoveredCostLines += 1;
       target.uncoveredNetSales += number(row.signedNetSales);
     } else {
-      target.costCoveredLines += 1;
-      target.estimatedCost += number(row.lineCost);
-      if (row.costMethod === "bulkPurchase") target.bulkPurchaseCostLines += 1;
-      else if (row.costMethod === "nextPurchase") target.nextPurchaseCostLines += 1;
-      else target.lastPurchaseCostLines += 1;
+      // Eski alım seçimi yalnızca karşılaştırma kanıtıdır; resmi maliyet,
+      // kâr veya havuz tüketicilerine aktarılmaz.
+      target.legacyCostLines += 1;
+      target.legacyEstimatedCost += number(row.lineCost);
     }
     months.set(month, target);
   }
@@ -303,6 +322,27 @@ export function buildInvoiceReconciliation(ledger, overviewRows = buildOverviewR
     discounts: source.discounts - nexus.discounts,
     netSales: source.netSales - nexus.netSales,
   };
+  const sourceMinor = {
+    grossSales: sumMinorUnits(includedRows, (row) => row.isSale ? row.grossAmount : 0),
+    returns: sumMinorUnits(includedRows, (row) => row.isSale ? 0 : row.netAmount),
+    discounts: sumMinorUnits(includedRows, (row) => row.isSale ? row.discountAmount : 0),
+    netSales: sumMinorUnits(includedRows, (row) => row.signedNetSales),
+  };
+  const nexusMinor = {
+    grossSales: sumMinorUnits(overviewRows || [], (row) => number(row.sales) + Object.values(row.pilotCards || {}).reduce((sum, card) => sum + number(card.sales), 0)),
+    returns: sumMinorUnits(overviewRows || [], (row) => number(row.returns) + Object.values(row.pilotCards || {}).reduce((sum, card) => sum + number(card.returns), 0)),
+    discounts: sumMinorUnits(overviewRows || [], (row) => number(row.discounts) + Object.values(row.pilotCards || {}).reduce((sum, card) => sum + number(card.discounts), 0)),
+    netSales: (overviewRows || []).reduce((total, row) => {
+      const pilotNet = Object.values(row.pilotCards || {}).reduce((sum, card) => (
+        sum + minorUnits(card.sales) - minorUnits(card.returns) - minorUnits(card.discounts)
+      ), 0n);
+      if (row.netSales !== undefined) return total + minorUnits(row.netSales);
+      return total + minorUnits(row.sales) - minorUnits(row.returns) - minorUnits(row.discounts) + pilotNet;
+    }, 0n),
+  };
+  const exactMinorUnitDifferences = Object.fromEntries(
+    Object.keys(sourceMinor).map((key) => [key, Number(sourceMinor[key] - nexusMinor[key])]),
+  );
   const breakdown = (overviewRows || []).map((row) => ({
     month: row.month,
     monthName: row.monthName,
@@ -321,9 +361,103 @@ export function buildInvoiceReconciliation(ledger, overviewRows = buildOverviewR
     excludedIncome,
     nexus,
     differences,
+    exactMinorUnitDifferences,
     breakdown,
     excludedIncomeCodes: [...EXCLUDED_INCOME_CODES],
     note: "KDV hariç net ciro ve KDV dahil fatura toplamı ayrı tutulur; kapsam dışı ve inceleme satırları ayrıca izlenir.",
+  };
+}
+
+/**
+ * Kaynak satırı izlenebilirliğini raporlar; canonical ledger satırını bağımsız
+ * CPM recordset'i gibi sunmaz. Ham CPM export'u ayrıca verilmediği sürece
+ * sonuç bilinçli olarak "unverified" kalır.
+ */
+export function buildSourceRowProvenanceDiagnostic(ledger) {
+  const sourceRows = Array.isArray(ledger?.rows) ? ledger.rows : [];
+  const sourceIds = sourceRows.map((row) => row?.rootId ?? null);
+  const counts = new Map();
+  for (const sourceId of sourceIds) {
+    if (sourceId === null || sourceId === undefined || String(sourceId).trim() === "") continue;
+    const key = String(sourceId);
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  const duplicateIds = new Set([...counts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([sourceId]) => sourceId));
+  const nullSourceRowIds = sourceIds.filter((sourceId) => (
+    sourceId === null || sourceId === undefined || String(sourceId).trim() === ""
+  )).length;
+  const duplicateSourceRowIds = duplicateIds.size;
+  const quarantinedIds = new Set((ledger?.quarantinedRows || [])
+    .map((row) => row?.rootId)
+    .filter((sourceId) => sourceId !== null && sourceId !== undefined)
+    .map(String));
+  const excludedTestIds = new Set((ledger?.excludedTestRows || [])
+    .map((row) => row?.rootId)
+    .filter((sourceId) => sourceId !== null && sourceId !== undefined)
+    .map(String));
+  const dispositionOf = (row) => {
+    const sourceId = row?.rootId === null || row?.rootId === undefined ? null : String(row.rootId);
+    if (sourceId && quarantinedIds.has(sourceId)) return { disposition: "quarantined", reason: "ledger-quarantine" };
+    if (sourceId && excludedTestIds.has(sourceId)) return { disposition: "excluded-test", reason: "test-document" };
+    if (row?.convertedToFinal || row?.convertedRetail || row?.isConvertedRetail) {
+      return { disposition: "converted", reason: "converted-to-final" };
+    }
+    if (isExcludedIncome(row?.productCode)) return { disposition: "excluded-income", reason: "excluded-income-code" };
+    return { disposition: "included", reason: null };
+  };
+  const scopeClassificationOf = ({ disposition }) => ({
+    included: "commercial-revenue",
+    converted: "converted-economic-case",
+    "excluded-income": "non-commercial-income",
+    "excluded-test": "test-document",
+    quarantined: "quarantined-evidence",
+  }[disposition] || "review-required");
+  const rows = sourceRows.map((row) => {
+    const sourceRowId = row?.rootId ?? null;
+    const disposition = dispositionOf(row);
+    const netAmount = number(row?.netAmount);
+    const signedNetAmount = row?.isSale ? netAmount : -netAmount;
+    return {
+      sourceTable: "STKHAR",
+      sourceKeyField: "ID",
+      sourceRowId,
+      canonicalRowId: sourceRowId,
+      documentType: row?.documentType ?? null,
+      documentNo: row?.documentNo ?? null,
+      documentDate: row?.documentDate ?? null,
+      lineNo: row?.lineNo ?? null,
+      productCode: row?.productCode ?? null,
+      quantity: row?.quantity ?? null,
+      grossAmount: row?.grossAmount ?? null,
+      discountAmount: row?.discountAmount ?? null,
+      netAmount,
+      vatAmount: row?.vatAmount ?? null,
+      invoiceTotalInclVat: row?.invoiceTotalInclVat ?? null,
+      isSale: row?.isSale ?? null,
+      signedNetAmount,
+      ...disposition,
+      scopeClassification: scopeClassificationOf(disposition),
+      matchStatus: "not-independently-verified",
+    };
+  });
+  return {
+    status: nullSourceRowIds || duplicateSourceRowIds ? "unavailable" : "unverified",
+    evidenceMode: "canonical-ledger-only",
+    independentSourceRowsAvailable: false,
+    sourceTable: "STKHAR",
+    sourceKeyField: "ID",
+    summary: {
+      rows: sourceRows.length,
+      nullSourceRowIds,
+      duplicateSourceRowIds,
+      includedRows: rows.filter((row) => row.disposition === "included").length,
+      excludedIncomeRows: rows.filter((row) => row.disposition === "excluded-income").length,
+      unmatchedRows: rows.length,
+    },
+    rows,
+    note: "Bağımsız CPM SELECT/export satırları verilmediği için bu çıktı canonical ledger provenance'ıdır; ham CPM satır eşleşmesi doğrulanmamıştır.",
   };
 }
 
@@ -397,6 +531,10 @@ export function aggregateDepartmentMetric(metric, rateSets) {
 function verificationStatus(row) {
   if (row.costMethod === "excludedIncome") return "excluded";
   if (String(row.costMethod || "").startsWith("configured")) return "configured";
+  // V2 satırı review ise legacy alım belgesi varlığı bunu doğrulanmış yapamaz.
+  if (Number(row.financeV2?.schemaVersion) >= 2) {
+    return row.financeV2?.costStatus === "covered" ? "verified" : "review";
+  }
   if (["review", "quarantined"].includes(row.costReviewStatus)) return "review";
   if (row.lineCost !== null && row.lineCost !== undefined && row.purchaseNo) return "verified";
   return "review";
@@ -447,7 +585,11 @@ function auditRow(row) {
     ...row,
     [AUDIT_SORT_TIME]: Date.parse(row.documentDate) || 0,
     id: row.rootId,
-    revenueSource: row.isSale ? "invoice" : "return",
+    revenueSource: !row.isSale
+      ? "return"
+      : Number(row.documentType) === 17
+        ? "provisional"
+        : "invoice",
     provisionalEconomic: row.revenueSource === "provisional" || row.provisional === true,
     customerCode: row.customerCode || "",
     cardCode: row.productCode || "",
@@ -467,6 +609,9 @@ function auditRow(row) {
     originalSaleDate: row.originalSaleDate ?? null,
     costMethod: effectiveCostMethod,
     verificationStatus: verification,
+    attributionStatus: ["confirmed", "inferred", "review"].includes(row.attributionConfidence)
+      ? row.attributionConfidence
+      : "review",
     purchaseDocumentFound: Boolean(row.purchaseNo),
     costValidated: verification === "verified",
     returnRisk,
@@ -568,21 +713,26 @@ export function filterAuditLedger(ledger, query = {}) {
   };
 }
 
-function reportGroup(rows, name) {
+function reportGroup(rows, name, { rateSets = null } = {}) {
   const canonical = aggregateFinancialMetric(rows.map((row) => row[FINANCIAL_ROWS] || {
     signedNetSalesTry: row.signedNetAmount,
     period: String(monthOf(row.documentDate)),
     productCurrency: row.financeV2?.productCurrency,
     documentSellingRate: row.documentSellingRate,
     financeV2: row.financeV2,
-  }), { basisId: `audit-report:${name}` });
+  }), { rateSets, basisId: `audit-report:${name}` });
   const review = canonical.scope.costReview.lines > 0 || canonical.scope.excluded.lines > 0;
   return { name, lines: rows.length, netSales: canonical.try.netSales,
     cost: review ? null : canonical.try.cost, profit: review ? null : canonical.try.profit,
-    margin: review ? null : canonical.try.margin, status: canonical.status, evidence: canonical.evidence };
+    margin: review ? null : canonical.try.margin, status: canonical.status, evidence: canonical.evidence,
+    canonicalMetric: canonical,
+    eurEquivalent: canonical.eur,
+    eurMargin: canonical.eurMargin,
+    eurComplete: canonical.eur.complete === true && canonical.status === "TAMAM",
+  };
 }
 
-export function buildAuditReportProjections(rows = []) {
+export function buildAuditReportProjections(rows = [], options = {}) {
   const dimensions = {
     brand: (row) => row.brand || "Tanımsız",
     dealer: (row) => String(row.customerCode || "").startsWith("DBS") ? row.customerCode : null,
@@ -594,12 +744,12 @@ export function buildAuditReportProjections(rows = []) {
   const projections = Object.fromEntries(Object.entries(dimensions).map(([dimension, keyFn]) => {
     const groups = new Map();
     rows.forEach((row) => { const name = keyFn(row); if (name) groups.set(name, [...(groups.get(name) || []), row]); });
-    return [dimension, [...groups.entries()].map(([name, group]) => reportGroup(group, name))
+    return [dimension, [...groups.entries()].map(([name, group]) => reportGroup(group, name, options))
       .sort((left, right) => (right.netSales ?? 0) - (left.netSales ?? 0))];
   }));
   projections.summary = {
-    dealerNetSales: reportGroup(rows.filter((row) => String(row.customerCode || "").startsWith("DBS")), "dealer-total").netSales,
-    serviceNetSales: reportGroup(rows.filter((row) => row.sourceDocumentType === 64), "service-total").netSales,
+    dealerNetSales: reportGroup(rows.filter((row) => String(row.customerCode || "").startsWith("DBS")), "dealer-total", options).netSales,
+    serviceNetSales: reportGroup(rows.filter((row) => row.sourceDocumentType === 64), "service-total", options).netSales,
     discounts: rows.reduce((sum, row) => sum + (row.isSale ? Number(row.discountAmount || 0) : 0), 0),
     returns: rows.reduce((sum, row) => sum + (row.isSale ? 0 : Number(row.netAmount || 0)), 0),
   };
@@ -968,6 +1118,8 @@ export function createUnifiedLedgerRouter({
   ledgerService,
   getAppState = async () => ({}),
   departmentTargetLoader,
+  sourceProvenanceLoader,
+  inventoryOpeningResearchLoader,
   logger = console,
 } = {}) {
   if (!ledgerService || typeof ledgerService.get !== "function") {
@@ -1077,6 +1229,44 @@ export function createUnifiedLedgerRouter({
     }
   });
 
+  router.get("/api/reconciliation/invoices/source-rows", async (request, response) => {
+    const year = validYear(request.query.year);
+    if (!year) return response.status(400).json({ error: "Geçersiz yıl.", ...INVALID_METADATA });
+    try {
+      if (typeof sourceProvenanceLoader === "function") {
+        const provenance = await sourceProvenanceLoader(year, {
+          refresh: request.query.refresh === "1",
+        });
+        response.setHeader("Cache-Control", "no-store");
+        return response.json({ year, ...provenance, mode: "live" });
+      }
+      const snapshot = await ledgerService.get(year, { refresh: request.query.refresh === "1" });
+      if (!snapshot.value) {
+        return response.status(503).json({
+          year,
+          mode: "unavailable",
+          ...metadata(snapshot),
+          error: "CPM kaynak satır provenance teşhisi üretilemedi.",
+        });
+      }
+      response.setHeader("Cache-Control", "no-store");
+      return response.json({
+        year,
+        ...buildSourceRowProvenanceDiagnostic(snapshot.value),
+        mode: "live",
+        ...metadata(snapshot),
+      });
+    } catch (error) {
+      logger.error("Marlin Nexus source-row provenance diagnostic failed:", error);
+      return response.status(500).json({
+        year,
+        mode: "error",
+        ...retainedMetadata(ledgerService, year),
+        error: "CPM kaynak satır provenance teşhisi okunamadı.",
+      });
+    }
+  });
+
   router.get("/api/reconciliation/invoices", async (request, response) => {
     const year = validYear(request.query.year);
     if (!year) return response.status(400).json({ error: "Geçersiz yıl.", ...INVALID_METADATA });
@@ -1157,6 +1347,7 @@ export function createUnifiedLedgerRouter({
           ...metric,
           canonicalMetric,
           eurEquivalent: canonicalMetric.eur,
+          eurMargin: canonicalMetric.eurMargin,
           eurComplete: canonicalMetric.eur.complete && canonicalMetric.status === "TAMAM",
           eurStatus: canonicalMetric.status,
           eurFrozen: resolved.frozen,
@@ -1220,9 +1411,10 @@ export function createUnifiedLedgerRouter({
       });
     }
     try {
-      const snapshot = await ledgerService.get(year, {
-        refresh: request.query.refresh === "1",
-      });
+      const [snapshot, state] = await Promise.all([
+        ledgerService.get(year, { refresh: request.query.refresh === "1" }),
+        getAppState(),
+      ]);
       if (!snapshot.value) {
         return response.status(503).json({
           year, page: 1, pageSize: 50, rows: [], summary: { totalRows: 0 },
@@ -1231,7 +1423,21 @@ export function createUnifiedLedgerRouter({
         });
       }
       const audit = filterAuditLedger(snapshot.value, request.query);
-      const projections = buildAuditReportProjections(audit.rows);
+      const rateIndex = buildExchangeRateIndex(snapshot.value.exchangeRates);
+      const approvals = state.approvals?.[String(year)] || {};
+      const reportDate = new Date();
+      const reportRateSets = Object.fromEntries(Array.from({ length: 12 }, (_, index) => {
+        const month = index + 1;
+        const resolved = resolveMonthRateSet({
+          index: rateIndex,
+          year,
+          month,
+          approval: approvals[String(month)] || null,
+          reportDate,
+        });
+        return [String(month), resolved.rateSet];
+      }));
+      const projections = buildAuditReportProjections(audit.rows, { rateSets: reportRateSets });
       const scopeNetSales = economicScopeNetSales(snapshot.value);
       response.setHeader("Cache-Control", "no-store");
       return response.json({
@@ -1322,6 +1528,25 @@ export function createUnifiedLedgerRouter({
         year,
         source: { status: "invalid", evidence: { reason: "inventory-research-read-failed" } },
       }));
+    }
+  });
+
+  router.get("/api/research/inventory-opening-evidence", async (request, response) => {
+    const year = validYear(request.query.year);
+    if (!year) return response.status(400).json({ error: "Geçersiz yıl." });
+    const sampleLimit = request.query.sampleLimit === undefined ? 20 : Number(request.query.sampleLimit);
+    if (!Number.isInteger(sampleLimit) || sampleLimit < 1 || sampleLimit > 100) {
+      return response.status(400).json({ error: "sampleLimit 1 ile 100 arasında olmalıdır." });
+    }
+    try {
+      const payload = typeof inventoryOpeningResearchLoader === "function"
+        ? await inventoryOpeningResearchLoader(year, sampleLimit)
+        : buildInventoryOpeningResearchPayload({ year, sampleLimit });
+      response.setHeader("Cache-Control", "no-store");
+      return response.status(payload?.status === "missing" ? 503 : 200).json(payload);
+    } catch (error) {
+      logger.error("Marlin Nexus inventory opening research read failed:", error);
+      return response.status(503).json(buildInventoryOpeningResearchPayload({ year, sampleLimit }));
     }
   });
 

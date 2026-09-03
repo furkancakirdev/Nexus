@@ -70,6 +70,6 @@ test("birleşik nihai fatura SQL okuması deadlock korumasını kullanır", asyn
   );
   assert.match(
     serverSource,
-    /const result = await executeSqlReadWithDeadlockRetry\(\(\) => pool\.request\(\)[\s\S]*?\.query\(finalInvoiceLedgerSql\)\);/,
+    /const result = await executeSqlReadWithDeadlockRetry\(\(\) => withReadOnlyCpmTransaction\([\s\S]*?queryId: "final-invoice-ledger-v1"/,
   );
 });

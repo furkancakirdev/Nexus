@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   IconAdjustmentsHorizontal,
   IconAlertTriangle,
@@ -11,6 +11,7 @@ import {
   IconFish,
   IconInfoCircle,
   IconLock,
+  IconLogout,
   IconMenu2,
   IconX,
 } from "@tabler/icons-react";
@@ -29,10 +30,20 @@ import { GoalsPage, PILOT_EMPLOYEES } from "./GoalsPage";
 import { ApprovalPage } from "./ApprovalPage";
 import { ReportsPage } from "./ReportsPage";
 import { apiFetch } from "./api.js";
+import {
+  NAV_ITEMS,
+  canAccessPage,
+  createIdempotentOpenGuard,
+  firstAccessiblePage,
+  navItemsFor,
+  overviewStateForResponse,
+  sessionViewFor,
+} from "./sessionGate.js";
 import { SummaryPage } from "./SummaryPage";
 import { SalesPage } from "./SalesPage";
 import { DepartmentAnalysisPage } from "./DepartmentAnalysisPage";
 import { AuditPage } from "./AuditPage";
+import { InventoryResearchPage } from "./InventoryResearchPage";
 import {
   DEFAULT_SETTINGS,
   normalizeSettings,
@@ -43,18 +54,6 @@ import {
   mergeMonthlyTargetPools,
 } from "../shared/departmentTargetView.mjs";
 import { normalizePilotEmployees } from "../shared/employeePolicy.mjs";
-
-const NAV_ITEMS = [
-  { page: "summary", label: "Özet" },
-  { page: "sales", label: "Satışlar" },
-  { page: "departments", label: "Departmanlar" },
-  { page: "audit", label: "Veri Denetimi" },
-  { page: "ledger", label: "Havuz" },
-  { page: "goals", label: "Hedef Takibi" },
-  { page: "reports", label: "Raporlar" },
-  { page: "approval", label: "Onay & Kapanış" },
-  { page: "settings", label: "Ayarlar" },
-];
 
 const DEFAULT_APPEARANCE = { theme: "light", density: "comfortable", highContrast: false, reducedMotion: false, defaultPage: "summary" };
 
@@ -69,16 +68,6 @@ function normalizeAppearance(value = {}) {
   };
 }
 
-const fallbackRows = [
-  [1, "Ocak", 168_520_000, 4_210_000, 6_180_000, 100_845_000, 83.8],
-  [2, "Şubat", 181_740_000, 4_520_000, 6_350_000, 105_980_000, 82.4],
-  [3, "Mart", 208_660_000, 5_410_000, 7_890_000, 121_775_000, 79.6],
-  [4, "Nisan", 215_480_000, 5_670_000, 8_360_000, 132_940_000, 76.3],
-  [5, "Mayıs", 251_050_000, 8_540_000, 8_940_000, 140_978_000, 66.1],
-].map(([month, monthName, sales, returns, discounts, estimatedCost, costCoveragePct]) => ({
-  month, monthName, sales, returns, discounts, estimatedCost, costCoveragePct, source: "demo",
-}));
-
 const money = new Intl.NumberFormat("tr-TR", {
   maximumFractionDigits: 0,
 });
@@ -90,6 +79,12 @@ const compactMoney = new Intl.NumberFormat("tr-TR", {
 
 function fmt(value) {
   return money.format(Math.round(value || 0));
+}
+
+function sumNullable(rows, field) {
+  if (!Array.isArray(rows) || rows.length === 0) return 0;
+  if (rows.some((row) => row?.[field] === null || row?.[field] === undefined)) return null;
+  return rows.reduce((total, row) => total + Number(row[field] || 0), 0);
 }
 
 function WaterfallTooltip({ active, payload }) {
@@ -111,6 +106,52 @@ function StatusDot({ status }) {
   );
 }
 
+function LoginPage({ onLogin }) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async (event) => {
+    event.preventDefault();
+    setError("");
+    setSubmitting(true);
+    try {
+      const response = await apiFetch("/api/session/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "Giriş yapılamadı.");
+      onLogin(payload);
+    } catch (submitError) {
+      setError(submitError.message || "Giriş yapılamadı.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <main className="login-shell">
+      <section className="login-card" aria-labelledby="login-title">
+        <div>
+          <div className="login-brand"><IconFish size={30} stroke={1.6} /><span><strong>Marlin Nexus</strong><small>Yönetim Sistemi</small></span></div>
+          <h1 id="login-title">Oturum açın</h1>
+          <p>Finansal ve operasyonel verileri görmek için yetkili hesabınızla giriş yapın.</p>
+        </div>
+        <form className="login-form" onSubmit={submit}>
+          <label>Kullanıcı adı<input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" required /></label>
+          <label>Parola<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required /></label>
+          {error && <p className="login-error" role="alert">{error}</p>}
+          <button className="primary-action" type="submit" disabled={submitting}>{submitting ? "Giriş yapılıyor…" : "Giriş yap"}</button>
+        </form>
+        <p className="login-boundary"><IconLock size={15} /> CPM yalnızca salt okunur kaynak olarak kullanılır.</p>
+      </section>
+    </main>
+  );
+}
+
 async function fetchDepartmentTargetState(year) {
   const response = await fetch(`/api/department-targets?year=${year}`);
   const payload = await response.json();
@@ -123,6 +164,7 @@ async function fetchDepartmentTargetState(year) {
 }
 
 export function App() {
+  const [session, setSession] = useState({ status: "loading", user: null });
   const [appearance, setAppearance] = useState(()=>{ try{return normalizeAppearance(JSON.parse(localStorage.getItem("marlin-appearance")||"{}"));}catch{return DEFAULT_APPEARANCE;} });
   const [appearanceOpen,setAppearanceOpen]=useState(false);
   const [activePage, setActivePage] = useState(() => {
@@ -156,7 +198,7 @@ export function App() {
     catch { return []; }
   });
   const [year, setYear] = useState(2026);
-  const [rows, setRows] = useState(fallbackRows);
+  const [rows, setRows] = useState([]);
   const [eurRateSets, setEurRateSets] = useState({});
   const [canonicalMetric, setCanonicalMetric] = useState(null);
   const [targetState, setTargetState] = useState({
@@ -170,9 +212,42 @@ export function App() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [detailsOpen, setDetailsOpen] = useState(true);
   const [policyOpen, setPolicyOpen] = useState(false);
+  const policyOpenGuard = useRef(null);
+  const policyOpenedAt = useRef(0);
+  if (!policyOpenGuard.current) policyOpenGuard.current = createIdempotentOpenGuard();
+  const openPolicy = () => {
+    if (policyOpenGuard.current.open()) {
+      policyOpenedAt.current = Date.now();
+      setPolicyOpen(true);
+    }
+  };
+  const closePolicy = () => {
+    policyOpenGuard.current.close();
+    policyOpenedAt.current = 0;
+    setPolicyOpen(false);
+  };
+  const closePolicyFromButton = () => {
+    if (Date.now() - policyOpenedAt.current >= 450) closePolicy();
+  };
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(null);
+  const signOut = async () => {
+    try {
+      await apiFetch("/api/session/logout", { method: "POST" });
+    } finally {
+      setSession({ status: "unauthenticated", user: null });
+    }
+  };
+  const visibleNavItems = navItemsFor(session.user);
+  const effectivePage = session.status === "authenticated"
+    ? firstAccessiblePage(session.user, activePage)
+    : activePage;
+  const navigate = (page) => {
+    if (!canAccessPage(session.user, page)) return;
+    setActivePage(page);
+    setMobileNavOpen(false);
+  };
   const refreshDepartmentTargets = useCallback(async () => {
     try {
       const nextState = await fetchDepartmentTargetState(year);
@@ -190,6 +265,22 @@ export function App() {
     }
   }, [year]);
 
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch("/api/session")
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (cancelled) return;
+        setSession(response.ok && payload.user
+          ? { status: "authenticated", user: payload.user }
+          : { status: "unauthenticated", user: null });
+      })
+      .catch(() => {
+        if (!cancelled) setSession({ status: "unauthenticated", user: null });
+      });
+    return () => { cancelled = true; };
+  }, []);
+
   useEffect(()=>{
     document.documentElement.dataset.theme=appearance.theme;
     document.documentElement.classList.toggle("high-contrast",appearance.highContrast);
@@ -198,6 +289,7 @@ export function App() {
   },[appearance]);
 
   useEffect(() => {
+    if (session.status !== "authenticated") return undefined;
     let cancelled = false;
     Promise.all([
       fetch("/api/health").then((response) => response.json()),
@@ -225,28 +317,34 @@ export function App() {
       if (!cancelled) setConnection({ connected: false, readOnly: true });
     });
     return () => { cancelled = true; };
-  }, []);
+  }, [session.status]);
 
   useEffect(() => {
+    if (session.status !== "authenticated") return undefined;
     let cancelled = false;
     setMode("loading");
 
     Promise.all([
-      fetch(`/api/overview?year=${year}`).then((response) => response.json()),
+      fetch(`/api/overview?year=${year}`).then(async (response) => ({
+        ok: response.ok,
+        status: response.status,
+        payload: await response.json().catch(() => ({})),
+      })),
       fetchDepartmentTargetState(year),
-    ]).then(([overview, targets]) => {
+    ]).then(([overviewResponse, targets]) => {
       if (cancelled) return;
-      setRows(overview.rows?.length ? overview.rows : fallbackRows);
-      setEurRateSets(overview.eurRateSets || {});
-      setCanonicalMetric(overview.canonicalMetric || null);
-      setMode(overview.mode || "demo");
+      const overview = overviewStateForResponse(overviewResponse);
+      setRows(overview.rows);
+      setEurRateSets(overview.eurRateSets);
+      setCanonicalMetric(overview.canonicalMetric);
+      setMode(overview.mode);
       setTargetState(targets);
     }).catch(() => {
       if (cancelled) return;
-      setRows(fallbackRows);
+      setRows([]);
       setEurRateSets({});
       setCanonicalMetric(null);
-      setMode("demo");
+      setMode("error");
       setTargetState({
         rows: [],
         mode: "error",
@@ -256,7 +354,7 @@ export function App() {
     });
 
     return () => { cancelled = true; };
-  }, [year]);
+  }, [session.status, year]);
 
   const calculatedRows = useMemo(() => rows.map((row) => {
     const manualDecisions = costOverrides.filter((decision) => {
@@ -275,17 +373,17 @@ export function App() {
       const costRate = Number(appSettings.pilotCardCostRates?.[key] ?? 100) / 100;
       return sum + netSales * costRate;
     }, 0);
-    const nonPilotLines = Number(row.masterCostLines || 0) + Number(row.bulkPurchaseCostLines || 0) + Number(row.lastPurchaseCostLines || 0) + Number(row.nextPurchaseCostLines || 0) + Number(row.uncoveredCostLines || 0);
-    const coveredLines = Number(row.masterCostLines || 0) + Number(row.bulkPurchaseCostLines || 0) + Number(row.lastPurchaseCostLines || 0) + Number(row.nextPurchaseCostLines || 0) + Number(row.pilotCardLines || 0) + manualDecisions.length;
+    const nonPilotLines = Number(row.v2CostCoveredLines || 0) + Number(row.v2ReviewLines || 0);
+    const coveredLines = Number(row.v2CostCoveredLines || 0) + Number(row.pilotCardLines || 0) + manualDecisions.length;
     const totalLines = nonPilotLines + Number(row.pilotCardLines || 0);
     return {
       ...row,
       sales: Number(row.sales || 0) + pilotSales,
       returns: Number(row.returns || 0) + pilotReturns,
       discounts: Number(row.discounts || 0) + pilotDiscounts,
-      estimatedCost: Number(row.estimatedCost || 0) + pilotCost + manualCost,
-      uncoveredNetSales: Number(row.uncoveredNetSales || 0) - resolvedUncoveredNet,
-      uncoveredCostLines: Math.max(0, Number(row.uncoveredCostLines || 0) - manualDecisions.length),
+      estimatedCost: Number(row.cost || 0) + pilotCost + manualCost,
+      uncoveredNetSales: Number(row.reviewNetSales || 0) - resolvedUncoveredNet,
+      uncoveredCostLines: Math.max(0, Number(row.v2ReviewLines || 0) - manualDecisions.length),
       manualCost,
       manualCostLines: manualDecisions.length,
       pilotCost,
@@ -298,7 +396,7 @@ export function App() {
 
   const enrichedRows = useMemo(() => mergeMonthlyTargetPools(
     calculatedRows.map((row) => {
-    const profit = row.sales - row.returns - row.discounts - row.estimatedCost - (row.uncoveredNetSales || 0);
+      const profit = row.profit ?? null;
     const status = Number(row.uncoveredCostLines || 0) === 0 && Number(row.unlinkedReturnLines || 0) === 0
       ? "Kesinleşmiş"
       : "Tahmini";
@@ -324,9 +422,9 @@ export function App() {
     returns: acc.returns + row.returns,
     discounts: acc.discounts + row.discounts,
     cost: acc.cost + row.estimatedCost,
-    profit: acc.profit + row.profit,
     contribution: acc.contribution + row.contribution,
-  }), { sales: 0, returns: 0, discounts: 0, cost: 0, profit: 0, contribution: 0 });
+  }), { sales: 0, returns: 0, discounts: 0, cost: 0, contribution: 0 });
+  totals.profit = sumNullable(enrichedRows, "profit");
 
   const coverageTotals = enrichedRows.reduce((acc, row) => ({
     covered: acc.covered + Number(row.coverageCoveredLines || 0),
@@ -345,6 +443,10 @@ export function App() {
   const selected = selectedMonth
     ? enrichedRows.find((row) => row.month === selectedMonth)
     : null;
+
+  const sessionView = sessionViewFor(session);
+  if (sessionView === "loading") return <main className="login-shell"><section className="login-card" aria-busy="true"><div className="login-brand"><IconFish size={30} stroke={1.6} /><span><strong>Marlin Nexus</strong><small>Yönetim Sistemi</small></span></div><p>Oturum kontrol ediliyor…</p></section></main>;
+  if (sessionView === "login") return <LoginPage onLogin={(user) => setSession({ status: "authenticated", user })} />;
 
   const persistState = (nextSettings, nextEmployees, nextCostOverrides = costOverrides) => {
     return apiFetch("/api/app-state", {
@@ -410,13 +512,12 @@ export function App() {
           <span className="brand__copy"><strong>Marlin Nexus</strong><small>Yönetim Sistemi</small></span>
         </a>
         <nav className={mobileNavOpen ? "nav nav--open" : "nav"} aria-label="Ana menü">
-          {NAV_ITEMS.map((item) => (
+          {visibleNavItems.map((item) => (
             <button
               key={item.page}
               className={activePage === item.page ? "nav__item nav__item--active" : "nav__item"}
               onClick={() => {
-                setActivePage(item.page);
-                setMobileNavOpen(false);
+                navigate(item.page);
               }}
             >{item.label}</button>
           ))}
@@ -429,11 +530,12 @@ export function App() {
           <IconChevronDown size={16} />
         </label>
         <button className="icon-button" onClick={()=>setAppearanceOpen(true)} aria-label="Görünüm ayarları"><IconAdjustmentsHorizontal size={19} /></button>
+        <button className="icon-button" onClick={signOut} aria-label="Çıkış yap"><IconLogout size={19} /></button>
       </header>
 
-      {appearanceOpen&&<div className="appearance-backdrop" onMouseDown={(event)=>event.target===event.currentTarget&&setAppearanceOpen(false)}><aside className="appearance-drawer" role="dialog" aria-modal="true" aria-labelledby="appearance-title"><div className="appearance-drawer__head"><div><p className="eyebrow">Arayüz tercihleri</p><h2 id="appearance-title">Görünüm Ayarları</h2></div><button className="modal-close" onClick={()=>setAppearanceOpen(false)} aria-label="Kapat"><IconX size={20}/></button></div><div className="appearance-fields"><label><span>Tema</span><select value={appearance.theme} onChange={(event)=>setAppearance({...appearance,theme:event.target.value})}><option value="light">Açık</option><option value="dark">Koyu</option></select></label><label><span>Ekran yoğunluğu</span><select value={appearance.density} onChange={(event)=>setAppearance({...appearance,density:event.target.value})}><option value="comfortable">Rahat</option><option value="compact">Kompakt</option></select></label><label><span>Başlangıç sayfası</span><select value={appearance.defaultPage} onChange={(event)=>setAppearance({...appearance,defaultPage:event.target.value})}><option value="summary">Özet</option><option value="ledger">Havuz</option><option value="sales">Satışlar</option><option value="departments">Departman Analizi</option><option value="reports">Raporlar</option><option value="audit">Veri Denetimi</option></select></label><label className="appearance-check"><span><strong>Yüksek kontrast</strong><small>Metin ve sınır ayrımını güçlendirir.</small></span><input type="checkbox" checked={appearance.highContrast} onChange={(event)=>setAppearance({...appearance,highContrast:event.checked})}/></label><label className="appearance-check"><span><strong>Hareketi azalt</strong><small>Grafik ve geçiş animasyonlarını kapatır.</small></span><input type="checkbox" checked={appearance.reducedMotion} onChange={(event)=>setAppearance({...appearance,reducedMotion:event.checked})}/></label></div><div className="employee-modal__actions"><button className="secondary-button" onClick={()=>setAppearance(DEFAULT_APPEARANCE)}>Varsayılana dön</button><button className="primary-action" onClick={()=>setAppearanceOpen(false)}><IconCheck size={17}/> Tamam</button></div></aside></div>}
+      {appearanceOpen&&<div className="appearance-backdrop" onMouseDown={(event)=>event.target===event.currentTarget&&setAppearanceOpen(false)}><aside className="appearance-drawer" role="dialog" aria-modal="true" aria-labelledby="appearance-title"><div className="appearance-drawer__head"><div><p className="eyebrow">Arayüz tercihleri</p><h2 id="appearance-title">Görünüm Ayarları</h2></div><button className="modal-close" onClick={()=>setAppearanceOpen(false)} aria-label="Kapat"><IconX size={20}/></button></div><div className="appearance-fields"><label><span>Tema</span><select value={appearance.theme} onChange={(event)=>setAppearance({...appearance,theme:event.target.value})}><option value="light">Açık</option><option value="dark">Koyu</option></select></label><label><span>Ekran yoğunluğu</span><select value={appearance.density} onChange={(event)=>setAppearance({...appearance,density:event.target.value})}><option value="comfortable">Rahat</option><option value="compact">Kompakt</option></select></label><label><span>Başlangıç sayfası</span><select value={appearance.defaultPage} onChange={(event)=>setAppearance({...appearance,defaultPage:event.target.value})}><option value="summary">Özet</option><option value="ledger">Havuz</option><option value="sales">Satışlar</option><option value="departments">Departman Analizi</option><option value="reports">Raporlar</option><option value="audit">Veri Denetimi</option></select></label><label className="appearance-check"><span><strong>Yüksek kontrast</strong><small>Metin ve sınır ayrımını güçlendirir.</small></span><input type="checkbox" checked={appearance.highContrast} onChange={(event)=>setAppearance((current) => ({ ...current, highContrast: event.target.checked }))}/></label><label className="appearance-check"><span><strong>Hareketi azalt</strong><small>Grafik ve geçiş animasyonlarını kapatır.</small></span><input type="checkbox" checked={appearance.reducedMotion} onChange={(event)=>setAppearance((current) => ({ ...current, reducedMotion: event.target.checked }))}/></label></div><div className="employee-modal__actions"><button className="secondary-button" onClick={()=>setAppearance(DEFAULT_APPEARANCE)}>Varsayılana dön</button><button className="primary-action" onClick={()=>setAppearanceOpen(false)}><IconCheck size={17}/> Tamam</button></div></aside></div>}
 
-      {activePage === "summary" ? (
+      {effectivePage === "summary" ? (
         <SummaryPage
           rows={enrichedRows}
           settings={appSettings}
@@ -442,15 +544,17 @@ export function App() {
           annualPool={annualPool}
           year={year}
           mode={mode}
-          onNavigate={setActivePage}
+          onNavigate={navigate}
         />
-      ) : activePage === "sales" ? (
+      ) : effectivePage === "sales" ? (
         <SalesPage rows={calculatedRows} year={year} mode={mode} minimumCoverage={appSettings.minimumCoverage} pilotCardCostRates={appSettings.pilotCardCostRates} eurRateSets={eurRateSets} canonicalMetric={canonicalMetric} />
-      ) : activePage === "departments" ? (
+      ) : effectivePage === "departments" ? (
         <DepartmentAnalysisPage year={year} mode={mode} consolidatedRows={calculatedRows} minimumCoverage={appSettings.minimumCoverage} eurRateSets={eurRateSets} />
-      ) : activePage === "audit" ? (
+      ) : effectivePage === "audit" ? (
         <AuditPage year={year} mode={mode} pilotCardCostRates={appSettings.pilotCardCostRates} settings={appSettings} costOverrides={costOverrides} onSaveCostOverrides={saveCostOverrides} />
-      ) : activePage === "settings" ? (
+      ) : effectivePage === "inventory" ? (
+        <InventoryResearchPage year={year} mode={mode} />
+      ) : effectivePage === "settings" ? (
         <SettingsPage
           settings={appSettings}
           onSave={saveSettings}
@@ -460,9 +564,9 @@ export function App() {
           annualPool={annualPool}
           employees={employees}
           onSaveEmployees={saveEmployees}
-          onBack={() => setActivePage("ledger")}
+          onBack={() => navigate("ledger")}
         />
-      ) : activePage === "goals" ? (
+      ) : effectivePage === "goals" ? (
         <GoalsPage
           settings={appSettings}
           targetRows={targetState.rows}
@@ -470,9 +574,9 @@ export function App() {
           targetError={targetState.error}
           annualPool={annualPool}
           year={year}
-          onBack={() => setActivePage("ledger")}
+          onBack={() => navigate("ledger")}
         />
-      ) : activePage === "approval" ? (
+      ) : effectivePage === "approval" ? (
         <ApprovalPage
           rows={enrichedRows}
           eurRateSets={eurRateSets}
@@ -484,9 +588,9 @@ export function App() {
           connection={connection}
           costOverrides={costOverrides}
           onSaveCostOverrides={saveCostOverrides}
-          onBack={() => setActivePage("ledger")}
+          onBack={() => navigate("ledger")}
         />
-      ) : activePage === "reports" ? (
+      ) : effectivePage === "reports" ? (
         <ReportsPage
           settings={appSettings}
           employees={employees}
@@ -505,7 +609,7 @@ export function App() {
             <h1>Havuz</h1>
           </div>
           <div className="toolbar">
-            <button className="policy-button" onClick={() => setPolicyOpen(true)}>Havuz Kuralları <IconInfoCircle size={16} /></button>
+            <button className="policy-button" onClick={openPolicy}>Havuz Kuralları <IconInfoCircle size={16} /></button>
             <div className="segmented" aria-label="Durum filtresi">
               <button aria-pressed={statusFilter === "estimate"} className={statusFilter === "estimate" ? "active" : ""} onClick={() => setStatusFilter(statusFilter === "estimate" ? "all" : "estimate")}><span className="orange-dot" />Tahmini</button>
               <button aria-pressed={statusFilter === "final"} className={statusFilter === "final" ? "active" : ""} onClick={() => setStatusFilter(statusFilter === "final" ? "all" : "final")}><span className="green-dot" />Kesinleşmiş</button>
@@ -515,7 +619,7 @@ export function App() {
               {menuOpen && (
                 <div className="action-menu" role="menu">
                   <button role="menuitem" onClick={() => setMenuOpen(false)}>Özet raporu aç</button>
-                  <button role="menuitem" onClick={() => { setMenuOpen(false); setPolicyOpen(true); }}>Politikayı incele</button>
+                  <button role="menuitem" onClick={() => { setMenuOpen(false); openPolicy(); }}>Politikayı incele</button>
                 </div>
               )}
             </div>
@@ -633,7 +737,7 @@ export function App() {
                   <b>{fmt(totals.profit)}</b>
                 </div>
 
-                <button className="policy-summary" onClick={() => setPolicyOpen(true)}>
+                <button className="policy-summary" onClick={openPolicy}>
                   <div><strong>Havuz Kuralları Özeti</strong><p>Hedef altı aylar muaf; hedef tutan aylar temkinli, hedef üstü eşiği geçen aylar büyüme oranıyla hesaplanır.</p></div>
                   <IconChevronDown size={18} />
                 </button>
@@ -650,9 +754,9 @@ export function App() {
       )}
 
       {policyOpen && (
-        <div className="modal-backdrop" role="presentation" onMouseDown={() => setPolicyOpen(false)}>
+        <div className="modal-backdrop" role="presentation">
           <section className="modal" role="dialog" aria-modal="true" aria-labelledby="policy-title" onMouseDown={(event) => event.stopPropagation()}>
-            <button className="modal-close" onClick={() => setPolicyOpen(false)} aria-label="Kapat"><IconX size={20} /></button>
+            <button className="modal-close" onClick={closePolicyFromButton} aria-label="Kapat"><IconX size={20} /></button>
             <p className="eyebrow">Geçerli hesaplama kuralları</p>
             <h2 id="policy-title">Havuz Kuralları</h2>
             <div className="policy-grid">
@@ -667,7 +771,7 @@ export function App() {
               <li><IconCheck size={17} /> Havuz sonucu maliyet kapsamı görünür biçimde yayınlanır.</li>
               <li><IconCheck size={17} /> CPM üzerinde ekleme, güncelleme veya silme yapılmaz.</li>
             </ul>
-            <button className="primary-button" onClick={() => setPolicyOpen(false)}>Anladım</button>
+            <button className="primary-button" onClick={closePolicy}>Anladım</button>
           </section>
         </div>
       )}

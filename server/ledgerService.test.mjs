@@ -5,6 +5,7 @@ import express from "express";
 import { buildFinalInvoiceLedger } from "./finalInvoiceLedger.mjs";
 import { createLedgerService } from "./ledgerService.mjs";
 import { createUnifiedLedgerRouter } from "./ledgerApi.mjs";
+import { buildInventoryOpeningResearchPayload } from "./inventoryOpeningResearch.mjs";
 
 function deferred() {
   let resolve;
@@ -557,10 +558,11 @@ test("eşzamanlı overview departman ve audit istekleri tek ledger sürümünü 
   });
 
   await withApiServer(router, async (baseUrl) => {
-    const [overview, departments, audit] = await Promise.all([
+    const [overview, departments, audit, provenance] = await Promise.all([
       fetch(`${baseUrl}/api/overview?year=2026`).then((response) => response.json()),
       fetch(`${baseUrl}/api/department-analysis?year=2026`).then((response) => response.json()),
       fetch(`${baseUrl}/api/audit-ledger?year=2026`).then((response) => response.json()),
+      fetch(`${baseUrl}/api/reconciliation/invoices/source-rows?year=2026`).then((response) => response.json()),
     ]);
 
     assert.equal(loads, 1);
@@ -570,6 +572,10 @@ test("eşzamanlı overview departman ve audit istekleri tek ledger sürümünü 
     assert.equal(overview.readOnly, true);
     assert.equal(departments.readOnly, true);
     assert.equal(audit.readOnly, true);
+    assert.equal(provenance.readOnly, true);
+    assert.equal(provenance.status, "unverified");
+    assert.equal(provenance.evidenceMode, "canonical-ledger-only");
+    assert.equal(provenance.summary.rows, 3);
     assert.equal(overview.reconciliation.difference, 0);
     assert.equal(departments.reconciliation.difference, 0);
     assert.equal(audit.reconciliation.difference, 0);
@@ -1188,9 +1194,63 @@ test("departman hedef API ekran ayrıntısının 500 satır sınırından etkile
     ));
 
     assert.equal(january.actual, 501);
-    assert.equal(january.profit, 250.5);
+    assert.equal(january.profit, 501);
+    assert.equal(january.uncoveredNetSales, 501);
+    assert.equal(january.eligibleProfit, 0);
   });
 });
+
+test("inventory opening research route validates bounds and returns candidate payload", async () => {
+  const router = createUnifiedLedgerRouter({
+    ledgerService: createLedgerService({ loadYear: async () => apiFixtureLedger() }),
+    inventoryOpeningResearchLoader: async (year, sampleLimit) => buildInventoryOpeningResearchPayload({
+      year,
+      sampleLimit,
+      stkhArRows: [{ ID: 1, MALKOD: "P1", MIKTAR: 1, TUTAR: 10, ISKONTO: 0 }],
+    }),
+    logger: { error() {} },
+  });
+
+  await withApiServer(router, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/research/inventory-opening-evidence?year=2026&sampleLimit=1`);
+    const payload = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(payload.status, "candidate");
+    assert.equal(payload.verified, false);
+    assert.equal(payload.officialEligibleCount, 0);
+
+    const invalid = await fetch(`${baseUrl}/api/research/inventory-opening-evidence?year=2026&sampleLimit=101`);
+    assert.equal(invalid.status, 400);
+  });
+});
+
+test("source provenance API uses the injected transaction result without changing ledger metrics", async () => {
+  const service = createLedgerService({ loadYear: async () => apiFixtureLedger() });
+  let requestedYear;
+  const router = createUnifiedLedgerRouter({
+    ledgerService: service,
+    sourceProvenanceLoader: async (year, options) => {
+      requestedYear = [year, options.refresh];
+      return {
+        evidence: { status: "mismatch", reconciliation: { netDifferenceMinorUnits: 125 } },
+        source: { table: "STKHAR", status: "candidate" },
+      };
+    },
+    logger: { error() {} },
+  });
+
+  await withApiServer(router, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/reconciliation/invoices/source-rows?year=2026&refresh=1`);
+    const payload = await response.json();
+    assert.equal(response.status, 200);
+    assert.deepEqual(requestedYear, [2026, true]);
+    assert.equal(payload.mode, "live");
+    assert.equal(payload.evidence.status, "mismatch");
+    assert.equal(payload.source.status, "candidate");
+    assert.equal(payload.evidence.reconciliation.netDifferenceMinorUnits, 125);
+  });
+});
+
 
 test("departman belge araması seçili yılın 500 dışındaki eski ekonomik satırını bulur", async () => {
   const service = createLedgerService({

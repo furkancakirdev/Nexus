@@ -260,6 +260,7 @@ export function classifyEurLine({
   }
   const covered = Boolean(financeV2)
     && financeV2.reviewReason == null
+    && (financeV2.costStatus == null || financeV2.costStatus === "covered")
     && finiteNumber(financeV2.lineCostTryExVat) !== null;
   if (!covered) {
     return {

@@ -81,6 +81,74 @@ test("uses final purchase invoice net amount after discount for unit cost", () =
   });
 });
 
+test("ledger exposes an explicit blocked inventory source when evidence was not collected", () => {
+  const result = buildFinalInvoiceLedger({ economics: [sale(85, "F-1", {
+    financeV2: { costStatus: "covered", lineCostTryExVat: 80 },
+  })] });
+
+  assert.deepEqual(result.inventorySource, {
+    status: "missing",
+    financialStatus: "blocked",
+    reviewReason: "inventory-movement-source-not-collected",
+    evidence: { status: "not-collected" },
+  });
+});
+
+test("ledger propagates injected inventory evidence without inferring it from invoice rows", () => {
+  const inventorySource = {
+    status: "verified",
+    contractVersion: 1,
+    financialStatus: "ready",
+    evidence: { openingEvidenceStatus: "complete" },
+  };
+  const result = buildFinalInvoiceLedger({
+    economics: [sale(85, "F-2")],
+    inventorySource,
+  });
+
+  assert.deepEqual(result.inventorySource, inventorySource);
+  assert.notEqual(result.inventorySource, inventorySource);
+});
+
+test("ledger preserves normalized CPM exchange-rate evidence for the EUR reporting layer", () => {
+  const result = buildFinalInvoiceLedger({
+    economics: [sale(85, "FX-1")],
+    exchangeRates: [{
+      rateDate: "2026-07-01",
+      rateCurrency: "EUR",
+      halkbankBuyingRate: 46,
+      halkbankSellingRate: 46.2,
+      exchangeSourceId: "DVZHAR-1/2",
+    }],
+  });
+  assert.deepEqual(result.exchangeRates, [{
+    rateDate: "2026-07-01",
+    rateCurrency: "EUR",
+    halkbankBuyingRate: 46,
+    halkbankSellingRate: 46.2,
+    exchangeSourceId: "DVZHAR-1/2",
+  }]);
+});
+
+test("doğrulanmış hareket kaynağı canonical satış satırına WAC maliyeti taşır", () => {
+  const result = buildFinalInvoiceLedger({
+    economics: [sale(85, "F-WAC", { rootId: "S-WAC", quantity: 2 })],
+    inventorySource: {
+      status: "verified",
+      contractVersion: 1,
+      financialStatus: "ready",
+      movements: [
+        { id: "O-WAC", productCode: "P-1", kind: "opening", date: "2026-01-01", quantity: 10, unitCostTryExVat: 100 },
+        { id: "S-WAC", productCode: "P-1", kind: "sale", date: "2026-07-01", quantity: 2 },
+      ],
+      evidence: { openingEvidenceStatus: "complete" },
+    },
+  });
+  assert.equal(result.rows[0].financeV2.costMethod, "movingWeightedAverage");
+  assert.equal(result.rows[0].financeV2.lineCostTryExVat, 200);
+  assert.equal(result.rows[0].financeV2.costStatus, "covered");
+});
+
 test("conflicting supplied purchase net is quarantined instead of becoming cost basis", () => {
   const result = selectPurchaseEvidence({
     sale: sale(17, "F-1", { productCode: "P-1", quantity: 2 }),
