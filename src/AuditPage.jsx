@@ -202,10 +202,10 @@ export function AuditPage({ year, mode, refreshToken = 0, pilotCardCostRates, se
     <section className="page-heading audit-heading"><div><p className="eyebrow">Finansal izlenebilirlik</p><h1>CPM Denetim Merkezi</h1><p>Hesaplamaya giren, oranla değerlendirilen, dışlanan ve inceleme bekleyen tüm belge satırlarını doğrulayın.</p></div><span className={`source-badge source-badge--${mode}`}>{mode === "live" ? "CPM canlı · salt okunur" : "Veri kullanılamıyor"}</span></section>
 
     <section className="audit-kpis">
-      <article><span><IconFileInvoice /></span><div><small>Filtrelenen satır</small><strong>{integer.format(data.summary?.totalRows || 0)}</strong><p>{integer.format(data.summary?.filteredNetAmount || 0)} TL net hareket · kapsam dışı dahil</p><small>Kapsam dışı: {formatPreciseMoney(data.summary?.excludedNetAmount || 0)}</small></div></article>
-      <article><span className="green"><IconCircleCheck /></span><div><small>Doğrulanan</small><strong>{integer.format((data.summary?.verifiedRows || 0) + (data.summary?.configuredRows || 0))}</strong><p>{integer.format(data.summary?.verifiedRows || 0)} fatura · {integer.format(data.summary?.configuredRows || 0)} oran</p></div></article>
-      <article><span className="amber"><IconAlertTriangle /></span><div><small>İnceleme / iade kontrolü</small><strong>{integer.format(data.summary?.reviewRows || 0)}</strong><p>{integer.format(data.summary?.returnRiskRows || 0)} satırda müşteri iadesi maliyetten ayıklandı</p></div></article>
-      <article><span><IconShieldCheck /></span><div><small>Kapsam dışı</small><strong>{integer.format(data.summary?.excludedRows || 0)}</strong><p>Kâra ve havuza alınmaz</p></div></article>
+      <article><span><IconFileInvoice /></span><div><small>Filtrelenen satır</small><strong>{loading ? "…" : integer.format(data.summary?.totalRows || 0)}</strong><p>{loading ? "CPM defteri taranıyor…" : `${integer.format(data.summary?.filteredNetAmount || 0)} TL net hareket · kapsam dışı dahil`}</p><small>Kapsam dışı: {loading ? "—" : formatPreciseMoney(data.summary?.excludedNetAmount || 0)}</small></div></article>
+      <article><span className="green"><IconCircleCheck /></span><div><small>Doğrulanan</small><strong>{loading ? "…" : integer.format((data.summary?.verifiedRows || 0) + (data.summary?.configuredRows || 0))}</strong><p>{loading ? "Faturalar eşleniyor…" : `${integer.format(data.summary?.verifiedRows || 0)} fatura · ${integer.format(data.summary?.configuredRows || 0)} oran`}</p></div></article>
+      <article><span className="amber"><IconAlertTriangle /></span><div><small>İnceleme / iade kontrolü</small><strong>{loading ? "…" : integer.format(data.summary?.reviewRows || 0)}</strong><p>{loading ? "İadeler ayıklanıyor…" : `${integer.format(data.summary?.returnRiskRows || 0)} satırda müşteri iadesi maliyetten ayıklandı`}</p></div></article>
+      <article><span><IconShieldCheck /></span><div><small>Kapsam dışı</small><strong>{loading ? "…" : integer.format(data.summary?.excludedRows || 0)}</strong><p>Kâra ve havuza alınmaz</p></div></article>
     </section>
 
     <section className="panel audit-workspace">
@@ -229,7 +229,11 @@ export function AuditPage({ year, mode, refreshToken = 0, pilotCardCostRates, se
         <th className="audit-table__profit">Brüt kâr<small>KDV hariç</small></th>
         <th className="audit-table__validation">Doğrulama</th>
       </tr></thead><tbody>
-        {rows.map((row)=><Fragment key={row.id}>
+        {loading && rows.length === 0 ? (
+          <tr><td colSpan={7} className="empty-cell">CPM veritabanından 22.000+ satır ve maliyet kanıtları taranıyor…</td></tr>
+        ) : rows.length === 0 ? (
+          <tr><td colSpan={7} className="empty-cell">Filtrelere uygun belge bulunamadı.</td></tr>
+        ) : rows.map((row)=><Fragment key={row.id}>
           <tr className={expanded===row.id?"is-expanded":""}>
             <td><button className="row-action" onClick={()=>setExpanded(expanded===row.id?null:row.id)} aria-label={expanded===row.id?"Detayı kapat":"Detayı aç"} aria-expanded={expanded===row.id} aria-controls={`audit-detail-${row.id}`}>{expanded===row.id?<IconChevronUp size={17}/>:<IconChevronDown size={17}/>}</button></td>
             <th><strong>{row.documentType}/{row.documentNo}</strong><small>{new Date(row.documentDate).toLocaleDateString("tr-TR")}</small></th>

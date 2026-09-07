@@ -247,6 +247,7 @@ export function SettingsPage({ settings, onSave, connection, mode, annualProfit,
                   <Field label="Maliyet yöntemi" help="STOK_MALIYET kullanılmaz; önce satıştan önceki son, yoksa satıştan sonraki en yakın aktif alım faturası kullanılır."><select value="lastPurchase" disabled><option value="lastPurchase">Doğrulanabilir net alım faturası</option></select></Field>
                   <Field label="Asgari maliyet kapsamı"><NumberInput value={draft.minimumCoverage} onChange={(v) => set("minimumCoverage", v)} min={60} max={100} suffix="%" /></Field>
                   <Field label="Kur dönüşüm kuralı"><select value={draft.exchangeRateRule} onChange={(e) => set("exchangeRateRule", e.target.value)}><option value="document">Evrak tarihi kuru</option><option value="monthEnd">Ay sonu kuru</option><option value="centralBank">TCMB satış kuru</option></select></Field>
+                  <Field label="Varsayılan para birimi"><select value={draft.reportingCurrencyDefault || "EUR"} onChange={(e) => set("reportingCurrencyDefault", e.target.value)}><option value="EUR">EUR (Halkbank Çapraz)</option><option value="TRY">TRY (Türk Lirası)</option></select></Field>
                 </div>
                 {!validation.coverage && <p className="field-error"><IconAlertTriangle size={15} /> Kapsam eşiği %60–%100 arasında olmalı.</p>}
               </div>
@@ -267,6 +268,9 @@ export function SettingsPage({ settings, onSave, connection, mode, annualProfit,
                 {!validation.pilotRates && <p className="field-error"><IconAlertTriangle size={15} /> Pilot kart oranları %0–%100 arasında olmalı.</p>}
               </div>
               <div className="settings-card settings-card--toggles">
+                <Toggle checked={draft.negativeStockWeightByQuantity ?? true} onChange={(v) => set("negativeStockWeightByQuantity", v)} label="Negatif stokta alım adetleriyle ağırlıklandırma" help="Açıksa negatif stoğa düşen satışlarda marj, alım faturalarındaki adetlerle ağırlıklı ortalama olarak hesaplanır ve tüm satılan adetlere eşit uygulanır." />
+                <Toggle checked={draft.enableCrossDepotTracking ?? true} onChange={(v) => set("enableCrossDepotTracking", v)} label="Çapraz-depo sevkiyatlarını ayrı izle" help="Servis departmanının merkez depodan sevk edilen parçalarını ticari sahiplikten ayırmadan takip eder." />
+                <Toggle checked={draft.filterAccountingActors ?? true} onChange={(v) => set("filterAccountingActors", v)} label="Bircan ve muhasebe aktörlerini filtrele" help="Bircan veya cari kart benzeri aktörlerin ticari sorumlu sıralamalarına girmesini engeller." />
                 <Toggle checked={draft.requireManagementApprovalForManualCost} onChange={(v) => set("requireManagementApprovalForManualCost", v)} label="Manuel maliyette yönetim onayı zorunlu" help="Açıksa manuel girilen maliyetler yönetim onayı verilene kadar kesin havuz hesabına alınmaz. Kapalıysa kayıt, kaydedildiği anda hesaplamaya katılabilir." />
               </div>
               <div className="readonly-banner"><IconLock /><div><strong>Faturayla kanıtlanan maliyet ve veri sınırı</strong><p>BARNACLE, SRF oranına bağlıdır. Diğer ürünlerde satıştan önceki son; bu yoksa satıştan sonraki en yakın aktif net alım faturası kullanılır. KOMİSYON, GD-0187, GD-0079 ve PDI kapsam dışıdır; alımı bulunmayan diğer gelir esas kâr ve havuzdan çıkarılır. CPM yalnızca SELECT sorgularıyla okunur.</p></div><span>{mode === "live" ? "Canlı CPM" : "Pilot veri"}</span></div>

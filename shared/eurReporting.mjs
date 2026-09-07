@@ -45,17 +45,76 @@ export function buildExchangeRateIndex(rateRows = []) {
     const currency = currencyCode(row?.rateCurrency);
     const day = dateKey(row?.rateDate);
     if (!currency || !day) continue;
-    const buyingRate = finiteNumber(row?.halkbankBuyingRate);
-    const sellingRate = finiteNumber(row?.halkbankSellingRate);
+    const buyingRate = finiteNumber(row?.buyingRate) ?? finiteNumber(row?.halkbankBuyingRate);
+    const sellingRate = finiteNumber(row?.sellingRate) ?? finiteNumber(row?.halkbankSellingRate);
     if (buyingRate === null && sellingRate === null) continue;
+    const source = text(row?.source) || "CPM";
     const entry = {
       date: day,
       buyingRate,
       sellingRate,
       sourceId: text(row?.exchangeSourceId) || null,
+      source,
+      sourceIdentifier: text(row?.sourceIdentifier) || text(row?.exchangeSourceId) || null,
+      requestedDate: dateKey(row?.requestedDate) || day,
+      selectionReason: text(row?.selectionReason) || (source === "TCMB" ? "cpm-rate-unavailable" : "cpm-primary"),
+      sourceUrl: text(row?.sourceUrl) || null,
+      evidenceHash: text(row?.evidenceHash) || null,
+      retrievalMode: text(row?.retrievalMode) || null,
     };
     const days = byCurrency.get(currency) || new Map();
-    days.set(day, entry);
+    const previous = days.get(day);
+    if (!previous) {
+      days.set(day, {
+        ...entry,
+        buyingSourceId: buyingRate === null ? null : entry.sourceId,
+        buyingSource: buyingRate === null ? null : entry.source,
+        buyingSourceIdentifier: buyingRate === null ? null : entry.sourceIdentifier,
+        buyingSelectionReason: buyingRate === null ? null : entry.selectionReason,
+        buyingSourceUrl: buyingRate === null ? null : entry.sourceUrl,
+        buyingEvidenceHash: buyingRate === null ? null : entry.evidenceHash,
+        buyingRetrievalMode: buyingRate === null ? null : entry.retrievalMode,
+        sellingSourceId: sellingRate === null ? null : entry.sourceId,
+        sellingSource: sellingRate === null ? null : entry.source,
+        sellingSourceIdentifier: sellingRate === null ? null : entry.sourceIdentifier,
+        sellingSelectionReason: sellingRate === null ? null : entry.selectionReason,
+        sellingSourceUrl: sellingRate === null ? null : entry.sourceUrl,
+        sellingEvidenceHash: sellingRate === null ? null : entry.evidenceHash,
+        sellingRetrievalMode: sellingRate === null ? null : entry.retrievalMode,
+      });
+    } else {
+      const merged = { ...previous };
+      if (buyingRate !== null || sellingRate !== null) {
+        merged.sourceId = entry.sourceId;
+        merged.source = entry.source;
+        merged.sourceIdentifier = entry.sourceIdentifier;
+        merged.selectionReason = entry.selectionReason;
+        merged.sourceUrl = entry.sourceUrl;
+        merged.evidenceHash = entry.evidenceHash;
+        merged.retrievalMode = entry.retrievalMode;
+      }
+      if (buyingRate !== null) {
+        merged.buyingRate = buyingRate;
+        merged.buyingSourceId = entry.sourceId;
+        merged.buyingSource = entry.source;
+        merged.buyingSourceIdentifier = entry.sourceIdentifier;
+        merged.buyingSelectionReason = entry.selectionReason;
+        merged.buyingSourceUrl = entry.sourceUrl;
+        merged.buyingEvidenceHash = entry.evidenceHash;
+        merged.buyingRetrievalMode = entry.retrievalMode;
+      }
+      if (sellingRate !== null) {
+        merged.sellingRate = sellingRate;
+        merged.sellingSourceId = entry.sourceId;
+        merged.sellingSource = entry.source;
+        merged.sellingSourceIdentifier = entry.sourceIdentifier;
+        merged.sellingSelectionReason = entry.selectionReason;
+        merged.sellingSourceUrl = entry.sourceUrl;
+        merged.sellingEvidenceHash = entry.evidenceHash;
+        merged.sellingRetrievalMode = entry.retrievalMode;
+      }
+      days.set(day, merged);
+    }
     byCurrency.set(currency, days);
   }
   const sorted = new Map();
@@ -83,6 +142,9 @@ export function findRateOnOrBefore(index, currency, requestedDate) {
       buyingRate: 1,
       sellingRate: 1,
       sourceId: "EUR-PARITY",
+      source: "PARITY",
+      sourceIdentifier: "EUR-PARITY",
+      selectionReason: "eur-parity",
       lagDays: 0,
       weekendOrHoliday: false,
       reviewReason: null,
@@ -94,8 +156,8 @@ export function findRateOnOrBefore(index, currency, requestedDate) {
   }
   let candidate = null;
   for (const entry of days) {
-    if (entry.date <= requestedDay) candidate = entry;
-    else break;
+    if (entry.date > requestedDay) break;
+    if (finiteNumber(entry.buyingRate) !== null && finiteNumber(entry.buyingRate) > 0) candidate = entry;
   }
   if (!candidate) {
     return { currency: normalizedCurrency, requestedDate: requestedDay, reviewReason: "missing-exchange-rate" };
@@ -107,7 +169,13 @@ export function findRateOnOrBefore(index, currency, requestedDate) {
     rateDate: candidate.date,
     buyingRate: candidate.buyingRate,
     sellingRate: candidate.sellingRate,
-    sourceId: candidate.sourceId,
+    sourceId: candidate.buyingSourceId ?? candidate.sourceId,
+    source: candidate.buyingSource ?? candidate.source,
+    sourceIdentifier: candidate.buyingSourceIdentifier ?? candidate.sourceIdentifier,
+    selectionReason: candidate.buyingSelectionReason ?? candidate.selectionReason,
+    sourceUrl: candidate.buyingSourceUrl ?? candidate.sourceUrl,
+    evidenceHash: candidate.buyingEvidenceHash ?? candidate.evidenceHash,
+    retrievalMode: candidate.buyingRetrievalMode ?? candidate.retrievalMode,
     lagDays,
     weekendOrHoliday: lagDays > 0,
     reviewReason: null,
@@ -144,6 +212,9 @@ export function buildRateSet(index, reportDate) {
         : 0,
       weekendOrHoliday: false,
       sourceId: eurEntry?.sourceId ?? "EUR-PARITY",
+      source: eurEntry?.source ?? "CPM",
+      sourceIdentifier: eurEntry?.sourceIdentifier ?? eurEntry?.sourceId ?? "EUR-PARITY",
+      selectionReason: eurEntry?.selectionReason ?? "eur-parity",
       tryBuyingRate: eurTryBuyingRate,
     },
     // TRY temel para birimidir; EUR karşılığı doğrudan EUR alış kuruna bölünerek bulunur.
@@ -154,6 +225,9 @@ export function buildRateSet(index, reportDate) {
       lagDays: 0,
       weekendOrHoliday: false,
       sourceId: "TRY-BASE",
+      source: "BASE",
+      sourceIdentifier: "TRY-BASE",
+      selectionReason: "try-base",
     },
   };
   for (const currency of currencies) {
@@ -167,12 +241,21 @@ export function buildRateSet(index, reportDate) {
       lagDays: found.lagDays,
       weekendOrHoliday: found.weekendOrHoliday,
       sourceId: found.sourceId,
+      source: found.source,
+      sourceIdentifier: found.sourceIdentifier,
+      selectionReason: found.selectionReason,
+      sourceUrl: found.sourceUrl,
+      evidenceHash: found.evidenceHash,
+      retrievalMode: found.retrievalMode,
     };
   }
   const maxLag = Object.values(rates).reduce((max, rate) => Math.max(max, rate.lagDays || 0), 0);
+  const sourceKinds = [...new Set(Object.values(rates).map((rate) => rate.source).filter(Boolean))].sort();
   return {
     reportDate: reportDay,
     bank: "HALKBANK",
+    sourcePolicy: sourceKinds.includes("TCMB") ? "CPM_HALKBANK_THEN_TCMB_V1" : "CPM_HALKBANK_V1",
+    sourceKinds,
     eurTryBuyingRate,
     rates,
     weekendOrHolidayNote: maxLag > 0
@@ -192,7 +275,15 @@ export function convertToEur(rateSet, currency, amount) {
     return { amountEur: null, reviewReason: "missing-exchange-rate" };
   }
   if (normalizedCurrency === "EUR") {
-    return { amountEur: normalizedAmount, rateUsed: 1, rateDate: rateSet.reportDate, reviewReason: null };
+    const entry = rateSet.rates?.EUR || {};
+    return {
+      amountEur: normalizedAmount,
+      rateUsed: 1,
+      rateDate: entry.rateDate ?? rateSet.reportDate,
+      rateSource: entry.source ?? "PARITY",
+      rateSourceIdentifier: entry.sourceIdentifier ?? "EUR-PARITY",
+      reviewReason: null,
+    };
   }
   const entry = rateSet.rates?.[normalizedCurrency];
   const buyingRate = finiteNumber(entry?.buyingRate);
@@ -208,6 +299,9 @@ export function convertToEur(rateSet, currency, amount) {
     amountEur: normalizedAmount * buyingRate / eurTryBuyingRate,
     rateUsed: buyingRate,
     rateDate: entry.rateDate ?? rateSet.reportDate,
+    rateSource: entry.source ?? "CPM",
+    rateSourceIdentifier: entry.sourceIdentifier ?? entry.sourceId ?? null,
+    selectionReason: entry.selectionReason ?? null,
     reviewReason: null,
   };
 }

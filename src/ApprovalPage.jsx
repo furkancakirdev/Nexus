@@ -21,6 +21,9 @@ const money = new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 0 });
 const percentage = new Intl.NumberFormat("tr-TR", {
   maximumFractionDigits: 1,
 });
+const rateNumber = new Intl.NumberFormat("tr-TR", {
+  maximumFractionDigits: 4,
+});
 
 function hasTargetData(targetRows) {
   return targetRows.some((row) => (
@@ -34,6 +37,72 @@ function bandLabel(band) {
   if (band === "growth") return "Büyüme";
   if (band === "conservative") return "Temkinli";
   return "Muaf";
+}
+
+export function getRateEvidencePresentation(status, rateSet = null) {
+  const sourceLabel = (rateSet?.sourceKinds || []).includes("TCMB")
+    ? "CPM öncelikli · TCMB fallback"
+    : "Halkbank alış kuru";
+  const presentations = {
+    frozen: {
+      tone: "verified",
+      label: "Kur kanıtı donduruldu",
+      detail: `Ay sonu ${sourceLabel} bu onay snapshotına bağlandı.`,
+    },
+    "legacy-frozen": {
+      tone: "review",
+      label: "Eski snapshot kur seti taşıyor",
+      detail: "Legacy onay korunuyor; yeni kur sözleşmesiyle yeniden doğrulanmalı.",
+    },
+    "legacy-month-end-fallback": {
+      tone: "review",
+      label: "Ay sonu kur fallback’i",
+      detail: "Bu eski onayda dondurulmuş kur kanıtı yok; EUR sonucu kesin kabul edilmemeli.",
+    },
+    invalid: {
+      tone: "blocked",
+      label: "Kur kanıtı geçersiz",
+      detail: `Saklanan ${sourceLabel}, tarih veya kaynak kimliği doğrulanamadı.`,
+    },
+  };
+  return presentations[status] || {
+    tone: "review",
+    label: "Kur kanıtı bekleniyor",
+    detail: `${sourceLabel}, tarih ve kaynak kimliği bu onayda doğrulanamadı.`,
+  };
+}
+
+export function getRateEvidenceDetails(rateSet) {
+  if (!rateSet || typeof rateSet !== "object") {
+    return {
+      bank: "—",
+      reportDate: "—",
+      eurTryBuyingRate: null,
+      entries: [],
+      note: null,
+    };
+  }
+  const entries = Object.entries(rateSet.rates || {})
+    .sort(([left], [right]) => left.localeCompare(right, "en"))
+    .map(([currency, entry]) => ({
+      currency,
+      buyingRate: typeof entry?.buyingRate === "number" ? entry.buyingRate : null,
+      rateDate: entry?.rateDate || "—",
+      sourceId: entry?.sourceId || "Kaynak kimliği yok",
+      source: entry?.source || "—",
+      sourceIdentifier: entry?.sourceIdentifier || entry?.sourceId || "Kaynak kimliği yok",
+    }));
+  return {
+    bank: rateSet.bank || "—",
+    sourcePolicy: rateSet.sourcePolicy || "—",
+    sourceKinds: Array.isArray(rateSet.sourceKinds) ? rateSet.sourceKinds : [],
+    reportDate: rateSet.reportDate || "—",
+    eurTryBuyingRate: typeof rateSet.eurTryBuyingRate === "number"
+      ? rateSet.eurTryBuyingRate
+      : null,
+    entries,
+    note: rateSet.weekendOrHolidayNote || null,
+  };
 }
 
 export function ApprovalPage({
@@ -169,6 +238,11 @@ export function ApprovalPage({
   const riskCount = periods.filter((item) => item.risk).length;
   const detailDepartments = selected.approval?.departments
     || selected.targetRows;
+  const rateEvidence = getRateEvidencePresentation(
+    selected.approval?.rateEvidenceStatus,
+    selected.approval?.exchangeRateSet,
+  );
+  const rateDetails = getRateEvidenceDetails(selected.approval?.exchangeRateSet);
 
   async function reloadApprovals() {
     const response = await fetch(`/api/approvals?year=${year}`);
@@ -453,6 +527,63 @@ export function ApprovalPage({
                   </dd>
                 </div>
               </dl>
+
+              {selected.approval && (
+                <div className={`rate-evidence rate-evidence--${rateEvidence.tone}`}>
+                  {rateEvidence.tone === "verified"
+                    ? <IconShieldCheck size={17} />
+                    : <IconAlertTriangle size={17} />}
+                  <div>
+                    <strong>{rateEvidence.label}</strong>
+                    <p>{rateEvidence.detail}</p>
+                    {selected.approval.exchangeRateSet && (
+                      <>
+                        <dl className="rate-evidence__details">
+                          <div>
+                            <dt>Banka</dt>
+                            <dd>{rateDetails.bank}</dd>
+                          </div>
+                          <div>
+                            <dt>Kur seti baz tarihi</dt>
+                            <dd>{rateDetails.reportDate}</dd>
+                          </div>
+                          <div>
+                            <dt>EUR/TRY alış</dt>
+                            <dd>{rateDetails.eurTryBuyingRate == null
+                              ? "—"
+                              : rateNumber.format(rateDetails.eurTryBuyingRate)}</dd>
+                          </div>
+                          <div>
+                            <dt>Kaynak politikası</dt>
+                            <dd>{rateDetails.sourcePolicy}</dd>
+                          </div>
+                          <div className="rate-evidence__formula">
+                            <dt>EUR dönüşüm kuralı</dt>
+                            <dd>Kaynak tutar × alış(döviz) ÷ alış(EUR/TRY)</dd>
+                          </div>
+                        </dl>
+                        <div className="rate-evidence__sources">
+                          <strong>Kaynak kur satırları</strong>
+                          <ul>
+                            {rateDetails.entries.map((entry) => (
+                              <li key={entry.currency}>
+                                <span>{entry.currency}</span>
+                                <span>{entry.buyingRate == null ? "—" : rateNumber.format(entry.buyingRate)}</span>
+                                <span>{entry.rateDate}</span>
+                                <small>{entry.source} · {entry.sourceIdentifier}</small>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                        <p className="rate-evidence__boundary">
+                          Kaynak tutar ve EUR karşılıkları canonical ledger satırlarında izlenir; bu panel kur kanıtını gösterir.
+                          {rateDetails.note ? ` ${rateDetails.note}` : ""}
+                        </p>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <div className="approval-departments">
                 {detailDepartments.map((department) => (

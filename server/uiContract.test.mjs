@@ -5,10 +5,22 @@ import test from "node:test";
 import { createServer } from "vite";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { MODULE_REGISTRY } from "../shared/moduleRegistry.mjs";
 
 async function source(relativePath) {
   return readFile(new URL(`../${relativePath}`, import.meta.url), "utf8");
 }
+
+test("aktif ürün modülleri ilk plandaki yedi ekranla sınırlıdır", () => {
+  assert.deepEqual(
+    MODULE_REGISTRY.filter((module) => module.active).map((module) => module.page),
+    ["summary", "sales", "departments", "audit", "inventory", "ledger", "settings"],
+  );
+  assert.deepEqual(
+    MODULE_REGISTRY.filter((module) => module.active).map((module) => module.label),
+    ["Genel Bakış", "Satış Analizi", "Departman Analizi", "Denetim", "Stok", "Havuz", "Ayarlar"],
+  );
+});
 
 test("Katkı ve Performans sayfası menüden yönlendirmeden ve görünüm ayarından kaldırılır", async () => {
   const appSource = await source("src/App.jsx");
@@ -24,7 +36,7 @@ test("Inventory research is reachable from the main navigation", async () => {
   const gateSource = await source("src/sessionGate.js");
 
   assert.match(appSource, /import \{ InventoryResearchPage \} from "\.\/InventoryResearchPage"/);
-  assert.match(gateSource, /page: "inventory", label: "Stok Araştırması"/);
+  assert.match(gateSource, /page: "inventory", label: "Stok(?: Araştırması)?"/);
   assert.match(appSource, /effectivePage === "inventory"/);
 });
 
@@ -125,10 +137,56 @@ test("doğrulanmamış stok kaynağı araştırma verisini resmi WAC'tan ayırı
     message: "Aşağıdaki satırlar yalnızca denetim araştırmasıdır; resmi WAC, maliyet ve kâr havuzuna dahil değildir.",
   });
   assert.equal(inventory.getInventorySourceNotice({ status: "verified" }), null);
-  assert.equal(inventory.getInventorySourceBadge({ mode: "unavailable", rows: [{ id: "movement-1" }] }), "CPM hareket araştırması · WAC kapalı");
+  assert.equal(inventory.getInventorySourceBadge({ mode: "unavailable", rows: [{ id: "movement-1" }] }), "CPM aday araştırması · WAC kapalı");
+  assert.equal(inventory.getInventorySourceBadge({
+    mode: "unavailable",
+    rows: [],
+    openingEvidenceDiagnostics: { status: "available" },
+  }), "CPM aday araştırması · WAC kapalı");
   assert.equal(inventory.getInventorySourceBadge({ mode: "unavailable", rows: [] }), "Kaynak kullanılamıyor");
+  assert.equal(inventory.getInventoryEmptyStateLabel({ movementLoadTimedOut: true }), "CPM hareket defteri yanıt vermedi; aday açılış kanıtı aşağıda.");
+  assert.equal(inventory.getInventoryEmptyStateLabel({ openingEvidenceDiagnostics: { status: "available" } }), "Hareket defteri satırı yok; aday açılış kanıtı aşağıda.");
+  const preservedEvidence = inventory.preserveOpeningEvidenceOnMovementError({
+    rows: [{ id: "candidate-1" }],
+    mode: "loading",
+    openingEvidenceDiagnostics: { status: "available", officialEligibleCount: 0 },
+    openingEvidenceSources: { stkhArType82: { summary: { rowCount: "760" } } },
+    openingResearchStatus: "candidate",
+    openingResearchReasonCodes: ["direction-semantics-unverified"],
+  });
+  assert.equal(preservedEvidence.mode, "error");
+  assert.deepEqual(preservedEvidence.openingEvidenceDiagnostics, { status: "available", officialEligibleCount: 0 });
+  assert.equal(preservedEvidence.openingEvidenceSources.stkhArType82.summary.rowCount, "760");
+  assert.deepEqual(preservedEvidence.openingResearchReasonCodes, ["direction-semantics-unverified"]);
+  assert.deepEqual(
+    inventory.getOpeningEvidenceSourceCards({
+      stkhArType81: { summary: { rowCount: "12", distinctProductCount: "8", distinctDepotCount: "2" } },
+      stkhArType82: { summary: { rowCount: "760", distinctProductCount: "627", distinctDepotCount: "7" } },
+      stksymDevir: { summary: { rowCount: "6439", distinctProductCount: "4469", distinctDepotCount: "4" } },
+    }).map(({ key, label }) => ({ key, label })),
+    [
+      { key: "stkhArType81", label: "STKHAR tip 81" },
+      { key: "stkhArType82", label: "STKHAR tip 82" },
+      { key: "stksymDevir", label: "STKSYM DEVIR" },
+    ],
+  );
+  assert.deepEqual(
+    inventory.getOpeningResearchReasonLabels([
+      "direction-semantics-unverified",
+      "opening-lineage-unverified",
+      "cost-semantics-unverified",
+    ]),
+    [
+      "Hareket yönü (giriş/çıkış) doğrulanmadı",
+      "Açılış satırının belge soy zinciri doğrulanmadı",
+      "Maliyet alanlarının anlamı ve kaynağı doğrulanmadı",
+    ],
+  );
   assert.equal(inventory.buildOpeningEvidenceUrl(2026, 20), "/api/research/inventory-opening-evidence?year=2026&sampleLimit=20");
   assert.match(await readFile(resolve(process.cwd(), "src/InventoryResearchPage.jsx"), "utf8"), /current\.openingEvidenceDiagnostics/);
+  assert.match(await readFile(resolve(process.cwd(), "src/InventoryResearchPage.jsx"), "utf8"), /Aday CPM kaynak nüfusu/);
+  assert.match(await readFile(resolve(process.cwd(), "src/InventoryResearchPage.jsx"), "utf8"), /Aday araştırma durumu/);
+  assert.match(await readFile(resolve(process.cwd(), "src/styles.css"), "utf8"), /\.inventory-diagnostics-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(auto-fit/);
 });
 
 test("Departman uzlaşma farkının TRY tabanını açıkça etiketler", async (t) => {
@@ -165,6 +223,36 @@ test("Task 3 chart consumers expose visible, accessible series and explicit stat
   assert.match(departmentSource, /role="img" aria-label="Departman aylık net satış ve kâr grafiği"/);
   assert.match(departmentSource, /role="status"/);
   assert.match(departmentSource, /role="alert"/);
+});
+
+test("finansal UI eksik kanıtı tahmini maliyet veya ham kârla doldurmaz", async () => {
+  const salesSource = await source("src/SalesPage.jsx");
+  const summarySource = await source("src/SummaryPage.jsx");
+  const departmentSource = await source("src/DepartmentAnalysisPage.jsx");
+
+  assert.match(salesSource, /const v2Cost = canonicalTry\.cost/);
+  assert.doesNotMatch(salesSource, /row\.estimatedCost\s*\|\|\s*row\.legacyEstimatedCost/);
+  assert.match(salesSource, /v2Cost: canonicalTotals\.cost/);
+  assert.match(salesSource, /profit: canonicalTotals\.profit/);
+  assert.match(salesSource, /const profitTone = \(value\) => value == null \? "" : value >= 0 \? "positive" : "negative"/);
+  assert.match(salesSource, /totals\.eurProfit != null/);
+  assert.match(summarySource, /const canonicalReady = canonicalMetric\?\.status === "TAMAM"/);
+  assert.match(summarySource, /const totalProfitTry = canonicalProfit \?\? null/);
+  assert.match(summarySource, /cost: canonicalReady \? sumField\(reportRows, "cost"\) : null/);
+  assert.match(departmentSource, /selectedMetric\.profit != null/);
+  assert.match(departmentSource, /item\.profit == null \? ""/);
+  assert.match(departmentSource, /className=\{profitTone\(row\.profit\)\}/);
+});
+
+test("finansal UI mixed CPM/TCMB kur kaynağını Halkbank-only diye göstermemeli", async () => {
+  const reportsSource = await source("src/ReportsPage.jsx");
+  const salesSource = await source("src/SalesPage.jsx");
+  const departmentSource = await source("src/DepartmentAnalysisPage.jsx");
+
+  for (const sourceText of [reportsSource, salesSource, departmentSource]) {
+    assert.match(sourceText, /sourceKinds/);
+    assert.match(sourceText, /CPM öncelikli · TCMB fallback/);
+  }
 });
 
 test("Task 3 visual contract uses theme-safe chart colors, separated values, and contained responsive chrome", async () => {
@@ -359,6 +447,9 @@ test("authenticated navigation follows capability boundaries and guards direct r
   assert.equal(gate.canAccessPage(reporting, "summary"), true);
   assert.equal(gate.canAccessPage(reporting, "settings"), false);
   assert.equal(gate.canAccessPage(admin, "settings"), true);
+  for (const inactivePage of ["reports", "goals", "approval", "performance"]) {
+    assert.equal(gate.canAccessPage(admin, inactivePage), false, `${inactivePage} aktif route olmamalı`);
+  }
   assert.equal(gate.firstAccessiblePage(operational, "summary"), "inventory");
 });
 

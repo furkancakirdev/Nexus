@@ -11,7 +11,7 @@ function safeEqual(left, right) {
 }
 function sign(value, secret) { return crypto.createHmac("sha256", secret).update(value).digest("base64url"); }
 
-export function createAuth({ secret = process.env.NEXUS_SESSION_SECRET, username = process.env.NEXUS_ADMIN_USERNAME, passwordHash = process.env.NEXUS_ADMIN_PASSWORD_SHA256, role = "admin", identityProvider, publicOrigin = process.env.NEXUS_PUBLIC_ORIGIN || "" } = {}) {
+export function createAuth({ secret = process.env.NEXUS_SESSION_SECRET, username = process.env.NEXUS_ADMIN_USERNAME || "yonetici", passwordHash = process.env.NEXUS_ADMIN_PASSWORD_SHA256, role = "admin", identityProvider, publicOrigin = process.env.NEXUS_PUBLIC_ORIGIN || "" } = {}) {
   if (!secret) throw new Error("NEXUS_SESSION_SECRET zorunludur.");
   const provider = identityProvider || (
     username && passwordHash

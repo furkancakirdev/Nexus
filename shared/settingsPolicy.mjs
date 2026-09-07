@@ -28,6 +28,10 @@ export const DEFAULT_SETTINGS = Object.freeze({
   monthlyNotifications: true,
   employeeVisibility: "summary",
   identityMap: Object.freeze({}),
+  negativeStockWeightByQuantity: true,
+  reportingCurrencyDefault: "EUR",
+  enableCrossDepotTracking: true,
+  filterAccountingActors: true,
 });
 
 function optionalRecord(value, fieldName) {
@@ -315,6 +319,39 @@ export function normalizeSettings(stored) {
     ),
     "Personel görünürlüğü",
     ["summary", "details", "hidden"],
+  );
+  result.negativeStockWeightByQuantity = booleanValue(
+    valueOrDefault(
+      source,
+      "negativeStockWeightByQuantity",
+      DEFAULT_SETTINGS.negativeStockWeightByQuantity,
+    ),
+    "Negatif stok adet ağırlıklandırma",
+  );
+  result.reportingCurrencyDefault = enumValue(
+    valueOrDefault(
+      source,
+      "reportingCurrencyDefault",
+      DEFAULT_SETTINGS.reportingCurrencyDefault,
+    ),
+    "Varsayılan raporlama para birimi",
+    ["EUR", "TRY"],
+  );
+  result.enableCrossDepotTracking = booleanValue(
+    valueOrDefault(
+      source,
+      "enableCrossDepotTracking",
+      DEFAULT_SETTINGS.enableCrossDepotTracking,
+    ),
+    "Çapraz depo izleme",
+  );
+  result.filterAccountingActors = booleanValue(
+    valueOrDefault(
+      source,
+      "filterAccountingActors",
+      DEFAULT_SETTINGS.filterAccountingActors,
+    ),
+    "Muhasebe aktörlerini filtreleme",
   );
   for (const [department, target] of Object.entries(result.departmentTargets)) {
     target.growthPct = rangedNumber(

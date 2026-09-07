@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import express from "express";
+import { normalizeExchangeRateSet } from "./exchangeRateSet.mjs";
 
 const MONTH_NAMES = [
   "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
@@ -67,7 +68,7 @@ function departmentSnapshot(row) {
   };
 }
 
-function buildSnapshot(targets, year, month) {
+function buildSnapshot(targets, year, month, { schemaVersion = 2 } = {}) {
   if (!targets || !Array.isArray(targets.rows)) {
     throw new TypeError("Departman hedef sonucu geçersiz.");
   }
@@ -97,6 +98,7 @@ function buildSnapshot(targets, year, month) {
   ));
   if (!hasData) throw new RangeError("Ay için onaylanabilir veri yok.");
   const economicSnapshot = {
+    ...(schemaVersion >= 2 ? { snapshotSchemaVersion: 2 } : {}),
     year,
     month,
     monthName: MONTH_NAMES[month - 1],
@@ -109,10 +111,36 @@ function buildSnapshot(targets, year, month) {
       "Aylık havuz",
     ),
   };
+  if (schemaVersion >= 2) {
+    const expectedReportDate = new Date(Date.UTC(year, month, 0))
+      .toISOString()
+      .slice(0, 10);
+    economicSnapshot.exchangeRateSet = normalizeExchangeRateSet(
+      targets.exchangeRateSets?.[String(month)],
+      { expectedReportDate },
+    );
+  }
   return {
     ...economicSnapshot,
     snapshotHash: snapshotHash(economicSnapshot),
   };
+}
+
+function rateEvidenceStatus(approval) {
+  const expectedReportDate = new Date(Date.UTC(approval.year, approval.month, 0))
+    .toISOString()
+    .slice(0, 10);
+  if (Object.hasOwn(approval, "exchangeRateSet")) {
+    try {
+      normalizeExchangeRateSet(approval.exchangeRateSet, { expectedReportDate });
+      return approval.snapshotSchemaVersion === 2 ? "frozen" : "legacy-frozen";
+    } catch {
+      return "invalid";
+    }
+  }
+  return approval.snapshotSchemaVersion === 2
+    ? "invalid"
+    : "legacy-month-end-fallback";
 }
 
 /**
@@ -162,6 +190,9 @@ export function createApprovalRouter({
                 currentTargets,
                 year,
                 Number(monthKey),
+                {
+                  schemaVersion: approval.snapshotSchemaVersion === 2 ? 2 : 1,
+                },
               ).snapshotHash;
             } catch {
               currentHash = null;
@@ -169,6 +200,7 @@ export function createApprovalRouter({
           }
           return [monthKey, {
             ...approval,
+            rateEvidenceStatus: rateEvidenceStatus(approval),
             currentSnapshotHash: currentHash,
             stale: currentHash === null
               ? null

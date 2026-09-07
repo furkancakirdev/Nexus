@@ -11,6 +11,7 @@ import {
 import { buildInventoryResearchPayload } from "./inventoryResearchApi.mjs";
 import { buildInventoryOpeningResearchPayload } from "./inventoryOpeningResearch.mjs";
 import { aggregateFinancialMetric, FINANCIAL_ROWS } from "../shared/financialMetric.mjs";
+import { normalizeExchangeRateSet } from "./exchangeRateSet.mjs";
 
 const MONTH_NAMES = [
   "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
@@ -477,8 +478,24 @@ export function lastDayOfMonthKey(year, month) {
  */
 export function resolveMonthRateSet({ index, year, month, approval = null, reportDate }) {
   const locked = Boolean(approval) && approval.locked !== false;
-  if (locked && approval.exchangeRateSet && typeof approval.exchangeRateSet === "object") {
-    return { rateSet: approval.exchangeRateSet, frozen: true };
+  const hasStoredRateSet = locked && Object.hasOwn(approval || {}, "exchangeRateSet");
+  if (hasStoredRateSet && approval.exchangeRateSet && typeof approval.exchangeRateSet === "object") {
+    try {
+      const normalized = normalizeExchangeRateSet(approval.exchangeRateSet, {
+        expectedReportDate: lastDayOfMonthKey(year, month),
+      });
+      return {
+        rateSet: approval.snapshotSchemaVersion === 2
+          ? normalized
+          : approval.exchangeRateSet,
+        frozen: true,
+      };
+    } catch {
+      return { rateSet: null, frozen: true };
+    }
+  }
+  if (locked && (approval.snapshotSchemaVersion === 2 || hasStoredRateSet)) {
+    return { rateSet: null, frozen: true };
   }
   if (locked) {
     const rateSet = buildRateSet(index, lastDayOfMonthKey(year, month));
@@ -507,6 +524,15 @@ export function decorateOverviewRowsEur(rows, { index, year, approvals = {}, rep
       frozen,
       eurTryBuyingRate: rateSet?.eurTryBuyingRate ?? null,
       weekendOrHolidayNote: rateSet?.weekendOrHolidayNote ?? null,
+      sourcePolicy: rateSet?.sourcePolicy ?? null,
+      sourceKinds: Array.isArray(rateSet?.sourceKinds) ? rateSet.sourceKinds : [],
+      rateSources: Object.fromEntries(Object.entries(rateSet?.rates || {}).map(([currency, entry]) => [currency, {
+        source: entry?.source ?? null,
+        sourceIdentifier: entry?.sourceIdentifier ?? entry?.sourceId ?? null,
+        rateDate: entry?.rateDate ?? null,
+        evidenceHash: entry?.evidenceHash ?? null,
+        retrievalMode: entry?.retrievalMode ?? null,
+      }])),
     };
     return {
       ...row,
@@ -1073,12 +1099,18 @@ export function createDepartmentTargetLoader({
           },
         };
       }
+      const rateIndex = buildExchangeRateIndex(currentSnapshot.value.exchangeRates);
+      const exchangeRateSets = Object.fromEntries(Array.from({ length: 12 }, (_, index) => {
+        const month = index + 1;
+        return [String(month), buildRateSet(rateIndex, lastDayOfMonthKey(year, month))];
+      }));
       return {
         status: 200,
         payload: {
           year,
           previousYear: year - 1,
           rows,
+          exchangeRateSets,
           summary: summarizeDepartmentTargets(rows),
           mode: "live",
           ...metadata(currentSnapshot),

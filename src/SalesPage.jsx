@@ -35,6 +35,7 @@ const percent = (value) => value === null || value === undefined ? "—" : `%${N
 const formatMoney = (value) => value === null || value === undefined || !Number.isFinite(value) ? "—" : `${money.format(Math.round(value))} TL`;
 const formatEur = (value) => value === null || value === undefined || !Number.isFinite(value) ? "—" : eurFormat.format(Math.round(value));
 const sumNullable = (...values) => values.every((value) => Number.isFinite(value)) ? values.reduce((sum, value) => sum + value, 0) : null;
+const profitTone = (value) => value == null ? "" : value >= 0 ? "positive" : "negative";
 // EUR karşılığı yoksa (demo/bağlantısız mod) TL gösterimine düşer.
 const formatReportMoney = (row, field, fallback) => {
   if (["cost", "profit"].includes(field) && row?.canonicalMetric && row.canonicalMetric.status !== "TAMAM") return "—";
@@ -79,7 +80,7 @@ function CustomSalesTooltip({ active, payload, label, moneyFormatter = formatMon
 export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80, eurRateSets = {}, canonicalMetric = null }) {
   const [view, setView] = useState("all");
   const [sort, setSort] = useState("month");
-  const [showSecondaryMetrics, setShowSecondaryMetrics] = useState(false);
+  const [showSecondaryMetrics, setShowSecondaryMetrics] = useState(true);
 
   const normalizedRows = useMemo(() => {
     return rows.map((row) => {
@@ -88,7 +89,7 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
       const grossSales = row.sales ?? null;
       const returns = row.returns ?? null;
       const discounts = row.discounts ?? null;
-      const netSales = canonicalTry.netSales;
+      const netSales = canonicalTry.netSales ?? (row.sales != null ? Number(row.sales) - Number(row.returns || 0) - Number(row.discounts || 0) : null);
       const v2Cost = canonicalTry.cost;
       const uncoveredNetSales = row.canonicalMetric?.scope?.costReview?.netSales ?? null;
       const profit = canonicalTry.profit;
@@ -104,6 +105,10 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
       const eurProfit = canonicalEur.profit;
       const eurMargin = canonicalEur.margin;
       const rateMeta = eurRateSets?.[String(row.month)] || eurRateSets?.[row.month] || null;
+
+      const chartNetSales = eurNetSales ?? netSales;
+      const chartCost = eurCost ?? v2Cost;
+      const chartProfit = eurProfit ?? profit;
 
       return {
         ...row,
@@ -125,9 +130,9 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
         eurFrozen: Boolean(row.eurFrozen),
         eurRateMeta: rateMeta,
         // Grafik için aktif para birimi alanları (EUR varsa o, yoksa TL).
-        chartNetSales: eurNetSales ?? netSales,
-        chartCost: eurCost ?? v2Cost,
-        chartProfit: eurProfit ?? profit,
+        chartNetSales,
+        chartCost,
+        chartProfit,
       };
     });
   }, [rows, eurRateSets]);
@@ -150,15 +155,19 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
 
   const totals = useMemo(() => {
     const canonicalTotals = projectCanonicalMetric(canonicalMetric, "TRY");
+    const rowGrossSales = normalizedRows.reduce((sum, r) => sum + (Number(r.grossSales) || 0), 0);
+    const rowReturns = normalizedRows.reduce((sum, r) => sum + (Number(r.returns) || 0), 0);
+    const rowDiscounts = normalizedRows.reduce((sum, r) => sum + (Number(r.discounts) || 0), 0);
+    const rowNetSales = normalizedRows.reduce((sum, r) => sum + (Number(r.netSales) || 0), 0);
     const base = {
-      grossSales: canonicalMetric?.grossSales ?? null,
-      returns: canonicalMetric?.returns ?? null,
-      discounts: canonicalMetric?.discounts ?? null,
-      netSales: canonicalTotals.netSales,
+      grossSales: canonicalMetric?.grossSales ?? (rowGrossSales > 0 ? rowGrossSales : null),
+      returns: canonicalMetric?.returns ?? (rowReturns > 0 ? rowReturns : null),
+      discounts: canonicalMetric?.discounts ?? (rowDiscounts > 0 ? rowDiscounts : null),
+      netSales: canonicalTotals.netSales ?? (rowNetSales > 0 ? rowNetSales : null),
       v2Cost: canonicalTotals.cost,
       uncoveredNetSales: canonicalMetric?.scope?.costReview?.netSales ?? null,
       profit: canonicalTotals.profit,
-      lineCount: canonicalMetric?.evidence?.coveredLines ?? null,
+      lineCount: canonicalMetric?.evidence?.reviewLines || canonicalMetric?.evidence?.coveredLines || null,
       costCoveredLines: canonicalMetric?.evidence?.coveredLines ?? null,
       eurNetSales: canonicalMetric?.eur?.complete ? canonicalMetric.eur.netSales : null,
       eurCost: canonicalMetric?.eur?.complete ? canonicalMetric.eur.cost : null,
@@ -193,11 +202,39 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
   const reportMoney = eurActive ? formatEur : formatMoney;
   const rateMetaList = Object.values(eurRateSets || {});
   const weekendNote = rateMetaList.map((meta) => meta?.weekendOrHolidayNote).find(Boolean) || null;
+  const rateSourceLabel = rateMetaList.some((meta) => (meta?.sourceKinds || []).includes("TCMB"))
+    ? "CPM öncelikli · TCMB fallback"
+    : "Halkbank alış kuru";
   const frozenMonths = normalizedRows.filter((row) => row.eurFrozen && row.eurAvailable).length;
 
   const categoryBreakdownData = useMemo(() => {
-    return canonicalMetric?.categoryBreakdown || [];
-  }, [totals]);
+    if (Array.isArray(canonicalMetric?.categoryBreakdown) && canonicalMetric.categoryBreakdown.length > 0) {
+      return canonicalMetric.categoryBreakdown;
+    }
+    let laborSales = 0;
+    let srfSales = 0;
+    let tsrSales = 0;
+    let roadSales = 0;
+    let totalGross = 0;
+
+    for (const r of normalizedRows) {
+      totalGross += Number(r.grossSales || 0);
+      if (r.pilotCards) {
+        laborSales += Number(r.pilotCards.labor?.sales || 0);
+        srfSales += Number(r.pilotCards.srf?.sales || 0);
+        tsrSales += Number(r.pilotCards.tsr?.sales || 0);
+        roadSales += Number(r.pilotCards.road?.sales || 0);
+      }
+    }
+    const partsSales = Math.max(0, totalGross - (laborSales + srfSales + tsrSales + roadSales));
+    return [
+      { name: "Yedek Parça", sales: partsSales, color: "var(--blue, #2563eb)" },
+      { name: "İşçilik", sales: laborSales, color: "var(--teal, #0d9488)" },
+      { name: "Sörf / Hizmet", sales: srfSales, color: "var(--indigo, #6366f1)" },
+      { name: "Yol / Seyahat", sales: roadSales, color: "var(--amber, #f59e0b)" },
+      { name: "TSR / Taşeron", sales: tsrSales, color: "var(--rose, #f43f5e)" },
+    ].filter((item) => item.sales > 0);
+  }, [canonicalMetric, normalizedRows]);
 
   return (
     <main className="page sales-page" id="top">
@@ -229,7 +266,7 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
         <article>
           <span><IconChartBar size={22} /></span>
           <div>
-            <small>Brüt satışlar</small>
+            <small>Brüt satışlar · TL</small>
             <strong>{formatMoney(totals.grossSales)}</strong>
             <p>Nihai + doğrulanmış faturalar</p>
           </div>
@@ -238,7 +275,7 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
         <article>
           <span className="red"><IconReceiptRefund size={22} /></span>
           <div>
-            <small>İadeler ve İskontolar</small>
+            <small>İadeler ve İskontolar · TL</small>
             <strong style={{ color: "var(--red)" }}>
               {sumNullable(totals.returns, totals.discounts) == null ? "—" : `−${formatMoney(sumNullable(totals.returns, totals.discounts))}`}
             </strong>
@@ -253,7 +290,7 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
           <div>
             <small>Net satışlar{eurActive ? " · EUR" : ""}</small>
             <strong>{eurActive ? formatEur(totals.eurNetSales) : formatMoney(totals.netSales)}</strong>
-            <p>{eurActive ? "Halkbank alış kuru karşılığı" : "KDV hariç ticari hasılat"}</p>
+            <p>{eurActive ? `${rateSourceLabel} karşılığı` : "KDV hariç ticari hasılat"}</p>
           </div>
         </article>
 
@@ -261,8 +298,8 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
           <span className="slate"><IconLayersSubtract size={22} /></span>
           <div>
             <small>Satır Maliyeti{eurActive ? " · EUR" : ""}</small>
-            <strong>{eurActive ? formatEur(totals.eurCost) : formatMoney(totals.v2Cost)}</strong>
-            <p>Alım faturası + Halkbank kuru kanıtı</p>
+            <strong>{eurActive ? (totals.eurCost ? formatEur(totals.eurCost) : "İncelemede") : (totals.v2Cost ? formatMoney(totals.v2Cost) : "İncelemede")}</strong>
+            <p>{totals.v2Cost ? "Alım faturası + Halkbank kuru kanıtı" : "Maliyet incelemesi devam ediyor"}</p>
           </div>
         </article>
 
@@ -272,9 +309,9 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
             <div>
               <small>Esas Brüt Kâr{eurActive ? " · EUR" : ""}</small>
               <strong style={{ color: "var(--green)" }}>
-                {eurActive ? formatEur(totals.eurProfit) : formatMoney(totals.profit)}
+                {eurActive ? (totals.eurProfit != null ? formatEur(totals.eurProfit) : "İncelemede") : (totals.profit != null ? formatMoney(totals.profit) : "İncelemede")}
               </strong>
-              <p>Net kâr marjı {percent(eurActive ? totals.eurOverallMargin : totals.overallMargin)}</p>
+              <p>Net kâr marjı {totals.overallMargin != null ? percent(totals.overallMargin) : "WAC Bekleniyor"}</p>
             </div>
           </article>
 
@@ -337,7 +374,7 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
                 <Tooltip content={<CustomSalesTooltip moneyFormatter={reportMoney} />} />
                 <Legend iconType="circle" wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
                 <Bar yAxisId="money" dataKey="chartNetSales" name="Net Satış" fill="#0284c7" radius={[4, 4, 0, 0]} />
-                <Bar yAxisId="money" dataKey="chartCost" name="Maliyet" fill="#334155" radius={[4, 4, 0, 0]} />
+                <Bar yAxisId="money" dataKey="chartCost" name="Maliyet" fill="var(--chart-cost, #475569)" radius={[4, 4, 0, 0]} />
                 <Line yAxisId="money" dataKey="chartProfit" name="Esas Brüt Kâr" stroke="#10b981" strokeWidth={3} dot={{ r: 4, fill: "#10b981" }} />
                 <Line yAxisId="percent" dataKey="netMargin" name="Net Kâr Marjı %" stroke="#00d2d3" strokeWidth={2} dot={{ r: 3, fill: "#00d2d3" }} />
                 <Line yAxisId="percent" dataKey="productListMargin" name="Liste Brüt Marjı %" stroke="#f59e0b" strokeWidth={2} strokeDasharray="4 4" dot={{ r: 3, fill: "#f59e0b" }} />
@@ -377,7 +414,7 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
         <div className="panel-heading">
           <div>
             <h2>Döviz Sepeti</h2>
-            <p>Satış, maliyet ve kâr stok kartı dövizinde ayrı tutulur; EUR ana görünüm Halkbank alış kurlarıyla hesaplanır.</p>
+            <p>Satış, maliyet ve kâr stok kartı dövizinde ayrı tutulur; EUR ana görünüm CPM öncelikli kur kanıtı, gerektiğinde TCMB fallback ile hesaplanır.</p>
           </div>
         </div>
         <div className="table-scroll">
@@ -402,7 +439,7 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
                     <th><strong>{currency}</strong></th>
                     <td>{fmt(item.netSales)}</td>
                     <td>{fmt(item.cost)}</td>
-                    <td className={item.profit >= 0 ? "positive" : "negative"}><strong>{fmt(item.profit)}</strong></td>
+                    <td className={profitTone(item.profit)}><strong>{fmt(item.profit)}</strong></td>
                     <td>{money.format(item.lineCount)}</td>
                   </tr>
                 );
@@ -459,12 +496,12 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
             <thead>
               <tr>
                 <th>Ay</th>
-                <th>Brüt Satış</th>
-                <th>İade</th>
-                <th>İskonto</th>
-                <th>Net Satış</th>
-                <th>Maliyet</th>
-                <th>Esas Brüt Kâr</th>
+                <th>Brüt Satış (TL)</th>
+                <th>İade (TL)</th>
+                <th>İskonto (TL)</th>
+                <th>Net Satış {eurActive ? "(EUR)" : "(TL)"}</th>
+                <th>Maliyet {eurActive ? "(EUR)" : "(TL)"}</th>
+                <th>Esas Brüt Kâr {eurActive ? "(EUR)" : "(TL)"}</th>
                 <th>Net Marj</th>
                 <th>Liste Brüt Marjı</th>
                 <th>Maliyet Kapsamı</th>
@@ -479,7 +516,7 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
                   <td className="negative">−{formatMoney(row.discounts)}</td>
                   <td><strong>{formatReportMoney(row, "netSales", row.netSales)}</strong></td>
                   <td>{formatReportMoney(row, "cost", row.v2Cost)}</td>
-                  <td className={(row.eurProfit ?? row.profit) >= 0 ? "positive" : "negative"}>
+                  <td className={profitTone(row.eurProfit ?? row.profit)}>
                     <strong>{formatReportMoney(row, "profit", row.profit)}</strong>
                   </td>
                   <td>
@@ -515,7 +552,7 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
                 <td className="negative">−{formatMoney(totals.discounts)}</td>
                 <td><strong>{eurActive ? formatEur(totals.eurNetSales) : formatMoney(totals.netSales)}</strong></td>
                 <td>{eurActive ? formatEur(totals.eurCost) : formatMoney(totals.v2Cost)}</td>
-                <td className={(eurActive ? totals.eurProfit : totals.profit) >= 0 ? "positive" : "negative"}>
+                  <td className={profitTone(eurActive ? totals.eurProfit : totals.profit)}>
                   <strong>{eurActive ? formatEur(totals.eurProfit) : formatMoney(totals.profit)}</strong>
                 </td>
                 <td>{percent(eurActive ? totals.eurOverallMargin : totals.overallMargin)}</td>

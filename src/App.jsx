@@ -26,8 +26,6 @@ import {
   YAxis,
 } from "recharts";
 import { SettingsPage } from "./SettingsPage";
-import { GoalsPage, PILOT_EMPLOYEES } from "./GoalsPage";
-import { ApprovalPage } from "./ApprovalPage";
 import { ReportsPage } from "./ReportsPage";
 import { apiFetch } from "./api.js";
 import {
@@ -533,7 +531,7 @@ export function App() {
         <button className="icon-button" onClick={signOut} aria-label="Çıkış yap"><IconLogout size={19} /></button>
       </header>
 
-      {appearanceOpen&&<div className="appearance-backdrop" onMouseDown={(event)=>event.target===event.currentTarget&&setAppearanceOpen(false)}><aside className="appearance-drawer" role="dialog" aria-modal="true" aria-labelledby="appearance-title"><div className="appearance-drawer__head"><div><p className="eyebrow">Arayüz tercihleri</p><h2 id="appearance-title">Görünüm Ayarları</h2></div><button className="modal-close" onClick={()=>setAppearanceOpen(false)} aria-label="Kapat"><IconX size={20}/></button></div><div className="appearance-fields"><label><span>Tema</span><select value={appearance.theme} onChange={(event)=>setAppearance({...appearance,theme:event.target.value})}><option value="light">Açık</option><option value="dark">Koyu</option></select></label><label><span>Ekran yoğunluğu</span><select value={appearance.density} onChange={(event)=>setAppearance({...appearance,density:event.target.value})}><option value="comfortable">Rahat</option><option value="compact">Kompakt</option></select></label><label><span>Başlangıç sayfası</span><select value={appearance.defaultPage} onChange={(event)=>setAppearance({...appearance,defaultPage:event.target.value})}><option value="summary">Özet</option><option value="ledger">Havuz</option><option value="sales">Satışlar</option><option value="departments">Departman Analizi</option><option value="reports">Raporlar</option><option value="audit">Veri Denetimi</option></select></label><label className="appearance-check"><span><strong>Yüksek kontrast</strong><small>Metin ve sınır ayrımını güçlendirir.</small></span><input type="checkbox" checked={appearance.highContrast} onChange={(event)=>setAppearance((current) => ({ ...current, highContrast: event.target.checked }))}/></label><label className="appearance-check"><span><strong>Hareketi azalt</strong><small>Grafik ve geçiş animasyonlarını kapatır.</small></span><input type="checkbox" checked={appearance.reducedMotion} onChange={(event)=>setAppearance((current) => ({ ...current, reducedMotion: event.target.checked }))}/></label></div><div className="employee-modal__actions"><button className="secondary-button" onClick={()=>setAppearance(DEFAULT_APPEARANCE)}>Varsayılana dön</button><button className="primary-action" onClick={()=>setAppearanceOpen(false)}><IconCheck size={17}/> Tamam</button></div></aside></div>}
+      {appearanceOpen&&<div className="appearance-backdrop" onMouseDown={(event)=>event.target===event.currentTarget&&setAppearanceOpen(false)}><aside className="appearance-drawer" role="dialog" aria-modal="true" aria-labelledby="appearance-title"><div className="appearance-drawer__head"><div><p className="eyebrow">Arayüz tercihleri</p><h2 id="appearance-title">Görünüm Ayarları</h2></div><button className="modal-close" onClick={()=>setAppearanceOpen(false)} aria-label="Kapat"><IconX size={20}/></button></div><div className="appearance-fields"><label><span>Tema</span><select value={appearance.theme} onChange={(event)=>setAppearance({...appearance,theme:event.target.value})}><option value="light">Açık</option><option value="dark">Koyu</option></select></label><label><span>Ekran yoğunluğu</span><select value={appearance.density} onChange={(event)=>setAppearance({...appearance,density:event.target.value})}><option value="comfortable">Rahat</option><option value="compact">Kompakt</option></select></label><label><span>Başlangıç sayfası</span><select value={appearance.defaultPage} onChange={(event)=>setAppearance({...appearance,defaultPage:event.target.value})}><option value="summary">Genel Bakış</option><option value="sales">Satış Analizi</option><option value="departments">Departman Analizi</option><option value="audit">Denetim</option><option value="inventory">Stok</option><option value="ledger">Havuz</option><option value="settings">Ayarlar</option></select></label><label className="appearance-check"><span><strong>Yüksek kontrast</strong><small>Metin ve sınır ayrımını güçlendirir.</small></span><input type="checkbox" checked={appearance.highContrast} onChange={(event)=>setAppearance((current) => ({ ...current, highContrast: event.target.checked }))}/></label><label className="appearance-check"><span><strong>Hareketi azalt</strong><small>Grafik ve geçiş animasyonlarını kapatır.</small></span><input type="checkbox" checked={appearance.reducedMotion} onChange={(event)=>setAppearance((current) => ({ ...current, reducedMotion: event.target.checked }))}/></label></div><div className="employee-modal__actions"><button className="secondary-button" onClick={()=>setAppearance(DEFAULT_APPEARANCE)}>Varsayılana dön</button><button className="primary-action" onClick={()=>setAppearanceOpen(false)}><IconCheck size={17}/> Tamam</button></div></aside></div>}
 
       {effectivePage === "summary" ? (
         <SummaryPage
@@ -545,6 +543,8 @@ export function App() {
           year={year}
           mode={mode}
           onNavigate={navigate}
+          canonicalMetric={canonicalMetric}
+          eurRateSets={eurRateSets}
         />
       ) : effectivePage === "sales" ? (
         <SalesPage rows={calculatedRows} year={year} mode={mode} minimumCoverage={appSettings.minimumCoverage} pilotCardCostRates={appSettings.pilotCardCostRates} eurRateSets={eurRateSets} canonicalMetric={canonicalMetric} />
@@ -554,6 +554,8 @@ export function App() {
         <AuditPage year={year} mode={mode} pilotCardCostRates={appSettings.pilotCardCostRates} settings={appSettings} costOverrides={costOverrides} onSaveCostOverrides={saveCostOverrides} />
       ) : effectivePage === "inventory" ? (
         <InventoryResearchPage year={year} mode={mode} />
+      ) : effectivePage === "reports" ? (
+        <ReportsPage rows={calculatedRows} year={year} mode={mode} minimumCoverage={appSettings.minimumCoverage} pilotCardCostRates={appSettings.pilotCardCostRates} eurRateSets={eurRateSets} />
       ) : effectivePage === "settings" ? (
         <SettingsPage
           settings={appSettings}
@@ -566,41 +568,6 @@ export function App() {
           onSaveEmployees={saveEmployees}
           onBack={() => navigate("ledger")}
         />
-      ) : effectivePage === "goals" ? (
-        <GoalsPage
-          settings={appSettings}
-          targetRows={targetState.rows}
-          targetMode={targetState.mode}
-          targetError={targetState.error}
-          annualPool={annualPool}
-          year={year}
-          onBack={() => navigate("ledger")}
-        />
-      ) : effectivePage === "approval" ? (
-        <ApprovalPage
-          rows={enrichedRows}
-          eurRateSets={eurRateSets}
-          targetRows={targetState.rows}
-          targetMode={targetState.mode}
-          targetError={targetState.error}
-          annualPool={annualPool}
-          year={year}
-          connection={connection}
-          costOverrides={costOverrides}
-          onSaveCostOverrides={saveCostOverrides}
-          onBack={() => navigate("ledger")}
-        />
-      ) : effectivePage === "reports" ? (
-        <ReportsPage
-          settings={appSettings}
-          employees={employees}
-          targetRows={targetState.rows}
-          annualPool={annualPool}
-          year={year}
-          rows={enrichedRows}
-          canonicalMetric={canonicalMetric}
-          eurRateSets={eurRateSets}
-        />
       ) : (
       <main className="page" id="top">
         <section className="page-heading">
@@ -610,10 +577,6 @@ export function App() {
           </div>
           <div className="toolbar">
             <button className="policy-button" onClick={openPolicy}>Havuz Kuralları <IconInfoCircle size={16} /></button>
-            <div className="segmented" aria-label="Durum filtresi">
-              <button aria-pressed={statusFilter === "estimate"} className={statusFilter === "estimate" ? "active" : ""} onClick={() => setStatusFilter(statusFilter === "estimate" ? "all" : "estimate")}><span className="orange-dot" />Tahmini</button>
-              <button aria-pressed={statusFilter === "final"} className={statusFilter === "final" ? "active" : ""} onClick={() => setStatusFilter(statusFilter === "final" ? "all" : "final")}><span className="green-dot" />Kesinleşmiş</button>
-            </div>
             <div className="menu-wrap">
               <button className="icon-button icon-button--light" onClick={() => setMenuOpen((value) => !value)} aria-label="Diğer işlemler" aria-haspopup="menu" aria-expanded={menuOpen}><IconDots size={20} /></button>
               {menuOpen && (

@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import express from "express";
 import { buildFinalInvoiceLedger } from "./finalInvoiceLedger.mjs";
+import { createApp } from "./index.mjs";
 import { createLedgerService } from "./ledgerService.mjs";
 import { createUnifiedLedgerRouter } from "./ledgerApi.mjs";
+import { createStateStore } from "./stateStore.mjs";
 import { buildInventoryOpeningResearchPayload } from "./inventoryOpeningResearch.mjs";
 
 function deferred() {
@@ -235,6 +239,20 @@ function apiFixtureLedger() {
 async function withApiServer(router, run) {
   const app = express();
   app.use(router);
+  const server = await new Promise((resolve) => {
+    const listening = app.listen(0, "127.0.0.1", () => resolve(listening));
+  });
+  const address = server.address();
+  try {
+    await run(`http://127.0.0.1:${address.port}`);
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => (
+      error ? reject(error) : resolve()
+    )));
+  }
+}
+
+async function withAppServer(app, run) {
   const server = await new Promise((resolve) => {
     const listening = app.listen(0, "127.0.0.1", () => resolve(listening));
   });
@@ -803,6 +821,15 @@ test("departman hedef API cari ve önceki yıl ledger sürümlerini birlikte rap
         ...row,
         documentDate: row.documentDate.replace(/^2026/, String(year)),
       }));
+      ledger.exchangeRates = year === 2026
+        ? [{
+          rateDate: "2026-01-31",
+          rateCurrency: "EUR",
+          halkbankBuyingRate: 40,
+          halkbankSellingRate: 40.2,
+          exchangeSourceId: "DVZHAR-EUR-TARGET",
+        }]
+        : [];
       return ledger;
     },
   });
@@ -852,7 +879,82 @@ test("departman hedef API cari ve önceki yıl ledger sürümlerini birlikte rap
     assert.equal(typeof payload.previousGeneratedAt, "string");
     assert.equal(typeof payload.previousCacheStatus, "string");
     assert.equal(payload.summary.totalPool >= 0, true);
+    assert.equal(payload.exchangeRateSets["1"].eurTryBuyingRate, 40);
   });
+});
+
+test("gerçek target loader kur setini aynı onay akışına taşır", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "marlin-rate-approval-"));
+  const stateStore = createStateStore(path.join(directory, "app-state.json"));
+  const service = createLedgerService({
+    loadYear: async (year) => {
+      const ledger = apiFixtureLedger();
+      ledger.rows = ledger.rows.map((row) => ({
+        ...row,
+        documentDate: row.documentDate.replace(/^2026/, String(year)),
+      }));
+      ledger.exchangeRates = year === 2026
+        ? [{
+          rateDate: "2026-01-31",
+          rateCurrency: "EUR",
+          halkbankBuyingRate: 40,
+          halkbankSellingRate: 40.2,
+          exchangeSourceId: "DVZHAR-EUR-1",
+        }]
+        : [];
+      return ledger;
+    },
+  });
+  const auth = {
+    middleware: (request, _response, next) => {
+      request.user = {
+        role: "admin",
+        capabilities: ["reporting:read", "approvals:manage"],
+      };
+      return next();
+    },
+    login: (_request, response) => response.status(501).end(),
+    logout: (_request, response) => response.json({ loggedOut: true }),
+  };
+  const app = createApp({
+    auth,
+    stateStore,
+    ledgerService: service,
+    staticRoot: null,
+  });
+
+  try {
+    await withAppServer(app, async (baseUrl) => {
+      const targetsResponse = await fetch(
+        `${baseUrl}/api/department-targets?year=2026`,
+      );
+      const targets = await targetsResponse.json();
+      assert.equal(targetsResponse.status, 200);
+      assert.equal(targets.exchangeRateSets["1"].bank, "HALKBANK");
+      assert.equal(targets.exchangeRateSets["1"].eurTryBuyingRate, 40);
+      assert.equal(targets.exchangeRateSets["1"].reportDate, "2026-01-31");
+
+      const savedResponse = await fetch(`${baseUrl}/api/approvals/2026/1`, {
+        method: "PUT",
+      });
+      const saved = await savedResponse.json();
+      assert.equal(savedResponse.status, 200);
+      assert.equal(saved.approval.snapshotSchemaVersion, 2);
+      assert.equal(saved.approval.exchangeRateSet.eurTryBuyingRate, 40);
+
+      const approvals = await fetch(
+        `${baseUrl}/api/approvals?year=2026`,
+      ).then((response) => response.json());
+      assert.equal(
+        approvals.approvals["1"].currentSnapshotHash,
+        saved.approval.snapshotHash,
+      );
+      assert.equal(approvals.approvals["1"].stale, false);
+      assert.equal(approvals.approvals["1"].rateEvidenceStatus, "frozen");
+    });
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 test("departman hedef API ürün onaylı negatif ve yüksek hedef değişimlerini kabul eder", async () => {

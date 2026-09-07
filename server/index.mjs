@@ -16,6 +16,7 @@ import { serializeSettings } from "../shared/settingsPolicy.mjs";
 import { createAuth } from "./auth.mjs";
 import { authorizeCapability, CAPABILITIES } from "./capabilities.mjs";
 import { buildReadinessPayload, buildRuntimeInfo } from "./releaseContract.mjs";
+import { modulesForCapabilities } from "../shared/moduleRegistry.mjs";
 import { buildCpmConnectionConfig } from "./cpmConnectionConfig.mjs";
 import { executeCpmReadOnlyQuery } from "./cpmReadOnly.mjs";
 import { withReadOnlyCpmTransaction } from "./cpmTransaction.mjs";
@@ -32,8 +33,15 @@ import {
   buildCpmExchangeRateCandidates,
   DEFAULT_HALK_BANK_CODE,
 } from "./cpmRateSource.mjs";
+import {
+  collectHistoricalFallbackDates,
+  createTcmbRateSource,
+  loadTcmbFallbackRows,
+  planTcmbFallbackDates,
+} from "./tcmbRateSource.mjs";
+import { resolveOfficialRateRows } from "./officialRateResolver.mjs";
 import { buildHistoricalFinancialEvidence } from "../shared/historicalFinancialEvidence.mjs";
-import { cpmMovementCandidateSql, dvzharRateCandidateSql, stkhArType82SampleSql, stkhArType82SummarySql, stkkrtPriceCandidateSql, stksymDevirSampleSql, stksymDevirSummarySql } from "./inventoryOpeningResearchSql.mjs";
+import { cpmMovementCandidateSql, dvzharRateCandidateSql, stkhArType81SampleSql, stkhArType81SummarySql, stkhArType82SampleSql, stkhArType82SummarySql, stkkrtPriceCandidateSql, stksymDevirSampleSql, stksymDevirSummarySql } from "./inventoryOpeningResearchSql.mjs";
 
 export function normalizeStoredAppState(state) {
   const prototype = state !== null && typeof state === "object"
@@ -162,10 +170,72 @@ async function loadFinalInvoiceLedger(year) {
     sellingRateType: Number(process.env.CPM_RATE_SELLING_TYPE ?? 1),
     semanticsVerified: String(process.env.CPM_RATE_SEMANTICS_VERIFIED).toLowerCase() === "true",
   });
+  const reportDates = Array.from({ length: 12 }, (_, index) => (
+    new Date(Date.UTC(year, index + 1, 0)).toISOString().slice(0, 10)
+  ));
+  reportDates.push(new Date().toISOString().slice(0, 10));
+  const historicalMovementDates = collectHistoricalFallbackDates({
+    movements: movementCandidates.movements,
+    priceRows,
+  });
+  const historicalDateCap = Number.isInteger(Number(process.env.NEXUS_TCMB_HISTORICAL_DATE_CAP))
+    && Number(process.env.NEXUS_TCMB_HISTORICAL_DATE_CAP) >= 0
+    ? Number(process.env.NEXUS_TCMB_HISTORICAL_DATE_CAP)
+    : 32;
+  const historicalDatePlan = planTcmbFallbackDates({
+    requestedDates: historicalMovementDates,
+    maxRequestedDates: historicalDateCap,
+  });
+  const tcmbFallbackEnabled = String(process.env.NEXUS_TCMB_FALLBACK_ENABLED ?? "true").toLowerCase() !== "false";
+  const tcmbHttpAttemptCap = Number.isInteger(Number(process.env.NEXUS_TCMB_HTTP_ATTEMPT_CAP))
+    && Number(process.env.NEXUS_TCMB_HTTP_ATTEMPT_CAP) > 0
+    ? Number(process.env.NEXUS_TCMB_HTTP_ATTEMPT_CAP)
+    : 64;
+  const tcmbDeadlineMs = Number.isInteger(Number(process.env.NEXUS_TCMB_DEADLINE_MS))
+    && Number(process.env.NEXUS_TCMB_DEADLINE_MS) > 0
+    ? Number(process.env.NEXUS_TCMB_DEADLINE_MS)
+    : 15_000;
+  const tcmbSource = createTcmbRateSource({
+    maxHttpAttempts: tcmbHttpAttemptCap,
+    deadlineMs: tcmbDeadlineMs,
+    fetchImpl: async (url, options) => fetch(url, { ...options, signal: AbortSignal.timeout(5_000) }),
+  });
+  const tcmbFallbackRows = tcmbFallbackEnabled
+    ? await loadTcmbFallbackRows({
+      cpmRows: rateCandidates.exchangeRates,
+      requestedDates: [...reportDates, ...historicalDatePlan.selectedDates],
+      source: tcmbSource,
+    })
+    : [];
+  const resolvedRateRows = resolveOfficialRateRows({
+    cpmRows: rateCandidates.exchangeRates,
+    tcmbRows: tcmbFallbackRows,
+  }).rows;
+  const resolvedRateFallback = {
+    enabled: tcmbFallbackEnabled,
+    rowCount: tcmbFallbackRows.length,
+    sourceKinds: [...new Set(resolvedRateRows.map((row) => row.source).filter(Boolean))].sort(),
+    historical: {
+      status: historicalMovementDates.length === 0
+        ? "not-needed"
+        : historicalDatePlan.skippedDates.length || tcmbSource.stats.deadlineExceeded || tcmbSource.stats.attemptCapReached
+          ? "partial-capped"
+          : "partial",
+      requestedDateCount: historicalMovementDates.length,
+      attemptedDateCount: historicalDatePlan.selectedDates.length,
+      skippedByCapCount: historicalDatePlan.skippedDates.length,
+      skippedDatesSample: historicalDatePlan.skippedDates.slice(0, 20),
+      httpAttemptCount: tcmbSource.stats.httpAttemptCount,
+      httpAttemptCap: tcmbHttpAttemptCap,
+      deadlineMs: tcmbDeadlineMs,
+      deadlineExceeded: tcmbSource.stats.deadlineExceeded,
+      attemptCapReached: tcmbSource.stats.attemptCapReached,
+    },
+  };
   const historicalEvidence = buildHistoricalFinancialEvidence({
     movements: movementCandidates.movements,
     priceRows,
-    exchangeRates: rateCandidates.exchangeRates,
+    exchangeRates: resolvedRateRows,
   });
   const comparableYearWac = buildComparableYearWacResearch({
     movements: historicalEvidence.movements,
@@ -197,7 +267,7 @@ async function loadFinalInvoiceLedger(year) {
     lineage: result.ledger.recordsets[1] || [],
     actorEvents: result.ledger.recordsets[2] || [],
     pilotOrders: result.ledger.recordsets[3] || [],
-    exchangeRates: rateCandidates.exchangeRates,
+    exchangeRates: resolvedRateRows,
     marginObservationsByStockKey: historicalEvidence.marginObservationsByStockKey,
     observationByMovementId: historicalEvidence.observationByMovementId,
     inventorySource: {
@@ -228,6 +298,7 @@ async function loadFinalInvoiceLedger(year) {
         rateCandidateStatus: rateCandidates.status,
         rateReviewReason: rateCandidates.reviewReason,
         rateUsableRowCount: rateCandidates.usableRowCount || 0,
+        tcmbFallback: resolvedRateFallback,
         rateBankCodes: [...new Set(rateRows.map((row) => Number(row.bankCode)).filter(Number.isFinite))].sort((a, b) => a - b),
         rateBankNames: [...new Set(rateRows.map((row) => String(row.bankName || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "tr")),
         rateTypes: [...new Set(rateRows.map((row) => Number(row.rateType)).filter(Number.isFinite))].sort((a, b) => a - b),
@@ -318,17 +389,22 @@ async function loadInventoryOpeningResearch(year, sampleLimit) {
     run: async ({ request, execute }) => {
       request.input("company", sql.VarChar(3), company);
       request.input("documentType", sql.Int, 82);
+      request.input("documentType81", sql.Int, 81);
       request.input("sourceKind", sql.VarChar(20), "DEVIR");
       request.input("startDate", sql.DateTime2, startDate);
       request.input("endDate", sql.DateTime2, endDate);
       request.input("sampleLimit", sql.Int, sampleLimit);
       const summary = await execute({ queryId: "inventory-opening-stkhar-summary-v1", query: stkhArType82SummarySql });
       const samples = await execute({ queryId: "inventory-opening-stkhar-sample-v1", query: stkhArType82SampleSql });
+      const type81Summary = await execute({ queryId: "inventory-opening-stkhar-type81-summary-v1", query: stkhArType81SummarySql });
+      const type81Samples = await execute({ queryId: "inventory-opening-stkhar-type81-sample-v1", query: stkhArType81SampleSql });
       const symSummary = await execute({ queryId: "inventory-opening-stksym-summary-v1", query: stksymDevirSummarySql });
       const symSamples = await execute({ queryId: "inventory-opening-stksym-sample-v1", query: stksymDevirSampleSql });
       return {
         stkhArSummary: summary.recordsets?.[0]?.[0] || null,
         stkhArRows: samples.recordsets?.[0] || [],
+        stkhArType81Summary: type81Summary.recordsets?.[0]?.[0] || null,
+        stkhArType81Rows: type81Samples.recordsets?.[0] || [],
         stksymSummary: symSummary.recordsets?.[0]?.[0] || null,
         stksymRows: symSamples.recordsets?.[0] || [],
       };
@@ -381,6 +457,8 @@ const departmentTargetLoader = createDepartmentTargetLoader({
           ? CAPABILITIES.OPERATIONS_READ
           : ["/api/overview", "/api/reconciliation/invoices", "/api/reconciliation/invoices/source-rows", "/api/department-analysis", "/api/department-targets", "/api/audit-ledger", "/api/audit-samples", "/api/build-info", "/api/readiness", "/api/research/inventory-opening-evidence"].includes(request.path)
             ? CAPABILITIES.REPORTING_READ
+            : ["/api/modules"].includes(request.path)
+              ? CAPABILITIES.REPORTING_READ
             : ["/api/sales-cases", "/api/inventory-research"].includes(request.path)
               ? CAPABILITIES.OPERATIONS_READ
             : null;
@@ -393,6 +471,14 @@ const departmentTargetLoader = createDepartmentTargetLoader({
   app.get("/api/build-info", (_request, response) => {
     response.setHeader("Cache-Control", "no-store");
     return response.json(buildRuntimeInfo({ env: process.env }));
+  });
+
+  app.get("/api/modules", (request, response) => {
+    response.setHeader("Cache-Control", "no-store");
+    return response.json({
+      mode: "live",
+      modules: modulesForCapabilities(request.user?.capabilities),
+    });
   });
 
   app.get("/api/readiness", async (request, response) => {
@@ -441,12 +527,11 @@ app.get("/api/health", async (request, response) => {
   if (healthHandler) return healthHandler(request, response);
   try {
     const pool = await getPool();
-    if (!pool) return response.json({ connected: false, mode: "demo", readOnly: true });
+    if (!pool) return response.json(buildRuntimeInfo({ env: process.env, connected: false }));
     const result = await pool.request().query("SELECT DB_NAME() AS databaseName");
     return response.json({
-      connected: true,
+      ...buildRuntimeInfo({ env: process.env, connected: true }),
       mode: "live",
-      readOnly: true,
       database: result.recordset[0].databaseName,
     });
   } catch {

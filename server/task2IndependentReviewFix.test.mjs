@@ -37,6 +37,21 @@ test("server projections expose one canonical metric with complete EUR evidence"
   assert.equal(department.canonicalMetric.evidence.reviewLines, 0);
 });
 
+test("overview kur kanıtı mixed CPM/TCMB kaynağını ve iz kimliklerini UI sözleşmesine taşır", () => {
+  const index = buildExchangeRateIndex([
+    { rateDate: "2026-01-30", rateCurrency: "EUR", buyingRate: 40, sellingRate: 40.2, source: "CPM", sourceIdentifier: "DVZHAR:EUR:2026-01-30" },
+    { rateDate: "2026-01-30", rateCurrency: "USD", buyingRate: 32, sellingRate: 32.2, source: "TCMB", sourceIdentifier: "TP.DK.USD.A", evidenceHash: "sha256:test", retrievalMode: "live" },
+  ]);
+  const { eurRateSets } = decorateOverviewRowsEur(buildOverviewRows({ rows: [ledgerRow()] }), {
+    index,
+    year: 2026,
+    reportDate: "2026-01-30",
+  });
+  assert.deepEqual(eurRateSets[1].sourceKinds, ["BASE", "CPM", "TCMB"]);
+  assert.equal(eurRateSets[1].sourcePolicy, "CPM_HALKBANK_THEN_TCMB_V1");
+  assert.equal(eurRateSets[1].rateSources.USD.sourceIdentifier, "TP.DK.USD.A");
+});
+
 test("partial EUR evidence is unavailable while review and excluded scope remain observable", () => {
   const rows = [
     ledgerRow({ rootId: "R-1", financeV2: { lineCostTryExVat: 400, productCurrency: "EUR", reviewReason: null }, documentSellingRate: 40 }),

@@ -6,6 +6,17 @@ import test from "node:test";
 import express from "express";
 import { createApprovalRouter } from "./approvalApi.mjs";
 import { createStateStore } from "./stateStore.mjs";
+import { buildExchangeRateIndex, buildRateSet } from "../shared/eurReporting.mjs";
+
+const JANUARY_RATE_SET = buildRateSet(buildExchangeRateIndex([
+  {
+    rateDate: "2026-01-31",
+    rateCurrency: "EUR",
+    halkbankBuyingRate: 40,
+    halkbankSellingRate: 40.2,
+    exchangeSourceId: "DVZHAR-EUR-1",
+  },
+]), "2026-01-31");
 
 async function withApi({ loadDepartmentTargets }, run) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "marlin-approval-"));
@@ -36,6 +47,7 @@ function targetPayload(version = "ledger-v1", januaryPool = 30) {
     ledgerVersion: version,
     previousLedgerVersion: "ledger-2025-v1",
     generatedAt: "2026-07-28T11:59:00.000Z",
+    exchangeRateSets: { "1": JANUARY_RATE_SET },
     rows: [
       {
         year: 2026,
@@ -86,12 +98,120 @@ test("aylık onay parasal istemci alanlarını yok sayıp sunucu snapshotı üre
 
     assert.equal(response.status, 200);
     assert.equal(payload.approval.pool, 30);
+    assert.equal(payload.approval.snapshotSchemaVersion, 2);
+    assert.equal(payload.approval.exchangeRateSet.eurTryBuyingRate, 40);
     assert.equal(payload.approval.approvedBy, "Yönetim");
     assert.equal(payload.approval.departments.length, 2);
     assert.match(payload.approval.snapshotHash, /^[a-f0-9]{64}$/);
     const state = await store.read();
     assert.equal(state.approvals["2026"]["1"].pool, 30);
     assert.equal(state.auditEvents.at(-1).action, "approval-approved");
+    const approvals = await fetch(
+      `${baseUrl}/api/approvals?year=2026`,
+    ).then((item) => item.json());
+    assert.equal(approvals.approvals["1"].rateEvidenceStatus, "frozen");
+  });
+});
+
+test("onaylı kur seti snapshot hashine girer ve sonraki değişiklik bayatlık üretir", async () => {
+  let targets = targetPayload();
+  await withApi({
+    loadDepartmentTargets: async () => targets,
+  }, async (baseUrl) => {
+    const saved = await fetch(`${baseUrl}/api/approvals/2026/1`, {
+      method: "PUT",
+    }).then((response) => response.json());
+    targets = targetPayload();
+    targets.exchangeRateSets["1"] = {
+      ...JANUARY_RATE_SET,
+      rates: {
+        TRY: JANUARY_RATE_SET.rates.TRY,
+        EUR: JANUARY_RATE_SET.rates.EUR,
+      },
+    };
+    const reordered = await fetch(
+      `${baseUrl}/api/approvals?year=2026`,
+    ).then((response) => response.json());
+    assert.equal(reordered.approvals["1"].stale, false);
+
+    targets.exchangeRateSets["1"] = buildRateSet(buildExchangeRateIndex([
+      {
+        rateDate: "2026-01-31",
+        rateCurrency: "EUR",
+        halkbankBuyingRate: 41,
+        halkbankSellingRate: 41.2,
+        exchangeSourceId: "DVZHAR-EUR-2",
+      },
+    ]), "2026-01-31");
+
+    const current = await fetch(
+      `${baseUrl}/api/approvals?year=2026`,
+    ).then((response) => response.json());
+
+    assert.notEqual(current.approvals["1"].currentSnapshotHash, saved.approval.snapshotHash);
+    assert.equal(current.approvals["1"].stale, true);
+  });
+});
+
+test("eksik Halkbank EUR kuru olan yeni onayı kaydetmez", async () => {
+  const invalidTargets = targetPayload();
+  delete invalidTargets.exchangeRateSets["1"];
+  await withApi({
+    loadDepartmentTargets: async () => invalidTargets,
+  }, async (baseUrl, store) => {
+    const response = await fetch(`${baseUrl}/api/approvals/2026/1`, {
+      method: "PUT",
+    });
+
+    assert.equal(response.status, 409);
+    assert.deepEqual((await store.read()).approvals, {});
+  });
+});
+
+test("legacy onayda kur kanıtı durumunu açıkça ayırır", async () => {
+  await withApi({
+    loadDepartmentTargets: async () => targetPayload(),
+  }, async (baseUrl, store) => {
+    await store.approve({
+      year: 2026,
+      month: 1,
+      snapshot: {
+        year: 2026,
+        month: 1,
+        snapshotHash: "legacy-hash",
+      },
+    });
+
+    const approvals = await fetch(
+      `${baseUrl}/api/approvals?year=2026`,
+    ).then((response) => response.json());
+    assert.equal(
+      approvals.approvals["1"].rateEvidenceStatus,
+      "legacy-month-end-fallback",
+    );
+  });
+});
+
+test("bozuk v2 onayda kur kanıtını geçersiz olarak gösterir", async () => {
+  await withApi({
+    loadDepartmentTargets: async () => targetPayload(),
+  }, async (baseUrl, store) => {
+    await store.approve({
+      year: 2026,
+      month: 1,
+      snapshot: {
+        year: 2026,
+        month: 1,
+        snapshotSchemaVersion: 2,
+        snapshotHash: "invalid-v2-hash",
+        exchangeRateSet: null,
+      },
+    });
+
+    const approvals = await fetch(
+      `${baseUrl}/api/approvals?year=2026`,
+    ).then((response) => response.json());
+    assert.equal(approvals.approvals["1"].rateEvidenceStatus, "invalid");
   });
 });
 

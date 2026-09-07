@@ -66,6 +66,18 @@ test("kur bulunamadığında fail-closed inceleme nedeni döner", () => {
   assert.equal(tooEarly.reviewReason, "missing-exchange-rate");
 });
 
+test("alış ve satış tarafları farklı günlerde olsa bile kendi kanıtlı tarafını seçer", () => {
+  const index = buildExchangeRateIndex([
+    { rateDate: "2026-08-26", rateCurrency: "USD", buyingRate: 40, sellingRate: null, source: "CPM", sourceIdentifier: "CPM-BUY" },
+    { rateDate: "2026-08-27", rateCurrency: "USD", buyingRate: null, sellingRate: 41, source: "TCMB", sourceIdentifier: "TP.DK.USD.S" },
+  ]);
+  const buying = findRateOnOrBefore(index, "USD", "2026-08-28");
+  assert.equal(buying.buyingRate, 40);
+  assert.equal(buying.rateDate, "2026-08-26");
+  assert.equal(buying.sourceIdentifier, "CPM-BUY");
+  assert.equal(index.get("USD").find((entry) => entry.date === "2026-08-27").sellingRate, 41);
+});
+
 test("EUR paritesi kur setinde birebir sabittir", () => {
   const rateSet = buildRateSet(buildExchangeRateIndex(SAMPLE_RATES), "2026-08-28");
   const converted = convertToEur(rateSet, "EUR", 123.45);
@@ -181,4 +193,3 @@ test("TRY kartlı satır kur aramadan TRY sepetinde kalır", () => {
   assert.equal(classified.netSales, 5_000);
   assert.equal(classified.cost, 3_000);
 });
-

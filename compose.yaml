@@ -1,15 +1,8 @@
 services:
   marlin-profit-sharing:
-    build:
-      context: .
-      args:
-        BUILD_ID: ${BUILD_ID:-}
-        BUILD_VERSION: ${NEXUS_BUILD_VERSION:-}
-        BUILD_COMMIT: ${NEXUS_BUILD_COMMIT:-}
+    build: .
     container_name: marlin-profit-sharing
     restart: unless-stopped
-    ports:
-      - "4318:4318"
     environment:
       HOST: 0.0.0.0
       PORT: 4318
@@ -18,20 +11,38 @@ services:
       CPM_SQL_DATABASE: Marlin_Uyg
       CPM_SQL_COMPANY: "01"
       CPM_SQL_ENCRYPT: "false"
-      CPM_EFFECTIVE_READ_ONLY: "true"
-      CPM_RATE_BANK_CODE: "3"
-      CPM_RATE_MODULE_BANK_NAME: "03-Halk Bankası"
-      CPM_RATE_BUYING_TYPE: "0"
-      CPM_RATE_SELLING_TYPE: "1"
-      CPM_RATE_SEMANTICS_VERIFIED: "true"
+      CPM_SQL_TRUST_SERVER_CERTIFICATE: "false"
       CPM_CREDENTIAL_FILE: /run/secrets/cpm-credentials.txt
       APP_STATE_FILE: /app/data/app-state.json
-      BUILD_ID: ${BUILD_ID:-}
-      NEXUS_BUILD_VERSION: ${NEXUS_BUILD_VERSION:-}
-      NEXUS_BUILD_COMMIT: ${NEXUS_BUILD_COMMIT:-}
-      NEXUS_IMAGE_DIGEST: ${NEXUS_IMAGE_DIGEST:-}
-      NEXUS_ARTIFACT_SHA256: ${NEXUS_ARTIFACT_SHA256:-}
-      NEXUS_ACCEPTED_RISKS: ${NEXUS_ACCEPTED_RISKS:-}
+      LEDGER_SNAPSHOT_DIR: /app/data/ledger-snapshots
+      BUILD_ID: ${BUILD_ID:-dev-local}
+      NEXUS_BUILD_VERSION: ${NEXUS_BUILD_VERSION:-local}
+      NEXUS_BUILD_COMMIT: ${NEXUS_BUILD_COMMIT:-unknown}
+      NEXUS_IMAGE_DIGEST: ${NEXUS_IMAGE_DIGEST:-unknown}
+      NEXUS_AUTH_USERS_FILE: /run/secrets/nexus-users.json
+      NEXUS_USERS_FILE: /app/data/nexus-users.json
+      NEXUS_ADMIN_USERNAME: ${NEXUS_ADMIN_USERNAME:-yonetici}
+      NEXUS_PUBLIC_ORIGIN: ${NEXUS_PUBLIC_ORIGIN:?NEXUS_PUBLIC_ORIGIN is required}
+      NEXUS_AUTH_REQUIRED: "true"
+      CPM_EFFECTIVE_READ_ONLY: "true"
+      NEXUS_SESSION_SECRET: ${NEXUS_SESSION_SECRET:?NEXUS_SESSION_SECRET is required}
+      NEXUS_ADMIN_PASSWORD_SHA256: ${NEXUS_ADMIN_PASSWORD_SHA256:?NEXUS_ADMIN_PASSWORD_SHA256 is required}
+    expose:
+      - "4318"
     volumes:
       - ./data:/app/data
       - ./secrets/cpm-credentials.txt:/run/secrets/cpm-credentials.txt:ro
+      - ./secrets/nexus-users.json:/run/secrets/nexus-users.json:ro
+
+  nexus-caddy:
+    image: caddy:2.8
+    container_name: nexus-caddy
+    restart: unless-stopped
+    depends_on:
+      - marlin-profit-sharing
+    ports:
+      - "4318:4318"
+    volumes:
+      - ./infra/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${NEXUS_TLS_CERT_HOST_FILE:-/home/serviceproadmin/.marlin-nexus-pki/server.crt}:/run/configs/nexus-tls-fullchain.pem:ro
+      - ${NEXUS_TLS_KEY_HOST_FILE:-/home/serviceproadmin/.marlin-nexus-pki/server.key}:/run/secrets/nexus-tls-privkey.pem:ro
