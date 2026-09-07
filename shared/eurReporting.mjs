@@ -399,8 +399,12 @@ export function classifyEurRevenueLine({
   signedNetSales = 0,
 } = {}) {
   const netSalesTry = finiteNumber(signedNetSales) ?? 0;
-  const currency = currencyCode(productCurrency);
   const sellingRate = finiteNumber(documentSellingRate);
+  // CPM satırında döviz cinsi boş olup FIYATDOVIZKUR=1 ise kaynak satır
+  // kendi TRY-parite kanıtını taşır. Bu durum eksik döviz kanıtı değildir;
+  // yabancı dövizli satırı sessizce TRY'ye çevirmemek için yalnızca bu açık
+  // satır koşulunda TRY olarak yorumlanır.
+  const currency = currencyCode(productCurrency) || (sellingRate === 1 ? "TRY" : null);
   if (!currency) {
     return { currency: null, netSales: null, covered: false, reason: "missing-product-currency" };
   }

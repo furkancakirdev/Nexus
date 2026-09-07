@@ -5,6 +5,7 @@ import {
   buildExchangeRateIndex,
   buildRateSet,
   classifyEurLine,
+  classifyEurRevenueLine,
   convertToEur,
   CURRENCY_BASKETS,
   decorateBasketEur,
@@ -192,4 +193,18 @@ test("TRY kartlı satır kur aramadan TRY sepetinde kalır", () => {
   assert.equal(classified.basket, "TRY");
   assert.equal(classified.netSales, 5_000);
   assert.equal(classified.cost, 3_000);
+});
+
+test("döviz cinsi boş ve FIYATDOVIZKUR 1 olan satır TRY-parite kanıtıyla EUR gelire girer", () => {
+  const classified = classifyEurRevenueLine({
+    productCurrency: null,
+    documentSellingRate: 1,
+    signedNetSales: 5_000,
+  });
+  assert.deepEqual(classified, {
+    currency: "TRY",
+    netSales: 5_000,
+    covered: true,
+    reason: null,
+  });
 });
