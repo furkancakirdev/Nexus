@@ -63,3 +63,20 @@ test("aynı ürün için çelişkili kart dövizi resmi kanıt üretmez", () => 
   assert.equal(result.reviewCounts.review, 1);
   assert.equal(result.reviewReasons["ambiguous-product-currency"], 1);
 });
+
+test("tarihsel perakende fiyatı gelecekteyse TRY maliyet kanıtı ayrışır, marj review kalır", () => {
+  const result = buildHistoricalFinancialEvidence({
+    movements: [{ ...purchase, id: "P-4", productCode: "CARD-4", date: "2026-02-10" }],
+    priceRows: [{
+      productCode: "CARD-4", cardCurrency: "TL", priceCurrency: "TL",
+      effectiveDate: "2026-03-01", priceExVat: 25, priceVatExempt: 1,
+    }],
+    exchangeRates: [],
+  });
+
+  assert.equal(result.movements[0].productCurrency, "TRY");
+  assert.equal(result.movements[0].unitCostCurrencyExVat, 700);
+  assert.deepEqual(result.costReviewCounts, { review: 0, covered: 1 });
+  assert.deepEqual(result.reviewCounts, { review: 1, covered: 0 });
+  assert.equal(result.reviewReasons["missing-historical-retail-price"], 1);
+});

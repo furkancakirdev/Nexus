@@ -257,11 +257,17 @@ async function loadFinalInvoiceLedger(year) {
       return Number.isFinite(Number(movement.unitCostCurrencyExVat))
         && Number(movement.unitCostCurrencyExVat) > 0;
     });
-  const historicalEvidenceComplete = movementEvidenceComplete
+  const costEvidenceComplete = movementEvidenceComplete
+    && historicalCurrencyComplete
+    && historicalEvidence.costReviewCounts.review === 0
+    && historicalEvidence.priceRowCount > 0
+    && historicalEvidence.exchangeRateCount > 0;
+  const marginEvidenceComplete = movementEvidenceComplete
     && historicalCurrencyComplete
     && historicalEvidence.reviewCounts.review === 0
     && historicalEvidence.priceRowCount > 0
     && historicalEvidence.exchangeRateCount > 0;
+  const historicalEvidenceComplete = costEvidenceComplete && marginEvidenceComplete;
   return buildFinalInvoiceLedger({
     economics: result.ledger.recordsets[0] || [],
     lineage: result.ledger.recordsets[1] || [],
@@ -307,7 +313,11 @@ async function loadFinalInvoiceLedger(year) {
         historicalExchangeRateCount: historicalEvidence.exchangeRateCount,
         historicalEvidenceReviewCounts: historicalEvidence.reviewCounts,
         historicalEvidenceReviewReasons: historicalEvidence.reviewReasons,
+        historicalCostEvidenceReviewCounts: historicalEvidence.costReviewCounts,
+        historicalCostEvidenceReviewReasons: historicalEvidence.costReviewReasons,
         historicalCurrencyComplete,
+        costEvidenceComplete,
+        marginEvidenceComplete,
         historicalEvidenceComplete,
         comparableYearWac,
       },

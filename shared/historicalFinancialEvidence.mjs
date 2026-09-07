@@ -1,6 +1,6 @@
 import { buildExchangeRateIndex, currencyCode, dateKey } from "./eurReporting.mjs";
 import { createHistoricalRetailPriceSelector } from "./historicalPrice.mjs";
-import { calculateProductMarginObservation } from "./financialCostModel.mjs";
+import { calculateProductMarginObservation, convertTryToProductCurrency } from "./financialCostModel.mjs";
 
 function text(value) {
   return value === null || value === undefined ? "" : String(value).trim();
@@ -20,10 +20,14 @@ function isVatExempt(value) {
 }
 
 function sourcePriceRows(rows) {
+  const canonicalCurrency = (value) => {
+    const normalized = text(value).toUpperCase();
+    return currencyCode(normalized === "TL" ? "TRY" : normalized);
+  };
   return (Array.isArray(rows) ? rows : []).map((row) => ({
     productCode: text(row?.productCode ?? row?.cardCode),
-    cardCurrency: currencyCode(row?.cardCurrency ?? row?.productCurrency),
-    currency: currencyCode(row?.priceCurrency ?? row?.currency),
+    cardCurrency: canonicalCurrency(row?.cardCurrency ?? row?.productCurrency),
+    currency: canonicalCurrency(row?.priceCurrency ?? row?.currency),
     effectiveDate: dateKey(row?.effectiveDate ?? row?.date),
     priceExVat: number(row?.priceExVat ?? row?.price),
     priceVatExempt: isVatExempt(row?.priceVatExempt),
@@ -78,23 +82,53 @@ export function buildHistoricalFinancialEvidence({ movements = [], priceRows = [
   const observationByMovementId = new Map();
   const reviewReasons = {};
   const reviewCounts = { review: 0, covered: 0 };
+  const costReviewReasons = {};
+  const costReviewCounts = { review: 0, covered: 0 };
   const addReview = (reason) => {
     reviewCounts.review += 1;
     reviewReasons[reason] = (reviewReasons[reason] || 0) + 1;
+  };
+  const addCostReview = (reason) => {
+    costReviewCounts.review += 1;
+    costReviewReasons[reason] = (costReviewReasons[reason] || 0) + 1;
   };
 
   for (const movement of enrichedMovements) {
     const productCode = text(movement.productCode);
     const knownCurrencies = currencies.get(productCode) || new Set();
     if (knownCurrencies.size !== 1) {
-      if (["opening", "purchase"].includes(movement.kind)) addReview(
-        knownCurrencies.size ? "ambiguous-product-currency" : "missing-historical-retail-price",
-      );
+      if (["opening", "purchase"].includes(movement.kind)) {
+        const reason = knownCurrencies.size ? "ambiguous-product-currency" : "missing-historical-retail-price";
+        addReview(reason);
+        addCostReview(reason);
+      }
       continue;
     }
     const productCurrency = [...knownCurrencies][0];
     movement.productCurrency = productCurrency;
     if (!["opening", "purchase"].includes(movement.kind)) continue;
+
+    const rate = sellingRateOnOrBefore(rateIndex, productCurrency, movement.date);
+    if (!rate) {
+      addReview("missing-exchange-rate");
+      addCostReview("missing-exchange-rate");
+      continue;
+    }
+    const costConversion = convertTryToProductCurrency({
+      amountTry: Number(movement.unitCostTryExVat),
+      productCurrency,
+      halkbankSellingRate: rate.rate,
+      exchangeDate: rate.date,
+      exchangeSourceId: rate.sourceId,
+    });
+    if (costConversion.reviewReason) {
+      addReview(costConversion.reviewReason);
+      addCostReview(costConversion.reviewReason);
+      continue;
+    }
+    movement.unitCostCurrencyExVat = costConversion.amountCurrency;
+    movement.costExchangeEvidence = costConversion.exchangeEvidence;
+    costReviewCounts.covered += 1;
 
     const price = selectPrice({
       productCode,
@@ -104,11 +138,6 @@ export function buildHistoricalFinancialEvidence({ movements = [], priceRows = [
     });
     if (price.reviewReason) {
       addReview(price.reviewReason);
-      continue;
-    }
-    const rate = sellingRateOnOrBefore(rateIndex, productCurrency, movement.date);
-    if (!rate) {
-      addReview("missing-exchange-rate");
       continue;
     }
     const observation = calculateProductMarginObservation({
@@ -126,7 +155,6 @@ export function buildHistoricalFinancialEvidence({ movements = [], priceRows = [
       addReview(observation.reviewReason);
       continue;
     }
-    movement.unitCostCurrencyExVat = observation.unitCostCurrencyExVat;
     movement.historicalPriceEvidence = {
       effectiveDate: price.effectiveDate,
       lagDays: price.lagDays,
@@ -148,6 +176,8 @@ export function buildHistoricalFinancialEvidence({ movements = [], priceRows = [
     observationByMovementId,
     reviewCounts,
     reviewReasons,
+    costReviewCounts,
+    costReviewReasons,
     priceRowCount: prices.length,
     exchangeRateCount: Array.isArray(exchangeRates) ? exchangeRates.length : 0,
   };
