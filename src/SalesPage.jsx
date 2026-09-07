@@ -37,9 +37,11 @@ const formatEur = (value) => value === null || value === undefined || !Number.is
 const sumNullable = (...values) => values.every((value) => Number.isFinite(value)) ? values.reduce((sum, value) => sum + value, 0) : null;
 const profitTone = (value) => value == null ? "" : value >= 0 ? "positive" : "negative";
 // EUR karşılığı yoksa (demo/bağlantısız mod) TL gösterimine düşer.
-const formatReportMoney = (row, field, fallback) => {
+export const formatReportMoney = (row, field, fallback) => {
   if (["cost", "profit"].includes(field) && row?.canonicalMetric && row.canonicalMetric.status !== "TAMAM") return "—";
-  const eurValue = row?.eurEquivalent?.[field];
+  // EUR karşılığı yalnızca satır kanıtı tamamlandığında gösterilebilir;
+  // review satırındaki 0 değeri kanıt yokluğunu sıfır gelir gibi göstermez.
+  const eurValue = row?.eurAvailable === true ? row?.eurEquivalent?.[field] : null;
   if (typeof eurValue === "number" && Number.isFinite(eurValue)) return formatEur(eurValue);
   return formatMoney(fallback);
 };

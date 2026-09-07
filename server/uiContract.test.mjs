@@ -328,6 +328,15 @@ test("sales currency basket remains renderable when the live payload omits revie
   });
 });
 
+test("sales report does not render an unverified EUR zero", async (t) => {
+  const vite = await createServer({ configFile: resolve(process.cwd(), "vite.config.mjs") });
+  t.after(() => vite.close());
+  const sales = await vite.ssrLoadModule("/src/SalesPage.jsx");
+
+  assert.equal(sales.formatReportMoney({ eurAvailable: false, eurEquivalent: { netSales: 0 } }, "netSales", 1234), "1.234 TL");
+  assert.equal(sales.formatReportMoney({ eurAvailable: true, eurEquivalent: { netSales: 12 } }, "netSales", 1234), "€12");
+});
+
 test("dark audit surfaces keep KPI and expanded detail text readable", async () => {
   const styles = await source("src/styles.css");
   assert.match(styles, /:root\[data-theme="dark"\] \.audit-kpis article strong[^}]*color:\s*var\(--ink\)/);
