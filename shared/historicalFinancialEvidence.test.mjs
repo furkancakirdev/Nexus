@@ -33,6 +33,44 @@ test("tarihsel fiyat ve satış kuru aynı alım hareketine ürün dövizi ve ma
   assert.equal(result.reviewCounts.review, 0);
 });
 
+test("kart dövizi boşsa fiyat listesi dövizi ürün dövizi kanıtı olarak kullanılır", () => {
+  const result = buildHistoricalFinancialEvidence({
+    movements: [{ ...purchase, id: "P-PRICE-CURRENCY-FALLBACK" }],
+    priceRows: [{
+      productCode: "CARD-1", cardCurrency: null, priceCurrency: "EUR",
+      effectiveDate: "2026-02-01", priceExVat: 25, priceVatExempt: 1,
+    }],
+    exchangeRates: [{
+      exchangeSourceId: "EUR-SELL", rateDate: "2026-02-10", rateCurrency: "EUR",
+      halkbankSellingRate: 40,
+    }],
+  });
+
+  assert.equal(result.movements[0].productCurrency, "EUR");
+  assert.equal(result.movements[0].unitCostCurrencyExVat, 17.5);
+  assert.equal(result.costReviewCounts.review, 0);
+  assert.equal(result.reviewCounts.review, 0);
+});
+
+test("kart ve fiyat dövizi çelişirse maliyet ürünü dövizinde korunur, marj fiyatı seçilmez", () => {
+  const result = buildHistoricalFinancialEvidence({
+    movements: [{ ...purchase, id: "P-CURRENCY-CONFLICT" }],
+    priceRows: [{
+      productCode: "CARD-1", cardCurrency: "EUR", priceCurrency: "USD",
+      effectiveDate: "2026-02-01", priceExVat: 25, priceVatExempt: 1,
+    }],
+    exchangeRates: [
+      { exchangeSourceId: "EUR-SELL", rateDate: "2026-02-10", rateCurrency: "EUR", halkbankSellingRate: 40 },
+    ],
+  });
+
+  assert.equal(result.movements[0].productCurrency, "EUR");
+  assert.equal(result.movements[0].unitCostCurrencyExVat, 17.5);
+  assert.equal(result.costReviewCounts.review, 0);
+  assert.equal(result.reviewReasons["missing-historical-retail-price"], 1);
+  assert.equal(result.marginObservationsByStockKey.size, 0);
+});
+
 test("TRY maliyet kanıtı yoksa sıfır maliyet veya marj üretmez", () => {
   const result = buildHistoricalFinancialEvidence({
     movements: [{ ...purchase, id: "P-MISSING", unitCostTryExVat: null }],

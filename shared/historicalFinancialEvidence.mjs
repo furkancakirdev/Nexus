@@ -24,16 +24,24 @@ function sourcePriceRows(rows) {
     const normalized = text(value).toUpperCase();
     return currencyCode(normalized === "TL" ? "TRY" : normalized);
   };
-  return (Array.isArray(rows) ? rows : []).map((row) => ({
-    productCode: text(row?.productCode ?? row?.cardCode),
-    cardCurrency: canonicalCurrency(row?.cardCurrency ?? row?.productCurrency),
-    currency: canonicalCurrency(row?.priceCurrency ?? row?.currency),
-    effectiveDate: dateKey(row?.effectiveDate ?? row?.date),
-    priceExVat: number(row?.priceExVat ?? row?.price),
-    priceVatExempt: isVatExempt(row?.priceVatExempt),
-    ...(dateKey(row?.validUntil ?? row?.effectiveEnd) ? { validUntil: dateKey(row?.validUntil ?? row?.effectiveEnd) } : {}),
-  })).filter((row) => row.productCode && row.cardCurrency && row.currency
-    && row.cardCurrency === row.currency && row.effectiveDate
+  return (Array.isArray(rows) ? rows : []).map((row) => {
+    const cardCurrency = canonicalCurrency(row?.cardCurrency ?? row?.productCurrency);
+    const priceCurrency = canonicalCurrency(row?.priceCurrency ?? row?.currency);
+    return {
+      productCode: text(row?.productCode ?? row?.cardCode),
+      cardCurrency,
+      currency: priceCurrency,
+      // CPM'de kart dövizi boş kalabildiğinde, KDV niteliği ve tarihli fiyat
+      // kanıtı taşıyan fiyat listesi dövizi ürün dövizi için kontrollü fallback
+      // olur. Kart dövizi doluysa onun kanıtı önceliklidir; fiyat döviziyle
+      // çelişen satır marj fiyatı olarak seçilmez.
+      productCurrency: cardCurrency || priceCurrency,
+      effectiveDate: dateKey(row?.effectiveDate ?? row?.date),
+      priceExVat: number(row?.priceExVat ?? row?.price),
+      priceVatExempt: isVatExempt(row?.priceVatExempt),
+      ...(dateKey(row?.validUntil ?? row?.effectiveEnd) ? { validUntil: dateKey(row?.validUntil ?? row?.effectiveEnd) } : {}),
+    };
+  }).filter((row) => row.productCode && row.productCurrency && row.currency && row.effectiveDate
     && row.priceExVat !== null && row.priceExVat > 0 && row.priceVatExempt);
 }
 
@@ -41,7 +49,7 @@ function productCurrencies(priceRows) {
   const byProduct = new Map();
   for (const row of priceRows) {
     const currencies = byProduct.get(row.productCode) || new Set();
-    currencies.add(row.cardCurrency);
+    currencies.add(row.productCurrency || row.cardCurrency || row.currency);
     byProduct.set(row.productCode, currencies);
   }
   return byProduct;
