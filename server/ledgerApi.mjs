@@ -689,6 +689,28 @@ function auditRow(row) {
   };
 }
 
+function decorateAuditRowEur(row, rateSets = null) {
+  if (!rateSets || typeof rateSets !== "object") return row;
+  const canonicalMetric = aggregateFinancialMetric([{
+    signedNetSalesTry: row.signedNetAmount,
+    grossSalesTry: row.isSale ? row.grossAmount : 0,
+    returnsTry: row.isSale ? 0 : row.netAmount,
+    discountsTry: row.isSale ? row.discountAmount : 0,
+    period: String(monthOf(row.documentDate)),
+    productCurrency: row.financeV2?.productCurrency ?? row.productCurrency,
+    documentSellingRate: row.documentSellingRate,
+    financeV2: row.financeV2,
+  }], { rateSets, basisId: `audit-eur:${row.rootId}` });
+  const eurEquivalent = canonicalEurEquivalent(canonicalMetric);
+  return {
+    ...row,
+    eurCanonicalMetric: canonicalMetric,
+    eurEquivalent,
+    eurAvailable: eurEquivalent.revenueComplete === true && Number.isFinite(eurEquivalent.netSales),
+    eurComplete: eurEquivalent.costComplete === true,
+  };
+}
+
 function auditSearchText(row) {
   return [
     row.documentNo, row.customerCode, row.cardCode, row.cardName, row.brand,
@@ -697,7 +719,7 @@ function auditSearchText(row) {
   ].map(normalizedCode).join("|");
 }
 
-export function filterAuditLedger(ledger, query = {}) {
+export function filterAuditLedger(ledger, query = {}, { rateSets = null } = {}) {
   const page = positiveInteger(query.page, 1);
   const pageSize = query.export === "1"
     ? 50_000
@@ -720,7 +742,8 @@ export function filterAuditLedger(ledger, query = {}) {
     ));
     if (ledger && typeof ledger === "object") auditRowsCache.set(ledger, allRows);
   }
-  const filteredRows = allRows.filter((row) => (
+  const rowsWithEur = rateSets ? allRows.map((row) => decorateAuditRowEur(row, rateSets)) : allRows;
+  const filteredRows = rowsWithEur.filter((row) => (
     (!month || monthOf(row.documentDate) === month)
     && (!documentType || number(row.documentType) === documentType)
     && (!source || row.revenueSource === source)
@@ -741,7 +764,11 @@ export function filterAuditLedger(ledger, query = {}) {
     excludedNetAmount: 0,
     provisionalEconomicRows: 0,
     convertedRetailEconomicRows: 0,
+    filteredEurNetAmount: null,
+    eurReviewRows: 0,
   };
+  let filteredEurNetAmount = 0;
+  let eurComplete = true;
   for (const row of filteredRows) {
     if (row.verificationStatus === "verified") summary.verifiedRows += 1;
     else if (row.verificationStatus === "configured") summary.configuredRows += 1;
@@ -757,7 +784,13 @@ export function filterAuditLedger(ledger, query = {}) {
     } else {
       summary.analysisNetAmount += signedNetAmount;
     }
+    if (row.eurAvailable === true) filteredEurNetAmount += Number(row.eurEquivalent.netSales || 0);
+    else {
+      eurComplete = false;
+      summary.eurReviewRows += 1;
+    }
   }
+  summary.filteredEurNetAmount = rateSets && eurComplete ? filteredEurNetAmount : null;
   const offset = (page - 1) * pageSize;
   return {
     page,
@@ -1497,7 +1530,6 @@ export function createUnifiedLedgerRouter({
           error: "Gerçek CPM bağlantısı yapılandırılmadığı için denetim defteri üretilemedi.",
         });
       }
-      const audit = filterAuditLedger(snapshot.value, request.query);
       const rateIndex = buildExchangeRateIndex(snapshot.value.exchangeRates);
       const approvals = state.approvals?.[String(year)] || {};
       const reportDate = new Date();
@@ -1512,6 +1544,7 @@ export function createUnifiedLedgerRouter({
         });
         return [String(month), resolved.rateSet];
       }));
+      const audit = filterAuditLedger(snapshot.value, request.query, { rateSets: reportRateSets });
       const projections = buildAuditReportProjections(audit.rows, { rateSets: reportRateSets });
       const scopeNetSales = economicScopeNetSales(snapshot.value);
       response.setHeader("Cache-Control", "no-store");

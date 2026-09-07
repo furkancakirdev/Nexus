@@ -58,7 +58,19 @@ const EMPTY_EMPLOYEE = {
   salaryCoefficient: 1, fixedShareRate: 0, approvalStatus: "Yönetici Onayı",
 };
 
-export function SettingsPage({ settings, onSave, connection, mode, annualProfit, annualPool, employees = [], onSaveEmployees, onBack }) {
+const eurMoney = new Intl.NumberFormat("tr-TR", {
+  style: "currency",
+  currency: "EUR",
+  maximumFractionDigits: 0,
+});
+
+function formatEur(value) {
+  return value === null || value === undefined || !Number.isFinite(Number(value))
+    ? "—"
+    : eurMoney.format(Math.round(Number(value)));
+}
+
+export function SettingsPage({ settings, onSave, connection, mode, annualProfit, annualPool, annualProfitEur = null, annualPoolEur = null, employees = [], onSaveEmployees, onBack }) {
   const [draft, setDraft] = useState(settings);
   const [activeTab, setActiveTab] = useState("policy");
   const [message, setMessage] = useState("");
@@ -183,7 +195,7 @@ export function SettingsPage({ settings, onSave, connection, mode, annualProfit,
                   <span><small>Personel</small><strong>{employees.length}</strong></span>
                   <span><small>Dağıtıma dahil</small><strong>{employees.filter((employee) => employee.included !== false).length}</strong></span>
                   <span className={fixedShareTotal > 100 ? "bad" : ""}><small>Sabit pay toplamı</small><strong>%{fixedShareTotal.toLocaleString("tr-TR")}</strong></span>
-                  <span><small>Dağıtılabilir havuz</small><strong>{new Intl.NumberFormat("tr-TR", { notation: "compact", maximumFractionDigits: 1 }).format(annualPool)} TL</strong></span>
+                  <span><small>Dağıtılabilir havuz · EUR</small><strong>{formatEur(annualPoolEur)}</strong></span>
                 </div>
                 <button className="primary-action" onClick={() => openEmployee(EMPTY_EMPLOYEE, -1)}><IconUserPlus size={17} /> Yeni personel</button>
               </div>
@@ -333,10 +345,10 @@ export function SettingsPage({ settings, onSave, connection, mode, annualProfit,
         <aside className="settings-summary">
           <div className="settings-summary__head"><IconSettings size={20} /><strong>Canlı Önizleme</strong></div>
           <dl>
-            <div><dt>Dağıtıma esas kâr</dt><dd>{new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 0 }).format(annualProfit)} TL</dd></div>
+            <div><dt>Dağıtıma esas kâr · EUR</dt><dd>{formatEur(annualProfitEur)}</dd></div>
             <div><dt>Temkinli / büyüme</dt><dd>%{draft.rates.conservative} / %{draft.rates.growth}</dd></div>
             <div><dt>Risk rezervi</dt><dd>%{draft.reserveRate}</dd></div>
-            <div className="summary-emphasis"><dt>Tahmini net havuz</dt><dd>{new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 0 }).format(projectedPool)} TL</dd></div>
+            <div className="summary-emphasis"><dt>Tahmini net havuz · EUR</dt><dd>{formatEur(annualPoolEur)}</dd></div>
           </dl>
           <div className="summary-checks">
             <span className={validation.rateOrder ? "ok" : "bad"}>{validation.rateOrder ? <IconCheck /> : <IconAlertTriangle />} Dağıtım oranları</span>

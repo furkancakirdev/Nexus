@@ -75,8 +75,20 @@ const compactMoney = new Intl.NumberFormat("tr-TR", {
   maximumFractionDigits: 1,
 });
 
+const eurMoney = new Intl.NumberFormat("tr-TR", {
+  style: "currency",
+  currency: "EUR",
+  maximumFractionDigits: 0,
+});
+
 function fmt(value) {
   return money.format(Math.round(value || 0));
+}
+
+function fmtEur(value) {
+  return value === null || value === undefined || !Number.isFinite(Number(value))
+    ? "—"
+    : eurMoney.format(Math.round(Number(value)));
 }
 
 function sumNullable(rows, field) {
@@ -91,7 +103,7 @@ function WaterfallTooltip({ active, payload }) {
   return (
     <div className="chart-tooltip">
       <strong>{item.name}</strong>
-      <span>{fmt(item.amount)} TL</span>
+      <span>{fmtEur(item.amount)}</span>
     </div>
   );
 }
@@ -430,17 +442,65 @@ export function App() {
   }), { covered: 0, total: 0 });
   const weightedCoverage = coverageTotals.total ? coverageTotals.covered / coverageTotals.total * 100 : 0;
 
-  const waterfall = [
-    { name: "Satışlar", base: 0, value: totals.sales, amount: totals.sales, color: "#0a3972" },
-    { name: "İadeler", base: Math.max(0, totals.sales - totals.returns), value: totals.returns, amount: -totals.returns, color: "#e84b55" },
-    { name: "İskontolar", base: Math.max(0, totals.sales - totals.returns - totals.discounts), value: totals.discounts, amount: -totals.discounts, color: "#e84b55" },
-    { name: "Maliyet", base: Math.max(0, totals.profit), value: totals.cost, amount: -totals.cost, color: "#ee5c64" },
-    { name: "Dağıtıma Esas Kâr", base: 0, value: Math.max(0, totals.profit), amount: totals.profit, color: "#16884e" },
-  ];
-
   const selected = selectedMonth
     ? enrichedRows.find((row) => row.month === selectedMonth)
     : null;
+
+  // Havuzun eski TL görünümü ana finansal çıktı olarak kullanılmaz. EUR gelir
+  // kanıtı mevcutsa satış/iade/iskonto gösterilir; WAC kanıtı yoksa maliyet,
+  // kâr ve dağıtılabilir tutar bilinçli olarak boş kalır.
+  const poolRows = enrichedRows.map((row) => {
+    const eur = row.eurEquivalent || {};
+    const breakdownComplete = eur.breakdownComplete === true;
+    const costComplete = eur.costComplete === true;
+    return {
+      ...row,
+      displaySales: breakdownComplete ? eur.grossSales : null,
+      displayReturns: breakdownComplete ? eur.returns : null,
+      displayDiscounts: breakdownComplete ? eur.discounts : null,
+      displayCost: costComplete ? eur.cost : null,
+      displayProfit: costComplete ? eur.profit : null,
+      displayContribution: null,
+      displayStatus: costComplete ? row.status : "İnceleme",
+    };
+  });
+  const poolDisplayRows = poolRows.filter((row) => (
+    statusFilter === "all"
+      || (statusFilter === "final" && row.status === "Kesinleşmiş")
+      || (statusFilter === "estimate" && row.status === "Tahmini")
+  ));
+  const sumDisplay = (field) => {
+    const values = poolRows.map((row) => row[field]);
+    return values.length > 0 && values.every((value) => Number.isFinite(Number(value)))
+      ? values.reduce((sum, value) => sum + Number(value), 0)
+      : null;
+  };
+  const poolTotals = {
+    sales: canonicalMetric?.eurBreakdown?.complete === true
+      ? canonicalMetric.eurBreakdown.grossSales
+      : sumDisplay("displaySales"),
+    returns: canonicalMetric?.eurBreakdown?.complete === true
+      ? canonicalMetric.eurBreakdown.returns
+      : sumDisplay("displayReturns"),
+    discounts: canonicalMetric?.eurBreakdown?.complete === true
+      ? canonicalMetric.eurBreakdown.discounts
+      : sumDisplay("displayDiscounts"),
+    cost: canonicalMetric?.status === "TAMAM" && canonicalMetric?.eur?.complete === true
+      ? canonicalMetric.eur.cost
+      : null,
+    profit: canonicalMetric?.status === "TAMAM" && canonicalMetric?.eur?.complete === true
+      ? canonicalMetric.eur.profit
+      : null,
+    contribution: null,
+  };
+  const poolEurReady = poolTotals.profit !== null;
+  const waterfall = [
+    { name: "Satışlar", base: 0, value: poolTotals.sales, amount: poolTotals.sales, color: "#0a3972" },
+    { name: "İadeler", base: Math.max(0, (poolTotals.sales || 0) - (poolTotals.returns || 0)), value: poolTotals.returns, amount: poolTotals.returns == null ? null : -poolTotals.returns, color: "#e84b55" },
+    { name: "İskontolar", base: Math.max(0, (poolTotals.sales || 0) - (poolTotals.returns || 0) - (poolTotals.discounts || 0)), value: poolTotals.discounts, amount: poolTotals.discounts == null ? null : -poolTotals.discounts, color: "#e84b55" },
+    { name: "Maliyet", base: Math.max(0, poolTotals.profit || 0), value: poolTotals.cost, amount: poolTotals.cost == null ? null : -poolTotals.cost, color: "#ee5c64" },
+    { name: "Dağıtıma Esas Kâr", base: 0, value: Math.max(0, poolTotals.profit || 0), amount: poolTotals.profit, color: "#16884e" },
+  ];
 
   const sessionView = sessionViewFor(session);
   if (sessionView === "loading") return <main className="login-shell"><section className="login-card" aria-busy="true"><div className="login-brand"><IconFish size={30} stroke={1.6} /><span><strong>Marlin Nexus</strong><small>Yönetim Sistemi</small></span></div><p>Oturum kontrol ediliyor…</p></section></main>;
@@ -564,6 +624,10 @@ export function App() {
           mode={mode}
           annualProfit={totals.profit}
           annualPool={annualPool}
+          annualProfitEur={poolTotals.profit}
+          // Hedef/havuz tahsisinin EUR karşılığı henüz ayrı bir kanıtlı sözleşme
+          // değil; TRY havuzunu EUR etiketiyle göstermemek için kapalı kalır.
+          annualPoolEur={null}
           employees={employees}
           onSaveEmployees={saveEmployees}
           onBack={() => navigate("ledger")}
@@ -595,7 +659,7 @@ export function App() {
               <div className="panel-heading">
                 <div>
                   <h2>{selected ? `${selected.monthName} Dağıtıma Esas Kâr` : "Dağıtıma Esas Kâr"}</h2>
-                  <p>{year} · KDV hariç · TL · {mode === "live" ? "Canlı CPM verisi" : "Pilot veri"}</p>
+                  <p>{year} · KDV hariç · EUR · {mode === "live" ? "Canlı CPM verisi" : "Pilot veri"}</p>
                 </div>
                 <span className={`source-badge source-badge--${mode}`}>{mode === "live" ? "Canlı" : "Pilot"}</span>
               </div>
@@ -603,10 +667,10 @@ export function App() {
               <div className="waterfall-layout">
                 <div className="chart-wrap" aria-label="Dağıtıma esas kâr grafiği">
                   <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={waterfall} margin={{ top: 24, right: 8, left: 2, bottom: 24 }}>
+                      <BarChart data={poolTotals.profit === null ? [] : waterfall} margin={{ top: 24, right: 8, left: 2, bottom: 24 }}>
                       <CartesianGrid vertical={false} stroke="#e5e9ef" />
                       <XAxis dataKey="name" tick={{ fill: "#4f5f73", fontSize: 12 }} axisLine={{ stroke: "#cfd7e2" }} tickLine={false} interval={0} />
-                      <YAxis tickFormatter={(value) => compactMoney.format(value)} tick={{ fill: "#728197", fontSize: 11 }} axisLine={false} tickLine={false} width={72} />
+                      <YAxis tickFormatter={(value) => eurMoney.format(value)} tick={{ fill: "#728197", fontSize: 11 }} axisLine={false} tickLine={false} width={72} />
                       <Tooltip content={<WaterfallTooltip />} />
                       <Bar dataKey="base" stackId="waterfall" fill="transparent" isAnimationActive={false} />
                       <Bar dataKey="value" stackId="waterfall" radius={[2, 2, 0, 0]}>
@@ -614,17 +678,17 @@ export function App() {
                       </Bar>
                     </BarChart>
                   </ResponsiveContainer>
-                  <p className="formula">Hesaplama: Satışlar − İadeler − İskontolar − Maliyet = Dağıtıma Esas Kâr</p>
+                  <p className="formula">{poolTotals.profit === null ? "EUR maliyet/WAC kanıtı tamamlanınca dağıtıma esas kâr hesaplanır." : "Hesaplama: Satışlar − İadeler − İskontolar − Maliyet = Dağıtıma Esas Kâr"}</p>
                 </div>
 
                 <dl className="summary-list">
-                  <div><dt>Satışlar</dt><dd className="positive">{fmt(totals.sales)}</dd></div>
-                  <div><dt>İadeler</dt><dd className="negative">−{fmt(totals.returns)}</dd></div>
-                  <div><dt>İskontolar</dt><dd className="negative">−{fmt(totals.discounts)}</dd></div>
-                  <div><dt>Maliyet</dt><dd className="negative">−{fmt(totals.cost)}</dd></div>
-                  <div className="summary-list__total"><dt>Dağıtıma Esas Kâr</dt><dd>{fmt(totals.profit)}</dd></div>
+                  <div><dt>Satışlar · EUR</dt><dd className="positive">{fmtEur(poolTotals.sales)}</dd></div>
+                  <div><dt>İadeler · EUR</dt><dd className="negative">{poolTotals.returns == null ? "—" : `−${fmtEur(poolTotals.returns)}`}</dd></div>
+                  <div><dt>İskontolar · EUR</dt><dd className="negative">{poolTotals.discounts == null ? "—" : `−${fmtEur(poolTotals.discounts)}`}</dd></div>
+                  <div><dt>Maliyet · EUR</dt><dd className="negative">{poolTotals.cost == null ? "—" : `−${fmtEur(poolTotals.cost)}`}</dd></div>
+                  <div className="summary-list__total"><dt>Dağıtıma Esas Kâr · EUR</dt><dd>{fmtEur(poolTotals.profit)}</dd></div>
                   <div><dt>Dağıtım Kuralı</dt><dd>Departman hedef bandı</dd></div>
-                  <div className="summary-list__pool"><dt>Dağıtılabilir Tutar</dt><dd>{fmt(totals.contribution)}</dd></div>
+                  <div className="summary-list__pool"><dt>Dağıtılabilir Tutar · EUR</dt><dd>{fmtEur(poolTotals.contribution)}</dd></div>
                 </dl>
               </div>
             </section>
@@ -633,7 +697,7 @@ export function App() {
               <div className="panel-heading ledger-heading">
                 <div>
                   <h2>Aylık Havuz Katkısı</h2>
-                  <p>{year} · TL · Satıra tıklayarak ayı öne çıkarın</p>
+                  <p>{year} · EUR · Satıra tıklayarak ayı öne çıkarın</p>
                 </div>
                 {statusFilter !== "all" && <button className="clear-filter" onClick={() => setStatusFilter("all")}><IconX size={14} /> Filtreyi temizle</button>}
               </div>
@@ -645,29 +709,29 @@ export function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredRows.map((row) => (
+                    {poolDisplayRows.map((row) => (
                       <tr key={row.month} onClick={() => setSelectedMonth(selectedMonth === row.month ? null : row.month)} className={selectedMonth === row.month ? "selected-row" : ""}>
                         <th>{row.monthName}</th>
-                        <td className="positive">{fmt(row.sales)}</td>
-                        <td className="negative">−{fmt(row.returns)}</td>
-                        <td className="negative">−{fmt(row.discounts)}</td>
-                        <td className="negative">−{fmt(row.estimatedCost)}</td>
-                        <td className="positive">{fmt(row.profit)}</td>
-                        <td>{row.contribution > 0 ? "Hedef bandı" : "Muaf"}</td>
-                        <td className="positive">{fmt(row.contribution)}</td>
-                        <td><StatusDot status={row.status} /></td>
+                        <td className="positive">{fmtEur(row.displaySales)}</td>
+                        <td className="negative">{row.displayReturns == null ? "—" : `−${fmtEur(row.displayReturns)}`}</td>
+                        <td className="negative">{row.displayDiscounts == null ? "—" : `−${fmtEur(row.displayDiscounts)}`}</td>
+                        <td className="negative">{fmtEur(row.displayCost)}</td>
+                        <td className="positive">{fmtEur(row.displayProfit)}</td>
+                        <td>{row.displayContribution == null ? "EUR kanıtı bekleniyor" : row.contribution > 0 ? "Hedef bandı" : "Muaf"}</td>
+                        <td className="positive">{fmtEur(row.displayContribution)}</td>
+                        <td><StatusDot status={row.displayStatus} /></td>
                       </tr>
                     ))}
                     {!filteredRows.length && <tr><td colSpan="9" className="empty-state">Bu filtre için kayıt bulunamadı.</td></tr>}
                   </tbody>
                   <tfoot>
                     <tr>
-                      <th>Toplam</th><td>{fmt(totals.sales)}</td><td className="negative">−{fmt(totals.returns)}</td><td className="negative">−{fmt(totals.discounts)}</td><td className="negative">−{fmt(totals.cost)}</td><td>{fmt(totals.profit)}</td><td>Otomatik</td><td>{fmt(totals.contribution)}</td><td>—</td>
+                      <th>Toplam</th><td>{fmtEur(poolTotals.sales)}</td><td className="negative">{poolTotals.returns == null ? "—" : `−${fmtEur(poolTotals.returns)}`}</td><td className="negative">{poolTotals.discounts == null ? "—" : `−${fmtEur(poolTotals.discounts)}`}</td><td className="negative">{fmtEur(poolTotals.cost)}</td><td>{fmtEur(poolTotals.profit)}</td><td>İnceleme</td><td>{fmtEur(poolTotals.contribution)}</td><td>—</td>
                     </tr>
                   </tfoot>
                 </table>
               </div>
-              <p className="table-note">Tutarlar TL cinsindendir. Maliyet kapsamı düşük aylarda sonuçlar yalnızca tahmin olarak değerlendirilmelidir.</p>
+              <p className="table-note">Ana finansal tutarlar EUR’dur. Kaynak TRY kanıtı ayrı tutulur; WAC/maliyet kanıtı eksikse kâr ve havuz `—` kalır.</p>
             </section>
           </div>
 
@@ -678,10 +742,10 @@ export function App() {
             {detailsOpen && (
               <>
                 <ol className="calculation-steps">
-                  <li><span className="step-number">1</span><div><strong>Satışlar</strong><p>Aktif satış faturalarının KDV hariç brüt tutarı.</p></div><b className="positive">{fmt(totals.sales)}</b></li>
-                  <li><span className="step-number">2</span><div><strong>İadeler</strong><p>Satış iadeleri toplamdan düşülür.</p></div><b className="negative">−{fmt(totals.returns)}</b></li>
-                  <li><span className="step-number">3</span><div><strong>İskontolar</strong><p>Kalem ve evrak iskontoları düşülür.</p></div><b className="negative">−{fmt(totals.discounts)}</b></li>
-                  <li><span className="step-number">4</span><div><strong>Maliyet</strong><p>Kapsanan ürünlerin kur çevrilmiş tahmini maliyeti.</p></div><b className="negative">−{fmt(totals.cost)}</b></li>
+                  <li><span className="step-number">1</span><div><strong>Satışlar · EUR</strong><p>Aktif satış faturalarının KDV hariç brüt tutarı.</p></div><b className="positive">{fmtEur(poolTotals.sales)}</b></li>
+                  <li><span className="step-number">2</span><div><strong>İadeler · EUR</strong><p>Satış iadeleri toplamdan düşülür.</p></div><b className="negative">{poolTotals.returns == null ? "—" : `−${fmtEur(poolTotals.returns)}`}</b></li>
+                  <li><span className="step-number">3</span><div><strong>İskontolar · EUR</strong><p>Kalem ve evrak iskontoları düşülür.</p></div><b className="negative">{poolTotals.discounts == null ? "—" : `−${fmtEur(poolTotals.discounts)}`}</b></li>
+                  <li><span className="step-number">4</span><div><strong>Maliyet · EUR</strong><p>WAC kanıtı tamamlanmadan kesin maliyet yayınlanmaz.</p></div><b className="negative">{fmtEur(poolTotals.cost)}</b></li>
                 </ol>
 
                 <div className="warning-box">
@@ -697,7 +761,7 @@ export function App() {
                 <div className="step-result">
                   <span className="step-number">5</span>
                   <div><strong>Dağıtıma Esas Kâr</strong><p>Dağıtım oranıyla çarpılarak havuz katkısı hesaplanır.</p></div>
-                  <b>{fmt(totals.profit)}</b>
+                  <b>{fmtEur(poolTotals.profit)}</b>
                 </div>
 
                 <button className="policy-summary" onClick={openPolicy}>

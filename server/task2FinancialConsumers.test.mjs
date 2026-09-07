@@ -72,6 +72,21 @@ test("F-018 audit projections expose canonical calculated cost and signed gross 
   assert.equal(result.rows[0].grossProfit, 600);
 });
 
+test("audit primary row projection uses the period EUR rate set and keeps TRY as source evidence", () => {
+  const result = filterAuditLedger({ rows: [row({
+    financeV2: { lineCostTryExVat: 400, costStatus: "covered", productCurrency: "USD", reviewReason: null },
+    documentSellingRate: 40,
+  })] }, {}, {
+    rateSets: {
+      "1": { reportDate: "2026-01-31", eurTryBuyingRate: 40, rates: { USD: { buyingRate: 80 } } },
+    },
+  });
+  assert.equal(result.rows[0].eurAvailable, true);
+  assert.equal(result.rows[0].eurEquivalent.netSales, 50);
+  assert.equal(result.summary.filteredEurNetAmount, 50);
+  assert.equal(result.summary.filteredNetAmount, 1000);
+});
+
 test("audit rows expose the same attribution status contract used by owner totals", () => {
   const result = filterAuditLedger({ rows: [row({ attributionConfidence: "inferred" })] });
   assert.equal(result.rows[0].attributionStatus, "inferred");
