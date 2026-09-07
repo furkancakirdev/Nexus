@@ -76,20 +76,24 @@ export function SummaryPage({
   const canonicalReady = canonicalMetric?.status === "TAMAM";
   const chartRows = effectiveRows.map((row) => ({
     ...row,
-    profit: canonicalReady ? row.profit ?? null : null,
+    sales: row.eurEquivalent?.netSales ?? null,
+    profit: row.eurEquivalent?.profit ?? null,
   }));
 
   // Ciro ve Kâr: Tekil güven kaynağı canonicalMetric üzerinden okunur; yoksa dönem toplamı fallback olur.
   const canonicalNetSales = canonicalMetric?.try?.netSales != null && Number.isFinite(canonicalMetric.try.netSales)
     ? canonicalMetric.try.netSales
-    : sumField(chartRows, "sales");
+    : sumField(effectiveRows, "sales");
   const totalSalesTry = canonicalNetSales ?? 0;
 
-  // EUR karşılığı: Yalnızca resmi kur kanıtı tamamlandığında gösterilir, uydurma kur kesinlikle kullanılmaz.
-  const eurActive = Boolean(canonicalMetric?.eur?.complete === true && Number.isFinite(canonicalMetric?.eur?.netSales));
-  const totalSalesEur = eurActive ? canonicalMetric.eur.netSales : null;
-  const totalProfitEur = eurActive ? canonicalMetric.eur.profit : null;
-  const annualPoolEur = eurActive && totalSalesTry > 0 && totalSalesEur != null ? Math.round(annualPool * (totalSalesEur / totalSalesTry)) : null;
+  // EUR satış dönüşümü maliyet kanıtından bağımsızdır; kâr/havuz ise WAC kanıtı
+  // tamamlanmadan kesin değer olarak gösterilmez.
+  const eurRevenueComplete = canonicalMetric?.eurRevenue?.complete === true;
+  const eurCostComplete = canonicalReady && canonicalMetric?.eur?.complete === true;
+  const totalSalesEur = eurRevenueComplete ? canonicalMetric.eurRevenue.netSales : null;
+  const totalProfitEur = eurCostComplete ? canonicalMetric.eur.profit : null;
+  const eurActive = eurRevenueComplete && Number.isFinite(totalSalesEur);
+  const annualPoolEur = eurCostComplete && totalSalesTry > 0 && totalSalesEur != null ? Math.round(annualPool * (totalSalesEur / totalSalesTry)) : null;
 
   // Brüt kâr ve marj: Maliyet inceleme durumundaysa yanıltıcı sıfır basılmaz; durum açıkça etiketlenir.
   const isCostReviewPending = !canonicalReady || (canonicalMetric?.scope?.costReview?.lines || 0) > 0;
@@ -105,10 +109,10 @@ export function SummaryPage({
   const reportRows = chartRows.filter((row) => row.month >= startMonth && row.month <= endMonth);
   const reportTotals = {
     sales: sumField(reportRows, "sales"),
-    returns: sumField(reportRows, "returns"),
-    discounts: sumField(reportRows, "discounts"),
-    cost: canonicalReady ? sumField(reportRows, "cost") : null,
-    profit: canonicalReady ? sumField(reportRows, "profit") : null,
+    returns: sumField(reportRows.map((row) => ({ returns: row.eurEquivalent?.returns })), "returns"),
+    discounts: sumField(reportRows.map((row) => ({ discounts: row.eurEquivalent?.discounts })), "discounts"),
+    cost: eurCostComplete ? sumField(reportRows, "cost") : null,
+    profit: eurCostComplete ? sumField(reportRows, "profit") : null,
   };
 
   const rankedProfitRows = reportRows.filter((row) => row.profit != null);
@@ -118,11 +122,11 @@ export function SummaryPage({
   const lastName = reportRows.at(-1)?.monthName || "—";
 
   const narratives = {
-    management: `${year} ${firstName}–${lastName} döneminde ${formatMoney(reportTotals.sales)} net ciro ve ${reportTotals.profit != null ? formatMoney(reportTotals.profit) : "inceleme aşamasında"} brüt kâr elde edildi. ${grossMarginPct != null ? `Brüt kâr marjı %${grossMarginPct.toFixed(1)} seviyesindedir.` : "WAC maliyet doğrulaması devam etmektedir."}`,
-    sales: `Seçilen dönemde fatura satışları ${formatMoney(reportTotals.sales)} olarak gerçekleşti. ${formatMoney(reportTotals.returns)} satış iadesi ve ${formatMoney(reportTotals.discounts)} fatura iskontosu düşüldükten sonra net ticari ciro kesinleşti.`,
-    profit: `Seçilen dönemde toplam brüt kâr ${reportTotals.profit != null ? formatMoney(reportTotals.profit) : "maliyet onayı bekliyor"}. WAC maliyet modeli doğrultusunda dağıtıma esas havuz rezervler ve hedef gerçekleşmeleriyle entegre edildi.`,
-    cost: `Seçilen dönemin CPM fatura ve hareketli ağırlıklı ortalama (WAC) bazlı toplam maliyeti ${reportTotals.cost != null ? formatMoney(reportTotals.cost) : "inceleme aşamasında"} olarak kaydedildi.`,
-    discount: `Seçilen dönemde gerçekleşen fatura iskontoları toplamı ${formatMoney(reportTotals.discounts)}, iade düşüşleri ise ${formatMoney(reportTotals.returns)} tutarındadır.`,
+    management: `${year} ${firstName}–${lastName} döneminde ${formatEur(reportTotals.sales)} net ciro ve ${reportTotals.profit != null ? formatEur(reportTotals.profit) : "inceleme aşamasında"} brüt kâr elde edildi. ${grossMarginPct != null ? `Brüt kâr marjı %${grossMarginPct.toFixed(1)} seviyesindedir.` : "WAC maliyet doğrulaması devam etmektedir."}`,
+    sales: `Seçilen dönemde fatura satışları ${formatEur(reportTotals.sales)} olarak gerçekleşti. ${formatEur(reportTotals.returns)} satış iadesi ve ${formatEur(reportTotals.discounts)} fatura iskontosu düşüldükten sonra net ticari ciro EUR kanıtı kapsamında gösterildi.`,
+    profit: `Seçilen dönemde toplam brüt kâr ${reportTotals.profit != null ? formatEur(reportTotals.profit) : "maliyet onayı bekliyor"}. WAC maliyet modeli doğrultusunda dağıtıma esas havuz rezervler ve hedef gerçekleşmeleriyle entegre edildi.`,
+    cost: `Seçilen dönemin CPM fatura ve hareketli ağırlıklı ortalama (WAC) bazlı toplam maliyeti ${reportTotals.cost != null ? formatEur(reportTotals.cost) : "inceleme aşamasında"} olarak kaydedildi.`,
+    discount: `Seçilen dönemde gerçekleşen fatura iskontoları toplamı ${formatEur(reportTotals.discounts)}, iade düşüşleri ise ${formatEur(reportTotals.returns)} tutarındadır.`,
   };
 
   const stateText = isLoading
@@ -164,13 +168,13 @@ export function SummaryPage({
               title="Net Ciro"
               value={
                 <div className="label-value">
-                  <strong>{eurActive ? formatEur(totalSalesEur) : formatMoney(totalSalesTry)}</strong>
+                  <strong>{formatEur(totalSalesEur)}</strong>
                 </div>
               }
-              secondaryValue={eurActive ? formatMoney(totalSalesTry) : "KDV hariç ticari hasılat"}
+              secondaryValue={eurActive ? `${formatMoney(totalSalesTry)} kaynak TRY` : "EUR dönüşüm kanıtı bekleniyor"}
               subtitle={`${effectiveRows.length} dönem fatura toplamı`}
               icon={IconChartBar}
-              badge={eurActive ? "EUR-First" : "TRY Tabanlı"}
+              badge={eurActive ? "EUR-First" : "EUR İnceleme"}
               badgeVariant="info"
               onClick={() => onNavigate?.("sales")}
             />
@@ -181,9 +185,9 @@ export function SummaryPage({
                   <strong>
                     {isCostReviewPending
                       ? "İncelemede"
-                      : eurActive && totalProfitEur != null
+                      : eurCostComplete && totalProfitEur != null
                         ? formatEur(totalProfitEur)
-                        : formatMoney(totalProfitTry)}
+                        : "—"}
                   </strong>
                 </div>
               }
@@ -213,7 +217,7 @@ export function SummaryPage({
               title="Net Dağıtım Havuzu"
               value={
                 <div className="label-value">
-                  <strong>{eurActive && annualPoolEur ? formatEur(annualPoolEur) : formatMoney(annualPool)}</strong>
+                  <strong>{formatEur(annualPoolEur)}</strong>
                 </div>
               }
               secondaryValue={`${eligible} personel hak kazandı`}
@@ -345,18 +349,18 @@ export function SummaryPage({
                         tick={{ fontSize: 11, fill: "var(--muted)" }}
                         width={72}
                       />
-                      <Tooltip formatter={(value) => formatMoney(value)} />
+                      <Tooltip formatter={(value) => formatEur(value)} />
                       <Legend iconType="line" wrapperStyle={{ fontSize: 12 }} />
                       <Area
                         dataKey="sales"
-                        name="Satış"
+                        name="Satış · EUR"
                         stroke="var(--chart-sales)"
                         fill="url(#salesFill)"
                         strokeWidth={2}
                       />
                       <Area
                         dataKey="profit"
-                        name="Kâr"
+                        name="Kâr · EUR"
                         stroke="var(--chart-profit)"
                         fill="transparent"
                         strokeWidth={2}

@@ -387,6 +387,35 @@ export function classifyEurLine({
   };
 }
 
+/**
+ * Satış tutarının EUR raporuna çevrilebilirliğini maliyet kanıtından bağımsız
+ * değerlendirir. Maliyet eksik olsa bile kaynak döviz + belge kuru + rapor
+ * günü kur seti mevcutsa gelir EUR olarak gösterilebilir; maliyet/kâr yine
+ * ayrı bir kanıt kapısından geçer.
+ */
+export function classifyEurRevenueLine({
+  productCurrency = null,
+  documentSellingRate = null,
+  signedNetSales = 0,
+} = {}) {
+  const netSalesTry = finiteNumber(signedNetSales) ?? 0;
+  const currency = currencyCode(productCurrency);
+  const sellingRate = finiteNumber(documentSellingRate);
+  if (!currency) {
+    return { currency: null, netSales: null, covered: false, reason: "missing-product-currency" };
+  }
+  if (["EUR", "USD", "GBP"].includes(currency)) {
+    if (sellingRate === null || sellingRate <= 0) {
+      return { currency, netSales: null, covered: false, reason: "missing-document-selling-rate" };
+    }
+    return { currency, netSales: netSalesTry / sellingRate, covered: true, reason: null };
+  }
+  if (currency === "TRY") {
+    return { currency, netSales: netSalesTry, covered: true, reason: null };
+  }
+  return { currency, netSales: null, covered: false, reason: "unsupported-product-currency" };
+}
+
 export function emptyCurrencyBasket() {
   return Object.fromEntries(CURRENCY_BASKETS.map((currency) => [
     currency,
@@ -411,7 +440,7 @@ export function addToCurrencyBasket(basket, currency, { netSales = 0, cost = 0, 
  */
 export function decorateBasketEur(basket, rateSet) {
   const source = basket && typeof basket === "object" ? basket : {};
-  const eurEquivalent = { netSales: 0, cost: 0, profit: 0 };
+  const eurEquivalent = { netSales: 0, cost: 0, profit: 0, costComplete: true };
   const convertedCurrencies = [];
   const missingCurrencies = [];
   for (const currency of CURRENCY_BASKETS) {
@@ -429,16 +458,22 @@ export function decorateBasketEur(basket, rateSet) {
     }
     const costConverted = convertToEur(rateSet, currency, item.cost);
     eurEquivalent.netSales += converted.amountEur;
-    eurEquivalent.cost += costConverted.reviewReason ? 0 : costConverted.amountEur;
+    if (costConverted.reviewReason) {
+      eurEquivalent.costComplete = false;
+      missingCurrencies.push(currency);
+    } else {
+      eurEquivalent.cost += costConverted.amountEur;
+    }
     convertedCurrencies.push(currency);
   }
-  eurEquivalent.profit = eurEquivalent.netSales - eurEquivalent.cost;
+  eurEquivalent.profit = eurEquivalent.costComplete ? eurEquivalent.netSales - eurEquivalent.cost : null;
   return {
     byCurrency: source,
     eurEquivalent,
     convertedCurrencies,
     missingCurrencies,
-    eurComplete: missingCurrencies.length === 0,
+    eurComplete: missingCurrencies.length === 0 && eurEquivalent.costComplete,
+    costComplete: eurEquivalent.costComplete,
     rateSet: rateSet || null,
   };
 }

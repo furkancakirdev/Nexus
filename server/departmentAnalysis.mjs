@@ -409,6 +409,9 @@ export function buildDepartmentAnalysis({
       financeV2: financeV2 ? { ...financeV2 } : null,
       [FINANCIAL_ROWS]: {
         signedNetSalesTry: netSales,
+        grossSalesTry: usesLedger && economic.isSale ? economic.grossAmount : economic.grossSales,
+        returnsTry: usesLedger && !economic.isSale ? economic.netAmount : economic.returns,
+        discountsTry: usesLedger && economic.isSale ? economic.discountAmount : economic.discounts,
         period: String(monthOf(economic.documentDate)),
         productCurrency: financeV2?.productCurrency ?? economic.productCurrency,
         documentSellingRate: economic.documentSellingRate,

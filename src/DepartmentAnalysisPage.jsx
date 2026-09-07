@@ -27,9 +27,9 @@ export function formatReconciliationDifference(value, displayCurrency = "TRY") {
   if (value === null || value === undefined) return "Uzlaşma kanıtı bekleniyor";
   return `${displayCurrency === "EUR" ? "TRY net fark" : "Net fark"} ${formatMoney(value)}`;
 }
-const metricValue = (item, key, eurActive) => {
-  const metric = projectCanonicalMetric(item?.canonicalMetric, eurActive ? "EUR" : "TRY");
-  return eurActive ? formatEur(metric[key]) : formatMoney(metric[key]);
+const metricValue = (item, key) => {
+  const metric = projectCanonicalMetric(item?.canonicalMetric, "EUR");
+  return formatEur(metric[key]);
 };
 const formatDate = (value) => value ? new Intl.DateTimeFormat("tr-TR").format(new Date(value)) : "—";
 
@@ -64,9 +64,11 @@ const emptyMetric = {
   inferredSales: 0, reviewSales: 0,
 };
 
-function DepartmentTooltip({ active, payload, label }) {
+function DepartmentTooltip({ active, payload, label, moneyFormatter = formatMoney }) {
   if (!active || !payload?.length) return null;
-  return <div className="department-tooltip"><strong>{label}</strong>{payload.filter((item) => item.value != null).map((item) => <span key={item.dataKey}><i style={{ background: item.color }} />{item.name}<b>{formatMoney(item.value)}</b></span>)}</div>;
+  const sourceValues = payload.some((item) => ["merkez", "yatmarin", "belirsiz"].includes(item.dataKey));
+  const formatter = sourceValues ? formatMoney : formatEur;
+  return <div className="department-tooltip"><strong>{label}</strong>{payload.filter((item) => item.value != null).map((item) => <span key={item.dataKey}><i style={{ background: item.color }} />{item.name}<b>{formatter(item.value)}</b></span>)}</div>;
 }
 
 function MetricCard({ icon: Icon, tone = "blue", label, value, detail }) {
@@ -124,8 +126,8 @@ export function DepartmentAnalysisPage({ year, mode: appMode, consolidatedRows =
 
   const monthRows = useMemo(() => (data.months || []).map((item) => {
     const project = (metric) => ({
-      netSales: metric?.canonicalMetric?.try?.netSales ?? null,
-      profit: metric?.canonicalMetric?.status === "TAMAM" ? metric.canonicalMetric.try.profit : null,
+      netSales: metric?.eurEquivalent?.netSales ?? null,
+      profit: metric?.eurEquivalent?.profit ?? null,
     });
     const service = project(item.service);
     const parts = project(item.parts);
@@ -177,16 +179,15 @@ export function DepartmentAnalysisPage({ year, mode: appMode, consolidatedRows =
   }), [data.depotMatrix]);
 
   const activeSource = data.mode === "live";
-  // EUR yalnız API'nin kanıtlı sepeti ve CPM öncelikli kur kanıtı mevcutsa gösterilir.
-  // eurRateSets, Overview/Goals/Approval ile ortak sözleşmenin dönem kanıtıdır;
-  // departman API'sindeki tam rateSet ise eksik kurda fail-closed kalır.
+  // EUR satış dönüşümü maliyet incelemesinden bağımsızdır; kâr yalnız WAC
+  // kanıtı tamamlanınca yayınlanır.
   const selectedRateEvidence = month === "0" ? data.eurRateSet : (eurRateSets?.[month] || data.eurRateSet);
   const metricEurActive = Boolean(
-    selectedMetric?.eurComplete === true && selectedMetric?.eurEquivalent
+    selectedMetric?.eurRevenueComplete === true && selectedMetric?.eurEquivalent
       && Number.isFinite(selectedMetric.eurEquivalent.netSales)
       && (selectedRateEvidence?.bank === "HALKBANK" || Number.isFinite(selectedRateEvidence?.eurTryBuyingRate))
   );
-  const selectedCanonicalMetric = projectCanonicalMetric(selectedMetric?.canonicalMetric, metricEurActive ? "EUR" : "TRY");
+  const selectedCanonicalMetric = projectCanonicalMetric(selectedMetric?.canonicalMetric, "EUR");
   const selectedProfit = selectedCanonicalMetric.profit;
   const currencyEvidence = selectedMetric?.byCurrency || {};
   const currencyEvidenceCount = Object.entries(currencyEvidence)
@@ -196,7 +197,7 @@ export function DepartmentAnalysisPage({ year, mode: appMode, consolidatedRows =
     : "Halkbank alış kuru";
   const reconciliationDifference = formatReconciliationDifference(
     reconciliation?.difference,
-    metricEurActive ? "EUR" : "TRY",
+    "TRY",
   );
   const reconciliationClass = !canReconcile
     ? "neutral"
@@ -225,11 +226,11 @@ export function DepartmentAnalysisPage({ year, mode: appMode, consolidatedRows =
     {data.mode === "error" && <div className="department-state department-state--error" role="alert">{data.error || "Departman verileri okunamadı."}</div>}
 
     <section className="department-kpis">
-      <MetricCard icon={IconChartBar} label={`Net satış${metricEurActive ? " · EUR" : ""}`} value={metricEurActive ? formatEur(selectedMetric.eurEquivalent.netSales) : formatMoney(selectedMetric.netSales)} detail={metricEurActive ? `${rateSourceLabel} karşılığı · KDV hariç` : `Brüt ${formatMoney(selectedMetric.grossSales)} · KDV hariç`} />
-      <MetricCard icon={IconTrendingUp} tone="green" label={`Esas brüt kâr${metricEurActive ? " · EUR" : ""}`} value={selectedProfit != null ? (metricEurActive ? formatEur(selectedProfit) : formatMoney(selectedProfit)) : "İncelemede"} detail={selectedProfit != null && (selectedMetric.margin != null || selectedMetric.eurMargin != null) ? `Net marj ${percent(metricEurActive ? selectedMetric.eurMargin : selectedMetric.margin)}` : "WAC maliyeti bekleniyor"} />
+      <MetricCard icon={IconChartBar} label="Net satış · EUR" value={formatEur(selectedMetric.eurEquivalent?.netSales)} detail={metricEurActive ? `${rateSourceLabel} karşılığı · KDV hariç` : "EUR dönüşüm kanıtı bekleniyor"} />
+      <MetricCard icon={IconTrendingUp} tone="green" label="Esas brüt kâr · EUR" value={formatEur(selectedProfit)} detail={selectedProfit != null && selectedMetric.eurMargin != null ? `Net marj ${percent(selectedMetric.eurMargin)}` : "WAC maliyeti bekleniyor"} />
       <MetricCard icon={IconDatabase} tone={Number(selectedMetric.costCoveragePct || 0) >= minimumCoverage ? "green" : "amber"} label="Maliyet kapsamı" value={percent(selectedMetric.costCoveragePct)} detail={`${money.format(selectedMetric.coveredLines || 0)} / ${money.format(selectedMetric.lineCount || 0)} satır`} />
       <MetricCard icon={IconHierarchy} label="Satış belgeleri" value={money.format(selectedMetric.documentCount || 0)} detail={`${money.format(selectedMetric.customerCount || 0)} farklı cari`} />
-      <MetricCard icon={IconArrowsExchange} tone="teal" label="Çapraz-depo satış" value={formatMoney(selectedMetric.crossDepotSales)} detail={`${money.format(selectedMetric.crossDepotDocuments || 0)} belge · ${selectedMetric.netSales ? percent(selectedMetric.crossDepotSales / selectedMetric.netSales * 100) : "%0,0"}`} />
+      <MetricCard icon={IconArrowsExchange} tone="teal" label="Çapraz-depo satış · kaynak TRY" value={formatMoney(selectedMetric.crossDepotSales)} detail={`${money.format(selectedMetric.crossDepotDocuments || 0)} belge · kaynak uzlaşması`} />
       <MetricCard icon={IconShieldCheck} tone={Number(data.quality?.attributionCoveragePct || 0) ? "green" : "amber"} label="Teyitli atıf" value={percent(data.quality?.attributionCoveragePct)} detail={`Kullanıcı eşlemesi: ${formatMoney(data.quality?.inferredAmount)}`} />
     </section>
 
@@ -244,11 +245,11 @@ export function DepartmentAnalysisPage({ year, mode: appMode, consolidatedRows =
       </section>
 
       <section className="department-overview-grid department-overview-grid--balanced">
-        <article className="panel department-compare"><div className="panel-heading"><div><h2>Departman Karşılaştırması</h2><p>Ciro, kârlılık ve operasyonel bağlam · EUR ana görünüm</p></div></div><div className="department-compare__rows">{visibleDepartments.map((item) => <div className="department-compare__row" key={item.id}><div className="department-identity"><i style={{ background: DEPARTMENTS[item.id]?.color }} /><span><strong>{item.name}</strong><small>{DEPARTMENTS[item.id]?.center}</small></span></div><div><small>Net satış{metricEurActive ? " · EUR" : ""}</small><strong>{metricValue(item, "netSales", metricEurActive)}</strong></div><div><small>Brüt kâr{metricEurActive ? " · EUR" : ""}</small><strong className={item.profit == null ? "" : item.profit >= 0 ? "positive" : "negative"}>{metricValue(item, "profit", metricEurActive)}</strong></div><div><small>Marj</small><strong>{percent(metricEurActive ? item.eurMargin : item.margin)}</strong></div><div><small>Çapraz depo · TL</small><strong>{percent(item.netSales ? item.crossDepotSales / item.netSales * 100 : 0)}</strong></div><div><small>Maliyet kapsamı</small><strong>{percent(item.costCoveragePct)}</strong></div></div>)}</div></article>
+        <article className="panel department-compare"><div className="panel-heading"><div><h2>Departman Karşılaştırması</h2><p>Ciro, kârlılık ve operasyonel bağlam · EUR ana görünüm</p></div></div><div className="department-compare__rows">{visibleDepartments.map((item) => <div className="department-compare__row" key={item.id}><div className="department-identity"><i style={{ background: DEPARTMENTS[item.id]?.color }} /><span><strong>{item.name}</strong><small>{DEPARTMENTS[item.id]?.center}</small></span></div><div><small>Net satış · EUR</small><strong>{metricValue(item, "netSales")}</strong></div><div><small>Brüt kâr · EUR</small><strong className={item.profit == null ? "" : item.profit >= 0 ? "positive" : "negative"}>{metricValue(item, "profit")}</strong></div><div><small>Marj</small><strong>{percent(item.eurMargin)}</strong></div><div><small>Çapraz depo · kaynak TRY</small><strong>{percent(item.netSales ? item.crossDepotSales / item.netSales * 100 : 0)}</strong></div><div><small>Maliyet kapsamı</small><strong>{percent(item.costCoveragePct)}</strong></div></div>)}</div></article>
         <article className="panel department-depot"><div className="panel-heading"><div><h2>Departman × Teslimat Deposu</h2><p>Depo ciro sahibi değildir; teslimat desenini gösterir</p></div><IconBuildingWarehouse size={22} /></div>{hasFinancialData ? <ResponsiveContainer width="100%" height={240}><BarChart data={depotRows} layout="vertical" margin={{ left: 12, right: 14 }}><CartesianGrid horizontal={false} stroke="var(--chart-grid)" /><XAxis type="number" tickFormatter={(value) => compact.format(value)} tick={{ fontSize: 10, fill: "var(--muted)" }} /><YAxis type="category" dataKey="name" width={104} tick={{ fontSize: 11, fill: "var(--muted)" }} /><Tooltip content={<DepartmentTooltip />} /><Legend iconType="square" wrapperStyle={{ fontSize: 11 }} />{DELIVERY_DEPOT_CHART_SERIES.map((item) => <Bar key={item.dataKey} dataKey={item.dataKey} name={item.name} stackId="depot" fill={item.color} />)}</BarChart></ResponsiveContainer> : <div className="department-chart-empty department-chart-empty--small"><IconBuildingWarehouse size={26} /><strong>Depo deseni için veri bekleniyor</strong><span>Depo, ticari sorumluluğu değiştirmeden burada karşılaştırılacak.</span></div>}</article>
       </section>
 
-      <section className="panel department-table-panel"><div className="panel-heading"><div><h2>Yönetim Karşılaştırma Tablosu</h2><p>Net satış, maliyet ve kâr EUR; iade ve iskonto kaynak para birimi TL olarak korunur.</p></div></div><div className="table-scroll"><table className="department-summary-table"><thead><tr><th>Departman</th><th>Brüt satış · TL</th><th>İade · TL</th><th>İskonto · TL</th><th>Net satış{metricEurActive ? " · EUR" : ""}</th><th>Maliyet{metricEurActive ? " · EUR" : ""}</th><th>Brüt kâr{metricEurActive ? " · EUR" : ""}</th><th>Marj</th><th>Belge</th><th>Cari</th></tr></thead><tbody>{visibleDepartments.map((item) => <tr key={item.id}><th><DepartmentBadge department={item.id} /></th><td>{formatMoney(item.grossSales)}</td><td className="negative">-{formatMoney(item.returns)}</td><td className="negative">-{formatMoney(item.discounts)}</td><td><strong>{metricValue(item, "netSales", metricEurActive)}</strong></td><td>{metricValue(item, "cost", metricEurActive)}</td><td className={item.profit == null ? "" : item.profit >= 0 ? "positive" : "negative"}>{metricValue(item, "profit", metricEurActive)}</td><td>{percent(metricEurActive ? item.eurMargin : item.margin)}</td><td>{money.format(item.documentCount)}</td><td>{money.format(item.customerCount)}</td></tr>)}</tbody></table></div></section>
+      <section className="panel department-table-panel"><div className="panel-heading"><div><h2>Yönetim Karşılaştırma Tablosu</h2><p>Finansal ana göstergeler EUR; kaynak uzlaşma tutarları kanıt durumuna göre gösterilir.</p></div></div><div className="table-scroll"><table className="department-summary-table"><thead><tr><th>Departman</th><th>Brüt satış · EUR</th><th>İade · EUR</th><th>İskonto · EUR</th><th>Net satış · EUR</th><th>Maliyet · EUR</th><th>Brüt kâr · EUR</th><th>Marj</th><th>Belge</th><th>Cari</th></tr></thead><tbody>{visibleDepartments.map((item) => <tr key={item.id}><th><DepartmentBadge department={item.id} /></th><td>{formatEur(item.eurEquivalent?.grossSales)}</td><td className="negative">-{formatEur(item.eurEquivalent?.returns)}</td><td className="negative">-{formatEur(item.eurEquivalent?.discounts)}</td><td><strong>{metricValue(item, "netSales")}</strong></td><td>{metricValue(item, "cost")}</td><td className={item.profit == null ? "" : item.profit >= 0 ? "positive" : "negative"}>{metricValue(item, "profit")}</td><td>{percent(item.eurMargin)}</td><td>{money.format(item.documentCount)}</td><td>{money.format(item.customerCount)}</td></tr>)}</tbody></table></div></section>
     </>}
 
     {tab === "rankings" && <section className="ranking-grid">

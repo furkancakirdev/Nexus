@@ -36,6 +36,27 @@ function number(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function canonicalEurEquivalent(metric) {
+  const revenue = metric?.eurRevenue;
+  const revenueComplete = revenue ? revenue.complete === true : metric?.eur?.complete === true;
+  const costComplete = metric?.eur?.complete === true && metric?.status === "TAMAM";
+  return {
+    ...(metric?.eur || {}),
+    netSales: revenueComplete ? revenue?.netSales ?? metric?.eur?.netSales ?? null : null,
+    cost: costComplete ? metric?.eur?.cost ?? null : null,
+    profit: costComplete ? metric?.eur?.profit ?? null : null,
+    margin: costComplete ? metric?.eur?.margin ?? null : null,
+    revenueComplete,
+    costComplete,
+    reviewNetSales: revenue?.reviewNetSales ?? null,
+    reviewLines: revenue?.reviewLines ?? 0,
+    grossSales: metric?.eurBreakdown?.complete ? metric.eurBreakdown.grossSales : null,
+    returns: metric?.eurBreakdown?.complete ? metric.eurBreakdown.returns : null,
+    discounts: metric?.eurBreakdown?.complete ? metric.eurBreakdown.discounts : null,
+    breakdownComplete: metric?.eurBreakdown?.present ? metric.eurBreakdown.complete === true : false,
+  };
+}
+
 function minorUnits(value) {
   if (value === null || value === undefined || value === "" || typeof value === "boolean") return 0n;
   const normalized = String(value).trim().replace(",", ".");
@@ -164,6 +185,9 @@ export function buildOverviewRows(ledger) {
     const target = months.get(month) || emptyOverviewMonth(month);
     target[FINANCIAL_ROWS].push({
       signedNetSalesTry: row.signedNetSales,
+      grossSalesTry: row.isSale ? row.grossAmount : 0,
+      returnsTry: row.isSale ? 0 : row.netAmount,
+      discountsTry: row.isSale ? row.discountAmount : 0,
       period: String(month),
       productCurrency: row.financeV2?.productCurrency,
       documentSellingRate: row.documentSellingRate,
@@ -537,9 +561,10 @@ export function decorateOverviewRowsEur(rows, { index, year, approvals = {}, rep
     return {
       ...row,
       canonicalMetric,
-      eurEquivalent: canonicalMetric.eur,
+      eurEquivalent: canonicalEurEquivalent(canonicalMetric),
       eurMargin: canonicalMetric.eurMargin,
       eurComplete: canonicalMetric.eur.complete && canonicalMetric.status === "TAMAM",
+      eurRevenueComplete: canonicalMetric.eurRevenue?.complete === true,
       eurMissingCurrencies: canonicalMetric.eur.complete ? [] : ["INCELEME"],
       eurFrozen: frozen,
     };
@@ -601,8 +626,11 @@ function auditRow(row) {
   const verification = verificationStatus(effectiveRow);
   const signedNetAmount = (row.isSale ? 1 : -1) * netAmount;
   const canonicalMetric = aggregateFinancialMetric([{
-    signedNetSalesTry: signedNetAmount,
-    period: String(monthOf(row.documentDate)),
+      signedNetSalesTry: signedNetAmount,
+      grossSalesTry: row.isSale ? row.grossAmount : 0,
+      returnsTry: row.isSale ? 0 : row.netAmount,
+      discountsTry: row.isSale ? row.discountAmount : 0,
+      period: String(monthOf(row.documentDate)),
     productCurrency: row.financeV2?.productCurrency,
     documentSellingRate: row.documentSellingRate,
     financeV2: row.financeV2,
@@ -742,6 +770,9 @@ export function filterAuditLedger(ledger, query = {}) {
 function reportGroup(rows, name, { rateSets = null } = {}) {
   const canonical = aggregateFinancialMetric(rows.map((row) => row[FINANCIAL_ROWS] || {
     signedNetSalesTry: row.signedNetAmount,
+    grossSalesTry: row.isSale ? row.grossAmount : 0,
+    returnsTry: row.isSale ? 0 : row.netAmount,
+    discountsTry: row.isSale ? row.discountAmount : 0,
     period: String(monthOf(row.documentDate)),
     productCurrency: row.financeV2?.productCurrency,
     documentSellingRate: row.documentSellingRate,
@@ -752,9 +783,10 @@ function reportGroup(rows, name, { rateSets = null } = {}) {
     cost: review ? null : canonical.try.cost, profit: review ? null : canonical.try.profit,
     margin: review ? null : canonical.try.margin, status: canonical.status, evidence: canonical.evidence,
     canonicalMetric: canonical,
-    eurEquivalent: canonical.eur,
+    eurEquivalent: canonicalEurEquivalent(canonical),
     eurMargin: canonical.eurMargin,
     eurComplete: canonical.eur.complete === true && canonical.status === "TAMAM",
+    eurRevenueComplete: canonical.eurRevenue?.complete === true,
   };
 }
 
@@ -773,11 +805,18 @@ export function buildAuditReportProjections(rows = [], options = {}) {
     return [dimension, [...groups.entries()].map(([name, group]) => reportGroup(group, name, options))
       .sort((left, right) => (right.netSales ?? 0) - (left.netSales ?? 0))];
   }));
+  const overall = reportGroup(rows, "report-total", options);
+  const dealer = reportGroup(rows.filter((row) => String(row.customerCode || "").startsWith("DBS")), "dealer-total", options);
+  const service = reportGroup(rows.filter((row) => row.sourceDocumentType === 64), "service-total", options);
   projections.summary = {
-    dealerNetSales: reportGroup(rows.filter((row) => String(row.customerCode || "").startsWith("DBS")), "dealer-total", options).netSales,
-    serviceNetSales: reportGroup(rows.filter((row) => row.sourceDocumentType === 64), "service-total", options).netSales,
+    dealerNetSales: dealer.netSales,
+    dealerEurNetSales: dealer.eurEquivalent.netSales,
+    serviceNetSales: service.netSales,
+    serviceEurNetSales: service.eurEquivalent.netSales,
     discounts: rows.reduce((sum, row) => sum + (row.isSale ? Number(row.discountAmount || 0) : 0), 0),
     returns: rows.reduce((sum, row) => sum + (row.isSale ? 0 : Number(row.netAmount || 0)), 0),
+    discountsEur: overall.eurEquivalent.discounts,
+    returnsEur: overall.eurEquivalent.returns,
   };
   return projections;
 }
@@ -1230,6 +1269,9 @@ export function createUnifiedLedgerRouter({
       const annualCanonicalMetric = aggregateFinancialMetric(
         (snapshot.value.rows || []).filter((row) => !isExcludedIncome(row.productCode)).map((row) => ({
           signedNetSalesTry: row.signedNetSales,
+          grossSalesTry: row.isSale ? row.grossAmount : 0,
+          returnsTry: row.isSale ? 0 : row.netAmount,
+          discountsTry: row.isSale ? row.discountAmount : 0,
           period: String(monthOf(row.documentDate)),
           productCurrency: row.financeV2?.productCurrency,
           documentSellingRate: row.documentSellingRate,
@@ -1378,9 +1420,10 @@ export function createUnifiedLedgerRouter({
         return {
           ...metric,
           canonicalMetric,
-          eurEquivalent: canonicalMetric.eur,
+          eurEquivalent: canonicalEurEquivalent(canonicalMetric),
           eurMargin: canonicalMetric.eurMargin,
           eurComplete: canonicalMetric.eur.complete && canonicalMetric.status === "TAMAM",
+          eurRevenueComplete: canonicalMetric.eurRevenue?.complete === true,
           eurStatus: canonicalMetric.status,
           eurFrozen: resolved.frozen,
         };

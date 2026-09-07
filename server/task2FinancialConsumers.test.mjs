@@ -209,7 +209,7 @@ test("department monthly review profit stays unavailable instead of becoming zer
   assert.equal(service.canonicalMetric.status, "INCELEME");
   assert.equal(service.canonicalMetric.scope.costReview.lines, 1);
   const source = await readFile(new URL("../src/DepartmentAnalysisPage.jsx", import.meta.url), "utf8");
-  assert.match(source, /canonicalMetric\?\.status === "TAMAM"/);
+  assert.match(source, /eurEquivalent\?\.profit/);
   assert.doesNotMatch(source, /Number\(item\.(service|parts|review)\?\.profit \|\| 0\)/);
   assert.doesNotMatch(source, /net - Number\(row\.cost/);
 });
@@ -234,7 +234,7 @@ test("Reports consumes server projections without consumer-side financial reduce
   assert.equal(projection.summary.dealerNetSales, 0);
   const source = await readFile(new URL("../src/ReportsPage.jsx", import.meta.url), "utf8");
   assert.doesNotMatch(source, /\.reduce\(/);
-  assert.match(source, /projections\.summary\?\.dealerNetSales/);
+  assert.match(source, /projections\.summary\?\.dealerEurNetSales/);
 });
 
 test("Reports projection carries the canonical EUR metric for the same invoice-date evidence", () => {
@@ -305,7 +305,7 @@ test("selected period and currency reconcile across overview, department, and re
 test("department EUR projection exposes the canonical EUR margin", async () => {
   const source = await readFile(new URL("./ledgerApi.mjs", import.meta.url), "utf8");
   const decorator = source.slice(source.indexOf("const decorateMetricEur"), source.indexOf("analysis.eurRateSet"));
-  assert.match(decorator, /eurEquivalent:\s*canonicalMetric\.eur,[\s\S]{0,180}eurMargin:\s*canonicalMetric\.eurMargin/);
+  assert.match(decorator, /eurEquivalent:\s*canonicalEurEquivalent\(canonicalMetric\),[\s\S]{0,180}eurMargin:\s*canonicalMetric\.eurMargin/);
 });
 
 test("critical React consumers read canonical fields without local financial arithmetic", async () => {

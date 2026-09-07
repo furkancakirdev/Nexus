@@ -236,10 +236,10 @@ test("finansal UI eksik kanıtı tahmini maliyet veya ham kârla doldurmaz", asy
   assert.match(salesSource, /v2Cost: canonicalTotals\.cost/);
   assert.match(salesSource, /profit: canonicalTotals\.profit/);
   assert.match(salesSource, /const profitTone = \(value\) => value == null \? "" : value >= 0 \? "positive" : "negative"/);
-  assert.match(salesSource, /totals\.eurProfit != null/);
+  assert.match(salesSource, /formatEur\(totals\.eurProfit\)/);
   assert.match(summarySource, /const canonicalReady = canonicalMetric\?\.status === "TAMAM"/);
   assert.match(summarySource, /const totalProfitTry = canonicalProfit \?\? null/);
-  assert.match(summarySource, /cost: canonicalReady \? sumField\(reportRows, "cost"\) : null/);
+  assert.match(summarySource, /cost: eurCostComplete \? sumField\(reportRows, "cost"\) : null/);
   assert.match(departmentSource, /selectedCanonicalMetric = projectCanonicalMetric\(selectedMetric\?\.canonicalMetric/);
   assert.match(departmentSource, /selectedProfit != null/);
   assert.match(departmentSource, /item\.profit == null \? ""/);
@@ -335,7 +335,7 @@ test("sales report does not render an unverified EUR zero", async (t) => {
   t.after(() => vite.close());
   const sales = await vite.ssrLoadModule("/src/SalesPage.jsx");
 
-  assert.equal(sales.formatReportMoney({ eurAvailable: false, eurEquivalent: { netSales: 0 } }, "netSales", 1234), "1.234 TL");
+  assert.equal(sales.formatReportMoney({ eurAvailable: false, eurEquivalent: { netSales: 0 } }, "netSales", 1234), "—");
   assert.equal(sales.formatReportMoney({ eurAvailable: true, eurEquivalent: { netSales: 12 } }, "netSales", 1234), "€12");
 });
 

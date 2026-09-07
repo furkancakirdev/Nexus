@@ -1,6 +1,7 @@
 import {
   addToCurrencyBasket,
   classifyEurLine,
+  classifyEurRevenueLine,
   convertToEur,
   emptyCurrencyBasket,
 } from "./eurReporting.mjs";
@@ -37,10 +38,23 @@ function addScope(scope, netSales, cost = 0) {
   scope.margin = scope.netSales === 0 ? null : scope.profit / scope.netSales * 100;
 }
 
+function emptyEurBreakdown() {
+  return {
+    grossSales: 0,
+    returns: 0,
+    discounts: 0,
+    complete: true,
+    present: false,
+    reviewLines: 0,
+  };
+}
+
 function createPeriodMetric() {
   return {
     byCurrency: emptyCurrencyBasket(),
     eur: { netSales: 0, cost: 0, profit: 0, margin: null, complete: true },
+    eurRevenue: { netSales: 0, reviewNetSales: 0, reviewLines: 0, complete: true, missingCurrencies: [], convertedCurrencies: [] },
+    eurBreakdown: emptyEurBreakdown(),
     evidence: { coveredLines: 0, reviewLines: 0, excludedLines: 0, manualCostLines: 0 },
   };
 }
@@ -92,6 +106,52 @@ function addEur(metric, line, rateSet) {
   return true;
 }
 
+function addEurRevenue(metric, line, rateSet) {
+  const revenue = classifyEurRevenueLine(line);
+  const converted = revenue.covered
+    ? convertToEur(rateSet, revenue.currency, revenue.netSales)
+    : { amountEur: null, reviewReason: revenue.reason };
+  if (converted.reviewReason) {
+    metric.eurRevenue.complete = false;
+    metric.eurRevenue.reviewNetSales += numberOrZero(line.signedNetSales);
+    metric.eurRevenue.reviewLines += 1;
+    const missing = revenue.currency || "INCELEME";
+    if (!metric.eurRevenue.missingCurrencies.includes(missing)) metric.eurRevenue.missingCurrencies.push(missing);
+    return false;
+  }
+  metric.eurRevenue.netSales += converted.amountEur;
+  if (!metric.eurRevenue.convertedCurrencies.includes(revenue.currency)) metric.eurRevenue.convertedCurrencies.push(revenue.currency);
+  return true;
+}
+
+function addEurBreakdown(metric, row, rateSet) {
+  const fields = [
+    ["grossSales", row?.grossSalesTry],
+    ["returns", row?.returnsTry],
+    ["discounts", row?.discountsTry],
+  ];
+  if (!fields.some(([, value]) => numberOrNull(value) !== null)) return;
+  metric.eurBreakdown.present = true;
+  const revenue = classifyEurRevenueLine({
+    productCurrency: row?.productCurrency,
+    documentSellingRate: numberOrNull(row?.documentSellingRate),
+    signedNetSales: 0,
+  });
+  for (const [field, value] of fields) {
+    const amount = numberOrNull(value);
+    if (amount === null || amount === 0) continue;
+    const converted = revenue.covered
+      ? convertToEur(rateSet, revenue.currency, revenue.currency === "TRY" ? amount : amount / numberOrNull(row?.documentSellingRate))
+      : { amountEur: null, reviewReason: revenue.reason };
+    if (converted.reviewReason) {
+      metric.eurBreakdown.complete = false;
+      metric.eurBreakdown.reviewLines += 1;
+      continue;
+    }
+    metric.eurBreakdown[field] += converted.amountEur;
+  }
+}
+
 function finishMetric(metric) {
   metric.eur.profit = metric.eur.netSales - metric.eur.cost;
   metric.eur.margin = metric.eur.netSales === 0 ? null : metric.eur.profit / metric.eur.netSales * 100;
@@ -114,6 +174,8 @@ export function aggregateFinancialMetric(rows = [], options = {}) {
     byCurrency: emptyCurrencyBasket(),
     byPeriod: {},
     eur: { netSales: 0, cost: 0, profit: 0, margin: null, complete: true },
+    eurRevenue: { netSales: 0, reviewNetSales: 0, reviewLines: 0, complete: true, missingCurrencies: [], convertedCurrencies: [] },
+    eurBreakdown: emptyEurBreakdown(),
     eurMargin: null,
     evidence: { coveredLines: 0, reviewLines: 0, eurReviewLines: 0, excludedLines: 0, manualCostLines: 0, periodCount: 0, currencyCount: 0 },
   };
@@ -137,6 +199,12 @@ export function aggregateFinancialMetric(rows = [], options = {}) {
     const line = classifyLine(row);
     const periodMetric = metric.byPeriod[period] ||= createPeriodMetric();
     const rateSet = selectRateSet(options.rateSets, period, options.rateSet, options.rateSets == null && text(options.period) ? { period: text(options.period) } : null);
+    addEurRevenue(periodMetric, {
+      productCurrency: row?.productCurrency,
+      documentSellingRate: numberOrNull(row?.documentSellingRate),
+      signedNetSales: netSales,
+    }, rateSet);
+    addEurBreakdown(periodMetric, row, rateSet);
     const eurCovered = line.covered && addEur(periodMetric, line, rateSet);
     const review = !line.covered || !eurCovered;
     const knownTryCost = signedTryCost(row);
@@ -186,6 +254,30 @@ export function aggregateFinancialMetric(rows = [], options = {}) {
     total.complete = total.complete && current.eur.complete;
     return total;
   }, metric.eur);
+  metric.eurRevenue = Object.values(metric.byPeriod).reduce((total, current) => {
+    total.reviewNetSales += current.eurRevenue.reviewNetSales;
+    total.reviewLines += current.eurRevenue.reviewLines;
+    total.complete = total.complete && current.eurRevenue.complete;
+    for (const currency of current.eurRevenue.missingCurrencies) {
+      if (!total.missingCurrencies.includes(currency)) total.missingCurrencies.push(currency);
+    }
+    for (const currency of current.eurRevenue.convertedCurrencies) {
+      if (!total.convertedCurrencies.includes(currency)) total.convertedCurrencies.push(currency);
+    }
+    if (total.complete) total.netSales += current.eurRevenue.netSales;
+    return total;
+  }, metric.eurRevenue);
+  if (!metric.eurRevenue.complete) metric.eurRevenue.netSales = null;
+  metric.eurBreakdown = Object.values(metric.byPeriod).reduce((total, current) => {
+    total.grossSales += current.eurBreakdown.grossSales;
+    total.returns += current.eurBreakdown.returns;
+    total.discounts += current.eurBreakdown.discounts;
+    total.present = total.present || current.eurBreakdown.present;
+    total.complete = total.complete && current.eurBreakdown.complete;
+    total.reviewLines += current.eurBreakdown.reviewLines;
+    return total;
+  }, metric.eurBreakdown);
+  if (!metric.eurBreakdown.present) metric.eurBreakdown = null;
   metric.evidence.periodCount = seenPeriods.size;
   metric.evidence.currencyCount = seenCurrencies.size;
   metric.scope.comparable = {
@@ -216,9 +308,10 @@ export function reconcileFinancialMetrics(actual, expected, options = {}) {
 }
 
 export function selectCanonicalTopPeriod(rows = [], canonicalMetric = null) {
-  const eurComplete = canonicalMetric?.eur?.complete === true && canonicalMetric?.status === "TAMAM";
-  if (eurComplete) {
-    const valid = rows.filter((row) => row?.eurComplete === true && Number.isFinite(row?.eurEquivalent?.netSales));
+  const eurRevenueComplete = canonicalMetric?.eurRevenue?.complete === true
+    || (!canonicalMetric?.eurRevenue && canonicalMetric?.eur?.complete === true && canonicalMetric?.status === "TAMAM");
+  if (eurRevenueComplete) {
+    const valid = rows.filter((row) => (row?.eurRevenueComplete === true || row?.eurComplete === true) && Number.isFinite(row?.eurEquivalent?.netSales));
     if (valid.length !== rows.length) return null;
     return [...valid].sort((a, b) => b.eurEquivalent.netSales - a.eurEquivalent.netSales)[0] || null;
   }
@@ -229,14 +322,19 @@ export function projectCanonicalMetric(metric = null, currency = "TRY") {
   const status = metric?.status || "INCELEME";
   const complete = status === "TAMAM";
   const eurComplete = complete && metric?.eur?.complete === true;
-  const source = currency === "EUR" && eurComplete ? metric.eur : metric?.try;
+  const hasRevenueProjection = metric?.eurRevenue && typeof metric.eurRevenue === "object";
+  const eurRevenueComplete = hasRevenueProjection ? metric.eurRevenue.complete === true : eurComplete;
+  const eurRevenue = hasRevenueProjection ? metric.eurRevenue : metric?.eur;
+  const source = currency === "EUR" ? eurRevenue : metric?.try;
   return {
     status,
     complete: currency === "EUR" ? eurComplete : complete,
+    revenueComplete: currency === "EUR" ? eurRevenueComplete : complete,
+    costComplete: currency === "EUR" ? eurComplete : complete,
     netSales: source?.netSales ?? null,
-    cost: complete && (currency !== "EUR" || eurComplete) ? source?.cost ?? null : null,
-    profit: complete && (currency !== "EUR" || eurComplete) ? source?.profit ?? null : null,
-    margin: complete && (currency !== "EUR" || eurComplete) ? source?.margin ?? null : null,
+    cost: complete && (currency !== "EUR" || eurComplete) ? metric?.eur?.cost ?? source?.cost ?? null : null,
+    profit: complete && (currency !== "EUR" || eurComplete) ? metric?.eur?.profit ?? source?.profit ?? null : null,
+    margin: complete && (currency !== "EUR" || eurComplete) ? metric?.eur?.margin ?? source?.margin ?? null : null,
     evidence: metric?.evidence || null,
     byCurrency: metric?.byCurrency || null,
   };

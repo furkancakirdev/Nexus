@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   aggregateFinancialMetric,
+  projectCanonicalMetric,
   reconcileFinancialMetrics,
 } from "../shared/financialMetric.mjs";
 import {
@@ -99,7 +100,11 @@ test("existing overview and department boundaries reconcile with the canonical c
       ? canonical.try[field] - canonical.scope.review.netSales
       : canonical.try[field]);
     assert.ok(Math.abs(departmentEur[field] - canonical.eur[field]) < 1e-12);
-    assert.ok(Math.abs(overview.eurEquivalent[field] - canonicalCovered.eur[field]) < 1e-12);
+    if (field === "netSales") {
+      assert.ok(Math.abs(overview.eurEquivalent[field] - (450 / 25 * 35 / 50)) < 1e-12);
+    } else {
+      assert.equal(overview.eurEquivalent[field], null);
+    }
   }
   assert.equal(overview.margin, canonicalCovered.try.profit / canonicalCovered.try.netSales * 100);
   assert.equal(department.margin, department.profit / department.netSales * 100);
@@ -131,6 +136,9 @@ test("missing cost and missing document rate are fail-closed review rows", () =>
   assert.equal(result.scope.review.netSales, 1000);
   assert.equal(result.eur.netSales, 0);
   assert.equal(result.eur.complete, false);
+  assert.equal(result.eurRevenue.netSales, null);
+  assert.equal(result.eurRevenue.complete, false);
+  assert.equal(result.eurRevenue.reviewLines, 1);
   assert.equal(result.evidence.coveredLines, 0);
   assert.equal(result.evidence.reviewLines, 2);
 });
@@ -146,6 +154,8 @@ test("explicit review cost status cannot be promoted by a finite legacy-looking 
   assert.equal(result.scope.confirmed.lines, 0);
   assert.equal(result.scope.review.cost, 200);
   assert.equal(result.eur.complete, false);
+  assert.equal(result.eurRevenue.netSales, 500 / 25 * 35 / 50);
+  assert.equal(result.eurRevenue.complete, true);
 });
 
 test("missing period rate evidence is fail-closed review without EUR leakage", () => {
@@ -153,6 +163,8 @@ test("missing period rate evidence is fail-closed review without EUR leakage", (
   assert.equal(result.status, "INCELEME");
   assert.equal(result.scope.review.netSales, 500);
   assert.equal(result.eur.netSales, 0);
+  assert.equal(result.eurRevenue.netSales, null);
+  assert.equal(result.eurRevenue.complete, false);
   assert.equal(result.eur.complete, false);
   assert.equal(result.byCurrency.INCELEME.netSales, 500);
 });
@@ -164,6 +176,8 @@ test("an exact-period rate set cannot fall back to a single rate set", () => {
   });
   assert.equal(result.status, "INCELEME");
   assert.equal(result.eur.netSales, 0);
+  assert.equal(result.eurRevenue.netSales, null);
+  assert.equal(result.eurRevenue.complete, false);
   assert.equal(result.eur.complete, false);
 });
 
@@ -180,6 +194,21 @@ test("review rows preserve known signed TRY cost and profit while excluding EUR"
   assert.equal(result.try.cost, 200);
   assert.equal(result.try.profit, 300);
   assert.equal(result.eur.netSales, 0);
+  assert.equal(result.eurRevenue.netSales, null);
+  assert.equal(result.eurRevenue.complete, false);
+});
+
+test("cost review keeps evidence-backed EUR revenue but never publishes EUR cost or profit", () => {
+  const metric = aggregateFinancialMetric([coveredRow({
+    financeV2: { costStatus: "review", reviewReason: null, lineCostTryExVat: 200, lineCostCurrencyExVat: 8 },
+  })], { rateSets: RATE_SETS });
+  const projected = projectCanonicalMetric(metric, "EUR");
+  assert.equal(projected.revenueComplete, true);
+  assert.equal(projected.netSales, 500 / 25 * 35 / 50);
+  assert.equal(projected.costComplete, false);
+  assert.equal(projected.cost, null);
+  assert.equal(projected.profit, null);
+  assert.equal(projected.margin, null);
 });
 
 test("signed returns reverse cost and profit without losing the negative sign", () => {

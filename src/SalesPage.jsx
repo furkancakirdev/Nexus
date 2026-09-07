@@ -36,14 +36,10 @@ const formatMoney = (value) => value === null || value === undefined || !Number.
 const formatEur = (value) => value === null || value === undefined || !Number.isFinite(value) ? "—" : eurFormat.format(Math.round(value));
 const sumNullable = (...values) => values.every((value) => Number.isFinite(value)) ? values.reduce((sum, value) => sum + value, 0) : null;
 const profitTone = (value) => value == null ? "" : value >= 0 ? "positive" : "negative";
-// EUR karşılığı yoksa (demo/bağlantısız mod) TL gösterimine düşer.
 export const formatReportMoney = (row, field, fallback) => {
-  if (["cost", "profit"].includes(field) && row?.canonicalMetric && row.canonicalMetric.status !== "TAMAM") return "—";
-  // EUR karşılığı yalnızca satır kanıtı tamamlandığında gösterilebilir;
-  // review satırındaki 0 değeri kanıt yokluğunu sıfır gelir gibi göstermez.
   const eurValue = row?.eurAvailable === true ? row?.eurEquivalent?.[field] : null;
   if (typeof eurValue === "number" && Number.isFinite(eurValue)) return formatEur(eurValue);
-  return formatMoney(fallback);
+  return "—";
 };
 
 export function normalizeCurrencyBasket(basket = {}) {
@@ -100,17 +96,19 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
         ? row.averageProductListGrossMarginPct
         : null;
       const coveragePct = row.v2CostCoveragePct ?? row.costCoveragePct ?? null;
-      // EUR ana görünüm: backend'in ürettiği kur seti karşılıkları; yoksa null (TL gösterimine düşer).
-      const eur = canonicalEur.complete ? row.eurEquivalent : null;
+      // EUR ana görünüm: satış dönüşümü maliyet/WAC kanıtından bağımsızdır.
+      // Maliyet ve kâr ise canonicalEur tarafından kanıt yoksa null bırakılır.
+      const eur = row.eurEquivalent || null;
       const eurNetSales = canonicalEur.netSales;
-      const eurCost = canonicalEur.cost;
-      const eurProfit = canonicalEur.profit;
-      const eurMargin = canonicalEur.margin;
+      const eurCost = canonicalEur.cost ?? null;
+      const eurProfit = canonicalEur.profit ?? null;
+      const eurMargin = canonicalEur.margin ?? null;
+      const eurAvailable = canonicalEur.revenueComplete === true && eurNetSales !== null;
       const rateMeta = eurRateSets?.[String(row.month)] || eurRateSets?.[row.month] || null;
 
-      const chartNetSales = eurNetSales ?? netSales;
-      const chartCost = eurCost ?? v2Cost;
-      const chartProfit = eurProfit ?? profit;
+      const chartNetSales = eurAvailable ? eurNetSales : null;
+      const chartCost = eurCost;
+      const chartProfit = eurProfit;
 
       return {
         ...row,
@@ -128,10 +126,10 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
         eurCost,
         eurProfit,
         eurMargin,
-        eurAvailable: canonicalEur.complete && eurNetSales !== null,
+        eurAvailable,
         eurFrozen: Boolean(row.eurFrozen),
         eurRateMeta: rateMeta,
-        // Grafik için aktif para birimi alanları (EUR varsa o, yoksa TL).
+        // Grafikler kanıtlanmış EUR alanlarını kullanır; eksik kanıt boş kalır.
         chartNetSales,
         chartCost,
         chartProfit,
@@ -157,6 +155,7 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
 
   const totals = useMemo(() => {
     const canonicalTotals = projectCanonicalMetric(canonicalMetric, "TRY");
+    const canonicalEurTotals = projectCanonicalMetric(canonicalMetric, "EUR");
     const rowGrossSales = normalizedRows.reduce((sum, r) => sum + (Number(r.grossSales) || 0), 0);
     const rowReturns = normalizedRows.reduce((sum, r) => sum + (Number(r.returns) || 0), 0);
     const rowDiscounts = normalizedRows.reduce((sum, r) => sum + (Number(r.discounts) || 0), 0);
@@ -171,15 +170,18 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
       profit: canonicalTotals.profit,
       lineCount: canonicalMetric?.evidence?.reviewLines || canonicalMetric?.evidence?.coveredLines || null,
       costCoveredLines: canonicalMetric?.evidence?.coveredLines ?? null,
-      eurNetSales: canonicalMetric?.eur?.complete ? canonicalMetric.eur.netSales : null,
-      eurCost: canonicalMetric?.eur?.complete ? canonicalMetric.eur.cost : null,
-      eurProfit: canonicalMetric?.eur?.complete ? canonicalMetric.eur.profit : null,
-      eurHasAny: canonicalMetric?.eur?.complete === true && canonicalMetric?.status === "TAMAM",
+      eurGrossSales: canonicalMetric?.eurBreakdown?.complete ? canonicalMetric.eurBreakdown.grossSales : null,
+      eurReturns: canonicalMetric?.eurBreakdown?.complete ? canonicalMetric.eurBreakdown.returns : null,
+      eurDiscounts: canonicalMetric?.eurBreakdown?.complete ? canonicalMetric.eurBreakdown.discounts : null,
+      eurNetSales: canonicalEurTotals.revenueComplete ? canonicalEurTotals.netSales : null,
+      eurCost: canonicalEurTotals.costComplete ? canonicalEurTotals.cost : null,
+      eurProfit: canonicalEurTotals.costComplete ? canonicalEurTotals.profit : null,
+      eurHasAny: canonicalEurTotals.revenueComplete === true,
     };
 
     const overallMargin = canonicalTotals.margin;
     const overallCoverage = canonicalMetric?.costCoveragePct ?? null;
-    const eurOverallMargin = canonicalMetric?.eur?.complete ? canonicalMetric.eurMargin : null;
+    const eurOverallMargin = canonicalEurTotals.costComplete ? canonicalMetric?.eurMargin : null;
 
     return {
       ...base,
@@ -193,6 +195,7 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
   const topSalesMonth = useMemo(() => selectCanonicalTopPeriod(normalizedRows.map((row) => ({
     ...row,
     eurComplete: row.eurAvailable === true,
+    eurRevenueComplete: row.eurAvailable === true,
     eurEquivalent: row.eurAvailable ? { netSales: row.eurNetSales } : null,
   })), canonicalMetric), [normalizedRows, canonicalMetric]);
 
@@ -200,8 +203,9 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
   // doğrudan toplanmaz; her sepet kendi dövizinde raporlanır.
   const currencyBasket = normalizeCurrencyBasket(canonicalMetric?.byCurrency);
 
-  const eurActive = canonicalMetric?.eur?.complete === true && canonicalMetric?.status === "TAMAM";
-  const reportMoney = eurActive ? formatEur : formatMoney;
+  const eurTotals = projectCanonicalMetric(canonicalMetric, "EUR");
+  const eurActive = eurTotals.revenueComplete === true && Number.isFinite(totals.eurNetSales);
+  const reportMoney = formatEur;
   const rateMetaList = Object.values(eurRateSets || {});
   const weekendNote = rateMetaList.map((meta) => meta?.weekendOrHolidayNote).find(Boolean) || null;
   const rateSourceLabel = rateMetaList.some((meta) => (meta?.sourceKinds || []).includes("TCMB"))
@@ -268,21 +272,21 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
         <article>
           <span><IconChartBar size={22} /></span>
           <div>
-            <small>Brüt satışlar · TL</small>
-            <strong>{formatMoney(totals.grossSales)}</strong>
-            <p>Nihai + doğrulanmış faturalar</p>
+             <small>Brüt satışlar · EUR</small>
+             <strong>{formatEur(totals.eurGrossSales)}</strong>
+             <p>{totals.eurGrossSales == null ? "EUR dönüşüm kanıtı bekleniyor" : "Halkbank alış kuru karşılığı"}</p>
           </div>
         </article>
 
         <article>
           <span className="red"><IconReceiptRefund size={22} /></span>
           <div>
-            <small>İadeler ve İskontolar · TL</small>
-            <strong style={{ color: "var(--red)" }}>
-              {sumNullable(totals.returns, totals.discounts) == null ? "—" : `−${formatMoney(sumNullable(totals.returns, totals.discounts))}`}
-            </strong>
-            <p>
-              İade {formatMoney(totals.returns)} · İskonto {formatMoney(totals.discounts)}
+             <small>İadeler ve İskontolar · EUR</small>
+             <strong style={{ color: "var(--red)" }}>
+               {sumNullable(totals.eurReturns, totals.eurDiscounts) == null ? "—" : `−${formatEur(sumNullable(totals.eurReturns, totals.eurDiscounts))}`}
+             </strong>
+             <p>
+               İade {formatEur(totals.eurReturns)} · İskonto {formatEur(totals.eurDiscounts)}
             </p>
           </div>
         </article>
@@ -290,18 +294,18 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
         <article>
           <span className="cyan"><IconCoins size={22} /></span>
           <div>
-            <small>Net satışlar{eurActive ? " · EUR" : ""}</small>
-            <strong>{eurActive ? formatEur(totals.eurNetSales) : formatMoney(totals.netSales)}</strong>
-            <p>{eurActive ? `${rateSourceLabel} karşılığı` : "KDV hariç ticari hasılat"}</p>
+             <small>Net satışlar · EUR</small>
+             <strong>{formatEur(totals.eurNetSales)}</strong>
+             <p>{eurActive ? `${rateSourceLabel} karşılığı` : "EUR dönüşüm kanıtı bekleniyor"}</p>
           </div>
         </article>
 
         <article>
           <span className="slate"><IconLayersSubtract size={22} /></span>
           <div>
-            <small>Satır Maliyeti{eurActive ? " · EUR" : ""}</small>
-            <strong>{eurActive ? (totals.eurCost ? formatEur(totals.eurCost) : "İncelemede") : (totals.v2Cost ? formatMoney(totals.v2Cost) : "İncelemede")}</strong>
-            <p>{totals.v2Cost ? "Alım faturası + Halkbank kuru kanıtı" : "Maliyet incelemesi devam ediyor"}</p>
+             <small>Satır Maliyeti · EUR</small>
+             <strong>{formatEur(totals.eurCost)}</strong>
+             <p>{totals.eurCost == null ? "WAC / maliyet kanıtı incelemede" : "Alım faturası + Halkbank kuru kanıtı"}</p>
           </div>
         </article>
 
@@ -309,11 +313,11 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
           <article>
             <span className="green"><IconTrendingUp size={22} /></span>
             <div>
-              <small>Esas Brüt Kâr{eurActive ? " · EUR" : ""}</small>
-              <strong style={{ color: "var(--green)" }}>
-                {eurActive ? (totals.eurProfit != null ? formatEur(totals.eurProfit) : "İncelemede") : (totals.profit != null ? formatMoney(totals.profit) : "İncelemede")}
+               <small>Esas Brüt Kâr · EUR</small>
+               <strong style={{ color: "var(--green)" }}>
+                 {formatEur(totals.eurProfit)}
               </strong>
-              <p>Net kâr marjı {totals.overallMargin != null ? percent(totals.overallMargin) : "WAC Bekleniyor"}</p>
+               <p>Net kâr marjı {totals.eurOverallMargin != null ? percent(totals.eurOverallMargin) : "WAC Bekleniyor"}</p>
             </div>
           </article>
 
@@ -348,11 +352,11 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
           <div className="panel-heading">
             <div>
               <h2>Aylık Satış, Maliyet ve Marj Trendi</h2>
-              <p>Net Satış (bar), Maliyet (bar), Esas Brüt Kâr (line) ve Net Marj % (sağ eksen line) · {eurActive ? "EUR karşılığı" : "TL"}</p>
+               <p>Net Satış (bar), Maliyet (bar), Esas Brüt Kâr (line) ve Net Marj % (sağ eksen line) · EUR karşılığı</p>
             </div>
             <div className="sales-highlight">
               <small>En yüksek dönem</small>
-              <strong>{topSalesMonth?.monthName || "—"} · {eurActive ? formatEur(topSalesMonth?.eurNetSales) : formatMoney(topSalesMonth?.netSales)}</strong>
+               <strong>{topSalesMonth?.monthName || "—"} · {formatEur(topSalesMonth?.eurNetSales)}</strong>
             </div>
           </div>
           <div className="sales-chart" style={{ width: "100%", height: 340 }}>
@@ -388,8 +392,8 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
         <article className="panel sales-category-panel">
           <div className="panel-heading">
             <div>
-              <h2>Gelir ve Kategori Dağılımı</h2>
-              <p>Hizmet ve Parça bazında net ciro dökümü</p>
+              <h2>Gelir ve Kategori Dağılımı · kaynak TRY</h2>
+              <p>Hizmet ve Parça bazında kaynak tutar; EUR ana finansal göstergeler yukarıdadır</p>
             </div>
             <IconCoins size={20} style={{ color: "var(--accent)" }} />
           </div>
@@ -498,12 +502,12 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
             <thead>
               <tr>
                 <th>Ay</th>
-                <th>Brüt Satış (TL)</th>
-                <th>İade (TL)</th>
-                <th>İskonto (TL)</th>
-                <th>Net Satış {eurActive ? "(EUR)" : "(TL)"}</th>
-                <th>Maliyet {eurActive ? "(EUR)" : "(TL)"}</th>
-                <th>Esas Brüt Kâr {eurActive ? "(EUR)" : "(TL)"}</th>
+                 <th>Brüt Satış (EUR)</th>
+                 <th>İade (EUR)</th>
+                 <th>İskonto (EUR)</th>
+                 <th>Net Satış (EUR)</th>
+                 <th>Maliyet (EUR)</th>
+                 <th>Esas Brüt Kâr (EUR)</th>
                 <th>Net Marj</th>
                 <th>Liste Brüt Marjı</th>
                 <th>Maliyet Kapsamı</th>
@@ -513,17 +517,17 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
               {filtered.map((row) => (
                 <tr key={row.month}>
                   <th><strong>{row.monthName}{row.eurFrozen ? " 🔒" : ""}</strong></th>
-                  <td className="positive">{formatMoney(row.grossSales)}</td>
-                  <td className="negative">−{formatMoney(row.returns)}</td>
-                  <td className="negative">−{formatMoney(row.discounts)}</td>
-                  <td><strong>{formatReportMoney(row, "netSales", row.netSales)}</strong></td>
-                  <td>{formatReportMoney(row, "cost", row.v2Cost)}</td>
+                   <td className="positive">{formatEur(row.eurEquivalent?.grossSales)}</td>
+                   <td className="negative">−{formatEur(row.eurEquivalent?.returns)}</td>
+                   <td className="negative">−{formatEur(row.eurEquivalent?.discounts)}</td>
+                   <td><strong>{formatReportMoney(row, "netSales", null)}</strong></td>
+                   <td>{formatReportMoney(row, "cost", null)}</td>
                   <td className={profitTone(row.eurProfit ?? row.profit)}>
                     <strong>{formatReportMoney(row, "profit", row.profit)}</strong>
                   </td>
                   <td>
                     <span className={`margin-pill ${row.netMargin >= 35 ? "good" : row.netMargin >= 20 ? "warn" : "risk"}`}>
-                      {percent(row.eurAvailable ? row.eurMargin : row.netMargin)}
+                       {percent(row.eurMargin)}
                     </span>
                   </td>
                   <td>
@@ -549,15 +553,15 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
             <tfoot>
               <tr>
                 <th>Toplam</th>
-                <td>{formatMoney(totals.grossSales)}</td>
-                <td className="negative">−{formatMoney(totals.returns)}</td>
-                <td className="negative">−{formatMoney(totals.discounts)}</td>
-                <td><strong>{eurActive ? formatEur(totals.eurNetSales) : formatMoney(totals.netSales)}</strong></td>
-                <td>{eurActive ? formatEur(totals.eurCost) : formatMoney(totals.v2Cost)}</td>
-                  <td className={profitTone(eurActive ? totals.eurProfit : totals.profit)}>
-                  <strong>{eurActive ? formatEur(totals.eurProfit) : formatMoney(totals.profit)}</strong>
-                </td>
-                <td>{percent(eurActive ? totals.eurOverallMargin : totals.overallMargin)}</td>
+                 <td>{formatEur(totals.eurGrossSales)}</td>
+                 <td className="negative">−{formatEur(totals.eurReturns)}</td>
+                 <td className="negative">−{formatEur(totals.eurDiscounts)}</td>
+                 <td><strong>{formatEur(totals.eurNetSales)}</strong></td>
+                 <td>{formatEur(totals.eurCost)}</td>
+                   <td className={profitTone(totals.eurProfit)}>
+                   <strong>{formatEur(totals.eurProfit)}</strong>
+                 </td>
+                 <td>{percent(totals.eurOverallMargin)}</td>
                 <td>
                   <strong style={{ color: "var(--amber)" }}>
                     {totals.avgProductListMargin == null ? "—" : percent(totals.avgProductListMargin)}
