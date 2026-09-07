@@ -239,7 +239,8 @@ test("finansal UI eksik kanıtı tahmini maliyet veya ham kârla doldurmaz", asy
   assert.match(summarySource, /const canonicalReady = canonicalMetric\?\.status === "TAMAM"/);
   assert.match(summarySource, /const totalProfitTry = canonicalProfit \?\? null/);
   assert.match(summarySource, /cost: canonicalReady \? sumField\(reportRows, "cost"\) : null/);
-  assert.match(departmentSource, /selectedMetric\.profit != null/);
+  assert.match(departmentSource, /selectedCanonicalMetric = projectCanonicalMetric\(selectedMetric\?\.canonicalMetric/);
+  assert.match(departmentSource, /selectedProfit != null/);
   assert.match(departmentSource, /item\.profit == null \? ""/);
   assert.match(departmentSource, /className=\{profitTone\(row\.profit\)\}/);
 });

@@ -186,6 +186,8 @@ export function DepartmentAnalysisPage({ year, mode: appMode, consolidatedRows =
       && Number.isFinite(selectedMetric.eurEquivalent.netSales)
       && (selectedRateEvidence?.bank === "HALKBANK" || Number.isFinite(selectedRateEvidence?.eurTryBuyingRate))
   );
+  const selectedCanonicalMetric = projectCanonicalMetric(selectedMetric?.canonicalMetric, metricEurActive ? "EUR" : "TRY");
+  const selectedProfit = selectedCanonicalMetric.profit;
   const currencyEvidence = selectedMetric?.byCurrency || {};
   const currencyEvidenceCount = Object.entries(currencyEvidence)
     .filter(([currency, basket]) => currency !== "INCELEME" && Number(basket?.netSales || 0) !== 0).length;
@@ -224,7 +226,7 @@ export function DepartmentAnalysisPage({ year, mode: appMode, consolidatedRows =
 
     <section className="department-kpis">
       <MetricCard icon={IconChartBar} label={`Net satış${metricEurActive ? " · EUR" : ""}`} value={metricEurActive ? formatEur(selectedMetric.eurEquivalent.netSales) : formatMoney(selectedMetric.netSales)} detail={metricEurActive ? `${rateSourceLabel} karşılığı · KDV hariç` : `Brüt ${formatMoney(selectedMetric.grossSales)} · KDV hariç`} />
-      <MetricCard icon={IconTrendingUp} tone="green" label={`Esas brüt kâr${metricEurActive ? " · EUR" : ""}`} value={selectedMetric.profit != null ? (metricEurActive ? formatEur(selectedMetric.eurEquivalent.profit) : formatMoney(selectedMetric.profit)) : "İncelemede"} detail={selectedMetric.profit != null && (selectedMetric.margin != null || selectedMetric.eurMargin != null) ? `Net marj ${percent(metricEurActive ? selectedMetric.eurMargin : selectedMetric.margin)}` : "WAC maliyeti bekleniyor"} />
+      <MetricCard icon={IconTrendingUp} tone="green" label={`Esas brüt kâr${metricEurActive ? " · EUR" : ""}`} value={selectedProfit != null ? (metricEurActive ? formatEur(selectedProfit) : formatMoney(selectedProfit)) : "İncelemede"} detail={selectedProfit != null && (selectedMetric.margin != null || selectedMetric.eurMargin != null) ? `Net marj ${percent(metricEurActive ? selectedMetric.eurMargin : selectedMetric.margin)}` : "WAC maliyeti bekleniyor"} />
       <MetricCard icon={IconDatabase} tone={Number(selectedMetric.costCoveragePct || 0) >= minimumCoverage ? "green" : "amber"} label="Maliyet kapsamı" value={percent(selectedMetric.costCoveragePct)} detail={`${money.format(selectedMetric.coveredLines || 0)} / ${money.format(selectedMetric.lineCount || 0)} satır`} />
       <MetricCard icon={IconHierarchy} label="Satış belgeleri" value={money.format(selectedMetric.documentCount || 0)} detail={`${money.format(selectedMetric.customerCount || 0)} farklı cari`} />
       <MetricCard icon={IconArrowsExchange} tone="teal" label="Çapraz-depo satış" value={formatMoney(selectedMetric.crossDepotSales)} detail={`${money.format(selectedMetric.crossDepotDocuments || 0)} belge · ${selectedMetric.netSales ? percent(selectedMetric.crossDepotSales / selectedMetric.netSales * 100) : "%0,0"}`} />
