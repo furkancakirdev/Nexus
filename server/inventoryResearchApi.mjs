@@ -56,11 +56,16 @@ export function buildInventoryResearchPayload({ year, source = null, rows = [] }
   const comparableYearWac = Array.isArray(inventorySource?.movements)
     ? buildComparableYearWacResearch({ movements: inventorySource.movements })
     : null;
+  const publicInventorySource = { ...inventorySource };
+  if (Array.isArray(publicInventorySource.movements)) {
+    publicInventorySource.movementCount = publicInventorySource.movements.length;
+    delete publicInventorySource.movements;
+  }
   return {
     year,
     readOnly: true,
     mode: inventorySource?.status === "verified" ? "live" : "unavailable",
-    inventorySource,
+    inventorySource: publicInventorySource,
     comparableYearWac,
     openingEvidenceDiagnostics: Array.isArray(inventorySource?.evidence?.openingEvidenceRows)
       ? summarizeOpeningEvidenceRows(inventorySource.evidence.openingEvidenceRows)

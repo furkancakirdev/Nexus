@@ -157,3 +157,29 @@ test("inventory research candidate WAC özetini official ledger alanlarından ay
   assert.equal(payload.inventorySource.status, "candidate");
   assert.equal(payload.inventorySource.financialStatus, "blocked");
 });
+
+test("inventory research ham aday hareketlerini UI responseundan çıkarıp sayısını korur", () => {
+  const movements = Array.from({ length: 3 }, (_, index) => ({
+    id: `movement-${index}`,
+    productCode: `P-${index}`,
+    depotCode: "D01",
+    productCurrency: "TRY",
+    kind: "sale",
+    date: "2026-01-01",
+    quantity: 1,
+  }));
+  const payload = buildInventoryResearchPayload({
+    year: 2026,
+    source: {
+      status: "candidate",
+      financialStatus: "blocked",
+      movements,
+      evidence: { candidateMovementCount: movements.length },
+    },
+  });
+
+  assert.equal(payload.inventorySource.movementCount, movements.length);
+  assert.equal("movements" in payload.inventorySource, false);
+  assert.equal(payload.comparableYearWac.status, "candidate");
+  assert.equal(payload.inventorySource.evidence.candidateMovementCount, movements.length);
+});
