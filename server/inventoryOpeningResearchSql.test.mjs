@@ -22,7 +22,7 @@ test("inventory opening research SQL is bounded, parameterized, and read-only", 
 test("CPM hareket aday sorgusu WAC kaynağı için sabit alanları ve belge türlerini taşır", () => {
   assert.match(cpmMovementCandidateSql, /SELECT/i);
   assert.doesNotMatch(cpmMovementCandidateSql, /OPENJSON|STRING_AGG|UPDATE|DELETE|INSERT|MERGE|EXEC/i);
-  for (const field of ["h.ID id", "h.MALKOD productCode", "h.EVRAKTARIH movementDate", "h.EVRAKTIP documentType", "h.MIKTAR", "h.TUTAR", "h.ISKONTO", "h.BIRIMFIYAT", "h.FIYATDOVIZCINS", "h.FIYATDOVIZKUR", "h.DEPOKOD depotCode", "h.EVRAKNO documentNumber", "h.SIRANO lineNumber", "h.SONKAYNAKEVRAKTIP sourceDocumentType", "h.SONKAYNAKEVRAKNO sourceDocumentNumber", "h.SONKAYNAKSIRANO sourceLineNumber", "quantity", "grossAmount", "discountAmount", "unitPrice", "currency", "currencyRate"]) {
+  for (const field of ["h.ID id", "h.MALKOD productCode", "h.EVRAKTARIH movementDate", "h.EVRAKTIP documentType", "h.MIKTAR", "h.TUTAR", "h.ISKONTO", "h.BIRIMFIYAT", "h.FIYATDOVIZCINS", "h.FIYATDOVIZKUR", "h.DOVIZCINS", "h.DOVIZKUR", "transactionCurrency", "transactionCurrencyRate", "h.DEPOKOD depotCode", "h.EVRAKNO documentNumber", "h.SIRANO lineNumber", "h.SONKAYNAKEVRAKTIP sourceDocumentType", "h.SONKAYNAKEVRAKNO sourceDocumentNumber", "h.SONKAYNAKSIRANO sourceLineNumber", "quantity", "grossAmount", "discountAmount", "unitPrice", "currency", "currencyRate"]) {
     assert.match(cpmMovementCandidateSql, new RegExp(field.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&"), "i"));
   }
   assert.doesNotMatch(cpmMovementCandidateSql, /NULLIF\(LTRIM\(RTRIM\(h\.DOVIZCINS\)\), ''\) currency/i);

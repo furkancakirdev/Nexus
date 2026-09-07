@@ -4,6 +4,12 @@ function text(value) {
   return value === null || value === undefined ? "" : String(value).trim();
 }
 
+function currency(value) {
+  const normalized = text(value).toUpperCase();
+  if (!normalized || normalized === "TL") return normalized === "TL" ? "TRY" : null;
+  return normalized;
+}
+
 function date(value) {
   if (value instanceof Date && Number.isFinite(value.getTime())) return value.toISOString().slice(0, 10);
   const normalized = text(value);
@@ -150,8 +156,9 @@ function sourceSaleIdForReturn(row, rowsByDocumentKey) {
  *
  * Bu fonksiyon kaynak sözleşmesini doğrulamaz ve resmi durumu açmaz. Net alış
  * maliyeti yalnızca pozitif miktar ve brüt-iskonto kanıtı varsa üretilir;
- * DVZHAR/STKKRT sözleşmesi doğrulanmadığı için ürün döviz maliyeti burada
- * tahmin edilmez. Depo, ürün anahtarının parçası olarak yalnızca inceleme
+ * DVZHAR/STKKRT sözleşmesi doğrulanmadığı için yabancı kaynak maliyeti burada
+ * TRY'ye çevrilmez. Ham kaynak/işlem dövizi kanıtı korunur; doğrulanmamış
+ * satırlar review olarak kalır. Depo, ürün anahtarının parçası olarak yalnızca inceleme
  * sinyali taşır; WAC motoru depo transfer sözleşmesi doğrulanmadan ürünleri
  * depolar arasında birleştirmez.
  */
@@ -219,7 +226,40 @@ export function buildCpmWacMovementCandidates({ rows = [] } = {}) {
         addReview("invalid-purchase-cost-evidence");
         continue;
       }
-      movement.unitCostTryExVat = net / quantity;
+      const sourceCurrency = currency(row?.currency ?? row?.priceCurrency ?? row?.FIYATDOVIZCINS);
+      const sourceRate = Number(row?.currencyRate ?? row?.priceCurrencyRate ?? row?.FIYATDOVIZKUR);
+      const normalizedSourceRate = Number.isFinite(sourceRate) && sourceRate > 0 ? sourceRate : null;
+      movement.costEvidence = {
+        sourceAmount: net,
+        sourceUnitPrice: Number.isFinite(Number(row?.unitPrice)) ? Number(row.unitPrice) : null,
+        sourceCurrency,
+        sourceRate: normalizedSourceRate,
+        transactionCurrency: currency(row?.transactionCurrency ?? row?.DOVIZCINS),
+        transactionRate: Number.isFinite(Number(row?.transactionCurrencyRate ?? row?.DOVIZKUR))
+          && Number(row?.transactionCurrencyRate ?? row?.DOVIZKUR) > 0
+          ? Number(row.transactionCurrencyRate ?? row.DOVIZKUR) : null,
+        documentDate: movementDate,
+        rateEvidence: null,
+      };
+      const tryParity = (!sourceCurrency || sourceCurrency === "TRY")
+        && (!normalizedSourceRate || normalizedSourceRate === 1);
+      if (tryParity) {
+        movement.unitCostTryExVat = net / quantity;
+        movement.costEvidence.rateEvidence = {
+          source: "FIYATDOVIZKUR",
+          status: "verified",
+          method: "try-parity",
+        };
+      } else {
+        movement.unitCostTryExVat = null;
+        movement.costEvidence.rateEvidence = {
+          source: null,
+          status: "review_required",
+          reason: "foreign-cost-awaiting-halkbank-rate",
+        };
+        invalidCostRows += 1;
+        addReview("foreign-cost-awaiting-halkbank-rate");
+      }
     }
 
     if (kind === "sale") {

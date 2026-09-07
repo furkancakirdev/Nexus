@@ -22,7 +22,9 @@ SELECT
   CAST(ISNULL(h.ISKONTO, 0) AS decimal(28, 4)) discountAmount,
   NULLIF(CAST(h.BIRIMFIYAT AS decimal(28, 6)), 0) unitPrice,
   NULLIF(LTRIM(RTRIM(h.FIYATDOVIZCINS)), '') currency,
-  NULLIF(CAST(h.FIYATDOVIZKUR AS decimal(28, 8)), 0) currencyRate
+  NULLIF(CAST(h.FIYATDOVIZKUR AS decimal(28, 8)), 0) currencyRate,
+  NULLIF(LTRIM(RTRIM(h.DOVIZCINS)), '') transactionCurrency,
+  NULLIF(CAST(h.DOVIZKUR AS decimal(28, 8)), 0) transactionCurrencyRate
 FROM STKHAR h
 WHERE h.SIRKETNO = @company
   AND h.KAYITDURUM = 1

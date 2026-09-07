@@ -114,8 +114,14 @@ export function buildHistoricalFinancialEvidence({ movements = [], priceRows = [
       addCostReview("missing-exchange-rate");
       continue;
     }
+    const unitCostTryExVat = number(movement.unitCostTryExVat);
+    if (unitCostTryExVat === null || unitCostTryExVat <= 0) {
+      addReview("missing-source-cost-conversion");
+      addCostReview("missing-source-cost-conversion");
+      continue;
+    }
     const costConversion = convertTryToProductCurrency({
-      amountTry: Number(movement.unitCostTryExVat),
+      amountTry: unitCostTryExVat,
       productCurrency,
       halkbankSellingRate: rate.rate,
       exchangeDate: rate.date,
@@ -145,7 +151,7 @@ export function buildHistoricalFinancialEvidence({ movements = [], priceRows = [
       productCurrency,
       purchaseDate: movement.date,
       purchaseQuantity: movement.quantity,
-      purchaseNetAmountTryExVat: Number(movement.unitCostTryExVat) * Number(movement.quantity),
+      purchaseNetAmountTryExVat: unitCostTryExVat * Number(movement.quantity),
       retailUnitPriceCurrencyExVat: price.priceExVat,
       halkbankSellingRate: rate.rate,
       exchangeDate: rate.date,

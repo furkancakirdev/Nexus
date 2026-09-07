@@ -259,6 +259,35 @@ test("CPM hareket adayları net alış maliyetini üretir ve iadeyi benzersiz ka
   assert.equal(result.reviewCounts.unlinkedReturnRows, 0);
 });
 
+test("CPM yabancı kaynak maliyetini TRY diye etiketlemez ve ham döviz kanıtını korur", () => {
+  const result = buildCpmWacMovementCandidates({
+    rows: [{
+      id: "P-EUR", productCode: "P-EUR", depotCode: "D-1", movementDate: "2026-01-02",
+      documentType: 9, quantity: 2, grossAmount: 200, discountAmount: 20,
+      unitPrice: 90, currency: "EUR", currencyRate: 35,
+      transactionCurrency: null, transactionCurrencyRate: null,
+    }],
+  });
+
+  assert.equal(result.movements[0].unitCostTryExVat, null);
+  assert.deepEqual(result.movements[0].costEvidence, {
+    sourceAmount: 180,
+    sourceUnitPrice: 90,
+    sourceCurrency: "EUR",
+    sourceRate: 35,
+    transactionCurrency: null,
+    transactionRate: null,
+    documentDate: "2026-01-02",
+    rateEvidence: {
+      source: null,
+      status: "review_required",
+      reason: "foreign-cost-awaiting-halkbank-rate",
+    },
+  });
+  assert.equal(result.reviewReasons["foreign-cost-awaiting-halkbank-rate"], 1);
+  assert.equal(result.reviewCounts.invalidCostRows, 1);
+});
+
 test("CPM satış adayı net KDV hariç tutarı negatif stok fallback'ine taşır", () => {
   const result = buildCpmWacMovementCandidates({
     rows: [{

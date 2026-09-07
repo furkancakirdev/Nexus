@@ -33,6 +33,25 @@ test("tarihsel fiyat ve satış kuru aynı alım hareketine ürün dövizi ve ma
   assert.equal(result.reviewCounts.review, 0);
 });
 
+test("TRY maliyet kanıtı yoksa sıfır maliyet veya marj üretmez", () => {
+  const result = buildHistoricalFinancialEvidence({
+    movements: [{ ...purchase, id: "P-MISSING", unitCostTryExVat: null }],
+    priceRows: [{
+      productCode: "CARD-1", cardCurrency: "EUR", priceCurrency: "EUR",
+      effectiveDate: "2026-02-01", priceExVat: 25, priceVatExempt: 1,
+    }],
+    exchangeRates: [{
+      exchangeSourceId: "DVZHAR-BUY/SELL", rateDate: "2026-02-10", rateCurrency: "EUR",
+      halkbankBuyingRate: 37, halkbankSellingRate: 40,
+    }],
+  });
+
+  assert.equal(result.movements[0].unitCostCurrencyExVat, undefined);
+  assert.equal(result.marginObservationsByStockKey.size, 0);
+  assert.equal(result.costReviewReasons["missing-source-cost-conversion"], 1);
+  assert.equal(result.reviewReasons["missing-source-cost-conversion"], 1);
+});
+
 test("fiyat KDV niteliği veya geçmiş kur yoksa maliyet ve marj kanıtı review kalır", () => {
   const result = buildHistoricalFinancialEvidence({
     movements: [{ ...purchase, id: "P-2", productCode: "CARD-2" }],
