@@ -52,6 +52,37 @@ test("TRY maliyet kanıtı yoksa sıfır maliyet veya marj üretmez", () => {
   assert.equal(result.reviewReasons["missing-source-cost-conversion"], 1);
 });
 
+test("yabancı maliyet kanıtı kaynak dövizden TRY ve ürün dövizine satış kuru zinciriyle taşınır", () => {
+  const result = buildHistoricalFinancialEvidence({
+    movements: [{
+      ...purchase,
+      id: "P-FOREIGN",
+      unitCostTryExVat: null,
+      costEvidence: {
+        sourceAmount: 180,
+        sourceUnitPrice: 90,
+        sourceCurrency: "USD",
+        documentDate: "2026-02-10",
+      },
+    }],
+    priceRows: [{
+      productCode: "CARD-1", cardCurrency: "EUR", priceCurrency: "EUR",
+      effectiveDate: "2026-02-01", priceExVat: 125, priceVatExempt: 1,
+    }],
+    exchangeRates: [
+      { exchangeSourceId: "USD-SELL", rateDate: "2026-02-10", rateCurrency: "USD", halkbankSellingRate: 35 },
+      { exchangeSourceId: "EUR-SELL", rateDate: "2026-02-10", rateCurrency: "EUR", halkbankSellingRate: 40 },
+    ],
+  });
+
+  assert.equal(result.movements[0].unitCostTryExVat, 630);
+  assert.equal(result.movements[0].unitCostCurrencyExVat, 15.75);
+  assert.equal(result.movements[0].sourceCostExchangeEvidence.method, "source-currency-to-try");
+  assert.equal(result.movements[0].sourceCostExchangeEvidence.sourceCurrency, "USD");
+  assert.deepEqual(result.costReviewCounts, { review: 0, covered: 1 });
+  assert.equal(result.reviewCounts.review, 0);
+});
+
 test("fiyat KDV niteliği veya geçmiş kur yoksa maliyet ve marj kanıtı review kalır", () => {
   const result = buildHistoricalFinancialEvidence({
     movements: [{ ...purchase, id: "P-2", productCode: "CARD-2" }],

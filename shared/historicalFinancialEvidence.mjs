@@ -67,6 +67,46 @@ function sellingRateOnOrBefore(index, currency, date) {
   };
 }
 
+function resolveSourceCostToTry({ movement, rateIndex }) {
+  const existingUnitCost = number(movement?.unitCostTryExVat);
+  if (existingUnitCost !== null && existingUnitCost > 0) {
+    return { unitCostTryExVat: existingUnitCost, sourceExchangeEvidence: null, reviewReason: null };
+  }
+
+  const quantity = number(movement?.quantity);
+  const sourceAmount = number(movement?.costEvidence?.sourceAmount);
+  const sourceCurrency = currencyCode(movement?.costEvidence?.sourceCurrency) || "TRY";
+  if (quantity === null || quantity <= 0 || sourceAmount === null || sourceAmount <= 0) {
+    return { unitCostTryExVat: null, sourceExchangeEvidence: null, reviewReason: "missing-source-cost-conversion" };
+  }
+
+  const sourceUnitCost = sourceAmount / quantity;
+  if (sourceCurrency === "TRY") {
+    return {
+      unitCostTryExVat: sourceUnitCost,
+      sourceExchangeEvidence: { rate: 1, date: dateKey(movement?.date), sourceId: "TRY-PARITY", method: "try-parity" },
+      reviewReason: null,
+    };
+  }
+
+  const sourceRate = sellingRateOnOrBefore(rateIndex, sourceCurrency, movement?.date);
+  if (!sourceRate) {
+    return { unitCostTryExVat: null, sourceExchangeEvidence: null, reviewReason: "missing-exchange-rate" };
+  }
+  return {
+    unitCostTryExVat: sourceUnitCost * sourceRate.rate,
+    sourceExchangeEvidence: {
+      sourceCurrency,
+      rate: sourceRate.rate,
+      date: sourceRate.date,
+      sourceId: sourceRate.sourceId,
+      method: "source-currency-to-try",
+      lagDays: sourceRate.lagDays,
+    },
+    reviewReason: null,
+  };
+}
+
 /**
  * Doğrulanmış fiyat/kur satırlarını WAC hareketlerine bağlayan saf kanıt katmanı.
  * Kaynak sözleşmesi açılmaz; eksik veya çelişkili kanıt yalnızca review döndürür.
@@ -114,12 +154,13 @@ export function buildHistoricalFinancialEvidence({ movements = [], priceRows = [
       addCostReview("missing-exchange-rate");
       continue;
     }
-    const unitCostTryExVat = number(movement.unitCostTryExVat);
-    if (unitCostTryExVat === null || unitCostTryExVat <= 0) {
-      addReview("missing-source-cost-conversion");
-      addCostReview("missing-source-cost-conversion");
+    const sourceCost = resolveSourceCostToTry({ movement, rateIndex });
+    if (sourceCost.reviewReason) {
+      addReview(sourceCost.reviewReason);
+      addCostReview(sourceCost.reviewReason);
       continue;
     }
+    const unitCostTryExVat = sourceCost.unitCostTryExVat;
     const costConversion = convertTryToProductCurrency({
       amountTry: unitCostTryExVat,
       productCurrency,
@@ -132,8 +173,16 @@ export function buildHistoricalFinancialEvidence({ movements = [], priceRows = [
       addCostReview(costConversion.reviewReason);
       continue;
     }
+    movement.unitCostTryExVat = unitCostTryExVat;
     movement.unitCostCurrencyExVat = costConversion.amountCurrency;
     movement.costExchangeEvidence = costConversion.exchangeEvidence;
+    if (sourceCost.sourceExchangeEvidence) {
+      movement.costEvidence = {
+        ...(movement.costEvidence || {}),
+        rateEvidence: { status: "verified", ...sourceCost.sourceExchangeEvidence },
+      };
+      movement.sourceCostExchangeEvidence = sourceCost.sourceExchangeEvidence;
+    }
     costReviewCounts.covered += 1;
 
     const price = selectPrice({

@@ -177,6 +177,7 @@ export function buildCpmWacMovementCandidates({ rows = [] } = {}) {
 
   const movements = [];
   let invalidCostRows = 0;
+  let pendingForeignCostRows = 0;
   let invalidMovementRows = 0;
   let unlinkedReturnRows = 0;
   const productsByDepot = new Map();
@@ -257,7 +258,7 @@ export function buildCpmWacMovementCandidates({ rows = [] } = {}) {
           status: "review_required",
           reason: "foreign-cost-awaiting-halkbank-rate",
         };
-        invalidCostRows += 1;
+        pendingForeignCostRows += 1;
         addReview("foreign-cost-awaiting-halkbank-rate");
       }
     }
@@ -288,6 +289,7 @@ export function buildCpmWacMovementCandidates({ rows = [] } = {}) {
   const multiDepotProductCount = [...productsByDepot.values()].filter((depots) => depots.size > 1).length;
   const reviewCounts = {
     invalidCostRows,
+    pendingForeignCostRows,
     invalidMovementRows,
     unlinkedReturnRows,
     multiDepotProductCount,

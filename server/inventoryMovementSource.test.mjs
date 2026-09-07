@@ -285,7 +285,8 @@ test("CPM yabancı kaynak maliyetini TRY diye etiketlemez ve ham döviz kanıtı
     },
   });
   assert.equal(result.reviewReasons["foreign-cost-awaiting-halkbank-rate"], 1);
-  assert.equal(result.reviewCounts.invalidCostRows, 1);
+  assert.equal(result.reviewCounts.invalidCostRows, 0);
+  assert.equal(result.reviewCounts.pendingForeignCostRows, 1);
 });
 
 test("CPM satış adayı net KDV hariç tutarı negatif stok fallback'ine taşır", () => {
