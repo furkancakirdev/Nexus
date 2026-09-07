@@ -189,7 +189,7 @@ export function buildOverviewRows(ledger) {
       returnsTry: row.isSale ? 0 : row.netAmount,
       discountsTry: row.isSale ? row.discountAmount : 0,
       period: String(month),
-      productCurrency: row.financeV2?.productCurrency,
+      productCurrency: row.financeV2?.productCurrency ?? row.productCurrency,
       documentSellingRate: row.documentSellingRate,
       financeV2: row.financeV2,
     });
@@ -631,7 +631,7 @@ function auditRow(row) {
       returnsTry: row.isSale ? 0 : row.netAmount,
       discountsTry: row.isSale ? row.discountAmount : 0,
       period: String(monthOf(row.documentDate)),
-    productCurrency: row.financeV2?.productCurrency,
+    productCurrency: row.financeV2?.productCurrency ?? row.productCurrency,
     documentSellingRate: row.documentSellingRate,
     financeV2: row.financeV2,
   }], { basisId: `audit:${row.rootId}` });
@@ -774,7 +774,7 @@ function reportGroup(rows, name, { rateSets = null } = {}) {
     returnsTry: row.isSale ? 0 : row.netAmount,
     discountsTry: row.isSale ? row.discountAmount : 0,
     period: String(monthOf(row.documentDate)),
-    productCurrency: row.financeV2?.productCurrency,
+    productCurrency: row.financeV2?.productCurrency ?? row.productCurrency,
     documentSellingRate: row.documentSellingRate,
     financeV2: row.financeV2,
   }), { rateSets, basisId: `audit-report:${name}` });
@@ -1273,7 +1273,7 @@ export function createUnifiedLedgerRouter({
           returnsTry: row.isSale ? 0 : row.netAmount,
           discountsTry: row.isSale ? row.discountAmount : 0,
           period: String(monthOf(row.documentDate)),
-          productCurrency: row.financeV2?.productCurrency,
+          productCurrency: row.financeV2?.productCurrency ?? row.productCurrency,
           documentSellingRate: row.documentSellingRate,
           financeV2: row.financeV2,
         })),

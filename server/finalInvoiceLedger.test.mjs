@@ -1713,6 +1713,9 @@ test("final invoice SQL exposes four read-only recordsets with separate invoice 
   assert.match(finalInvoiceLedgerSql, /grossAmount/i);
   assert.match(finalInvoiceLedgerSql, /discountAmount/i);
   assert.match(finalInvoiceLedgerSql, /netAmount/i);
+  assert.match(finalInvoiceLedgerSql, /FIYATDOVIZCINS.*productCurrency/i);
+  assert.match(finalInvoiceLedgerSql, /FIYATDOVIZKUR.*documentSellingRate/i);
+  assert.match(finalInvoiceLedgerSql, /documentRateDate/i);
   assert.match(finalInvoiceLedgerSql, /vatAmount/i);
   assert.match(finalInvoiceLedgerSql, /invoiceTotalInclVat/i);
   assert.match(finalInvoiceLedgerSql, /EFAGLN/i);

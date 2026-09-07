@@ -10,7 +10,7 @@ const PROHIBITED = new Set([
 const PRODUCTION_FINGERPRINTS = Object.freeze({
   "health-database-name": "ac5d97b6cf0381291846c9704e3d148089f8e43926d94b2316a22df3bf8dc180",
   "sales-cases-v1": "1b2f7d7d7df507a1d45bd7d5e43f1f8bd0058f18fbe5ee3e70ef15e481d2e6e7",
-  "final-invoice-ledger-v1": "764f8e73266c648f5f1341c03516e68012a8f508aefcfb109fe7aaaf6c8be11d",
+  "final-invoice-ledger-v1": "508a55676c973ab938b7b99697a398d98193c33b97a5a019684998d486f8e724",
   "source-provenance-candidates-v1": "8e5079912142ed04df94904d2b895d8f7a7802cddc390aa9c8567aa65b25e504",
   "source-provenance-canonical-ids-v1": "a07fcaca27f54d3a521874a9821931b1c17e57012cff62def25221d9625b7416",
   "inventory-opening-stkhar-sample-v1": "7fc2d9245b5872fb1ec7d7750cb178dd0f3e4419869f36b971bd33f7530fb949",
