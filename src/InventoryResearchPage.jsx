@@ -72,10 +72,11 @@ export function getOpeningEvidenceScopeLabel(diagnostics = {}) {
 }
 
 export function getOpeningEvidenceSourceCards(sources = {}) {
+  const safeSources = sources || {};
   return [
-    { key: "stkhArType81", label: "STKHAR tip 81", summary: sources.stkhArType81?.summary },
-    { key: "stkhArType82", label: "STKHAR tip 82", summary: sources.stkhArType82?.summary },
-    { key: "stksymDevir", label: "STKSYM DEVIR", summary: sources.stksymDevir?.summary },
+    { key: "stkhArType81", label: "STKHAR tip 81", summary: safeSources.stkhArType81?.summary },
+    { key: "stkhArType82", label: "STKHAR tip 82", summary: safeSources.stkhArType82?.summary },
+    { key: "stksymDevir", label: "STKSYM DEVIR", summary: safeSources.stksymDevir?.summary },
   ].filter((card) => card.summary
     && card.summary.rowCount !== null
     && card.summary.rowCount !== undefined

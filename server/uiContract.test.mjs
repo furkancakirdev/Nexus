@@ -146,6 +146,7 @@ test("doğrulanmamış stok kaynağı araştırma verisini resmi WAC'tan ayırı
   assert.equal(inventory.getInventorySourceBadge({ mode: "unavailable", rows: [] }), "Kaynak kullanılamıyor");
   assert.equal(inventory.getInventoryEmptyStateLabel({ movementLoadTimedOut: true }), "CPM hareket defteri yanıt vermedi; aday açılış kanıtı aşağıda.");
   assert.equal(inventory.getInventoryEmptyStateLabel({ openingEvidenceDiagnostics: { status: "available" } }), "Hareket defteri satırı yok; aday açılış kanıtı aşağıda.");
+  assert.deepEqual(inventory.getOpeningEvidenceSourceCards(null), []);
   const preservedEvidence = inventory.preserveOpeningEvidenceOnMovementError({
     rows: [{ id: "candidate-1" }],
     mode: "loading",
