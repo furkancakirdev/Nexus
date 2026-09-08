@@ -720,8 +720,7 @@ export function buildComparableYearWac({ year, movements = [], priorClosingWac =
 export function attachOfficialMovementCosts({ source = {}, economicRows = [], movements = [], marginObservationsByStockKey = new Map(), observationByMovementId = new Map() } = {}) {
   if (!Array.isArray(economicRows)) throw new TypeError("Ekonomik satırlar dizi olmalıdır.");
   if (!Array.isArray(movements)) throw new TypeError("Stok hareketleri dizi olmalıdır.");
-  const financialEvidenceReady = source?.financialStatus === undefined
-    || source?.financialStatus === "ready";
+  const financialEvidenceReady = source?.financialStatus === "ready";
   if (source?.status !== "verified"
     || Number(source?.contractVersion) !== 1
     || !financialEvidenceReady) {

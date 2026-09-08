@@ -26,6 +26,10 @@ test("Onay ekranı sunucu aylık onay API sözleşmesini kullanır", async () =>
 test("Onay ekranı kur kanıtı durumlarını kesin sonuçtan ayırır", async (t) => {
   const vite = await createServer({ configFile: resolve(process.cwd(), "vite.config.mjs") });
   t.after(() => vite.close());
+  const source = await readFile(
+    new URL("../src/ApprovalPage.jsx", import.meta.url),
+    "utf8",
+  );
   const approval = await vite.ssrLoadModule("/src/ApprovalPage.jsx");
 
   assert.equal(approval.getRateEvidencePresentation("frozen").tone, "verified");
@@ -33,6 +37,36 @@ test("Onay ekranı kur kanıtı durumlarını kesin sonuçtan ayırır", async (
   assert.equal(approval.getRateEvidencePresentation("legacy-month-end-fallback").tone, "review");
   assert.equal(approval.getRateEvidencePresentation("invalid").tone, "blocked");
   assert.equal(approval.getRateEvidencePresentation(undefined).tone, "review");
+
+  assert.deepEqual(
+    approval.getApprovalStatusPresentation({
+      rateEvidenceStatus: "invalid",
+      stale: false,
+    }),
+    { tone: "blocked", label: "Kur kanıtı geçersiz" },
+  );
+  assert.deepEqual(
+    approval.getApprovalStatusPresentation({
+      rateEvidenceStatus: "invalid",
+      stale: true,
+    }),
+    { tone: "blocked", label: "Güncelliğini yitirdi" },
+  );
+  assert.deepEqual(
+    approval.getApprovalStatusPresentation({
+      rateEvidenceStatus: "frozen",
+      stale: null,
+    }),
+    { tone: "blocked", label: "Güncellik doğrulanamadı" },
+  );
+  assert.deepEqual(
+    approval.getApprovalStatusPresentation({
+      rateEvidenceStatus: "frozen",
+      stale: false,
+    }),
+    { tone: "approved", label: "Onaylandı" },
+  );
+  assert.match(source, /item\.approvalStatus\?\.tone\s*===\s*["']approved["']/);
 
   const details = approval.getRateEvidenceDetails({
     bank: "HALKBANK",

@@ -10,7 +10,7 @@ const PROHIBITED = new Set([
 const PRODUCTION_FINGERPRINTS = Object.freeze({
   "health-database-name": "ac5d97b6cf0381291846c9704e3d148089f8e43926d94b2316a22df3bf8dc180",
   "sales-cases-v1": "1b2f7d7d7df507a1d45bd7d5e43f1f8bd0058f18fbe5ee3e70ef15e481d2e6e7",
-  "final-invoice-ledger-v1": "508a55676c973ab938b7b99697a398d98193c33b97a5a019684998d486f8e724",
+  "final-invoice-ledger-v1": "5b87ee490474a0ec17a0828be9df4c07469104462f346a965b5e4baa5af39640",
   "source-provenance-candidates-v1": "8e5079912142ed04df94904d2b895d8f7a7802cddc390aa9c8567aa65b25e504",
   "source-provenance-canonical-ids-v1": "a07fcaca27f54d3a521874a9821931b1c17e57012cff62def25221d9625b7416",
   "inventory-opening-stkhar-sample-v1": "7fc2d9245b5872fb1ec7d7750cb178dd0f3e4419869f36b971bd33f7530fb949",
@@ -23,10 +23,15 @@ const PRODUCTION_FINGERPRINTS = Object.freeze({
   "inventory-opening-stksym-stkhar-document-match-summary-v1": "c2710fce4bc2019cd64b5f94bcd7219c9cf78220a8b04bbf70ffdea580dcf0c1",
   "inventory-opening-stksym-stkhar-match-reason-summary-v1": "8dc1df821fd72fa2bd815676f329e3c189a7291e18442d8c3181bad1228790a4",
   "inventory-opening-stksym-sales-overlap-summary-v1": "b70c57ace97015ca30b4319271894a6bfd228348aea6ff7e49f456333cd190df",
-  "inventory-movement-candidate-v1": "3378d2d2669dfb6e7982c6b98e9370b8c5672ef77f044b45bb76d0b6a068a1cd",
+  "inventory-movement-candidate-v1": "602c8bf5be1e67bcbd2f59bcc26df477676dca6566f270e16a313fe1dc3d960e",
   "exchange-rate-candidate-v1": "c95d7d6c082fb056811120210db8e1ed92c60d68854ff7cceae3714557a09ad6",
-  "historical-price-candidate-v1": "6acc76d5749cd93dbc3e36e9458c913423cabafe8db85560de89c36d6fcca1e0",
+  "historical-price-candidate-v1": "a5c6a7bb41dfcbfce545c2c758a9528a8625082b996733eccb48560b3ddd48e1",
+  "settlement-evidence-v1": "2cc9a58fe7cbe25d3cf666dcf2a67aab7a618b271e59c0956ddd90fa167b65d0",
 });
+
+const QUARANTINED_QUERY_IDS = new Set([
+  "settlement-evidence-v1",
+]);
 
 function policyError(reason) {
   const error = new Error("CPM sorgusu salt-okunur sınırı ihlal ediyor.");
@@ -231,6 +236,9 @@ export function createCpmReadOnlyExecutor({ allowedFingerprints, audit = default
     const fingerprint = fingerprintCpmQuery(query);
     const expected = allowedFingerprints[queryId];
     try {
+      if (QUARANTINED_QUERY_IDS.has(queryId)) {
+        throw policyError("query-quarantined-settlement-evidence-unavailable");
+      }
       if (!expected) throw policyError("unknown-query-id");
       if (fingerprint !== expected) throw policyError("fingerprint-mismatch");
       assertCpmReadOnlySql(query);

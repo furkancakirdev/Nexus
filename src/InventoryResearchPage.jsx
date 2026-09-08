@@ -35,23 +35,68 @@ const openingResearchReasonLabels = {
   "cost-semantics-unverified": "Maliyet alanlarının anlamı ve kaynağı doğrulanmadı",
 };
 
+const unlinkedReturnReasonLabels = {
+  "missing-source-document-type": "Kaynak belge türü eksik",
+  "missing-source-document-number": "Kaynak belge numarası eksik",
+  "source-lineage-not-collected": "Kaynak ara belge zinciri tamamlanamadı",
+  "source-lineage-cycle": "Kaynak ara belge zincirinde döngü bulundu",
+  "unsupported-source-document-type": "Kaynak belge türü satış için desteklenmiyor",
+  "source-line-not-found": "Kaynak satır numarası bulunamadı",
+  "ambiguous-source-line": "Kaynak satır numarası birden fazla eşleşti",
+  "ambiguous-source-document": "Kaynak belgede birden fazla ürün satırı eşleşti",
+  "source-document-not-found": "Kaynak belge bulunamadı",
+};
+
 export function getFinancialValidationLabel(row = {}) {
-  const costCovered = row.financeV2?.costStatus === "covered";
+  const costCovered = hasCompleteInventoryCostEvidence(row);
   return {
     document: documentEvidenceLabels[row.verificationStatus] || documentEvidenceLabels.review,
-    cost: costCovered ? "Maliyet: Kapsandı" : "Maliyet: İnceleme gerekli",
+    cost: costCovered
+      ? "Maliyet kanıtı: Kapsandı"
+      : hasPurchaseInvoiceEvidence(row)
+        ? "Alım faturası bulundu · perakende/döviz kanıtı eksik"
+        : "Maliyet kanıtı: İnceleme gerekli",
   };
 }
 
+export function hasCompleteInventoryCostEvidence(row = {}) {
+  return row?.financeV2?.costStatus === "covered"
+    && typeof row?.unitCost === "number"
+    && Number.isFinite(row.unitCost)
+    && typeof row?.financeV2?.unitCostCurrencyExVat === "number"
+    && Number.isFinite(row.financeV2.unitCostCurrencyExVat);
+}
+
+export function hasPurchaseInvoiceEvidence(row = {}) {
+  const purchaseNet = Number(row?.purchaseNetAmount);
+  const purchaseQuantity = Number(row?.purchaseQuantity);
+  return Boolean(row?.purchaseNo)
+    && Number.isFinite(purchaseNet) && purchaseNet > 0
+    && Number.isFinite(purchaseQuantity) && purchaseQuantity > 0;
+}
+
+export function isOfficialWacReady({ inventorySource = null, comparableYearWac = null, rows = [] } = {}) {
+  return inventorySource?.status === "verified"
+    && inventorySource?.financialStatus === "ready"
+    && comparableYearWac?.eligibleForOfficialWac === true
+    && Array.isArray(rows)
+    && rows.length > 0
+    && rows.every(hasCompleteInventoryCostEvidence);
+}
+
 export function getInventorySourceNotice(source = {}) {
-  if (source?.status === "verified") return null;
+  if (!source || typeof source !== "object" || !source.status) return null;
+  if (source?.status === "verified"
+    && (source?.financialStatus === undefined || source?.financialStatus === "ready")) return null;
   return {
-    title: "Resmi stok/WAC kaynağı doğrulanmadı",
+    title: source?.status === "verified" ? "Resmî WAC/maliyet kanıtı hazır değil" : "Resmi stok/WAC kaynağı doğrulanmadı",
     message: "Aşağıdaki satırlar yalnızca denetim araştırmasıdır; resmi WAC, maliyet ve kâr havuzuna dahil değildir.",
   };
 }
 
-export function getInventorySourceBadge({ mode, rows = [], openingEvidenceDiagnostics = null } = {}) {
+export function getInventorySourceBadge({ mode, rows = [], openingEvidenceDiagnostics = null, inventorySource = null, comparableYearWac = null } = {}) {
+  const wacReady = isOfficialWacReady({ inventorySource, comparableYearWac, rows });
+  if (mode === "live" && !wacReady) return "CPM canlı · WAC kapalı";
   if (mode === "live") return "CPM canlı · salt okunur";
   if (mode === "unavailable" && (rows.length > 0 || openingEvidenceDiagnostics?.status === "available")) {
     return "CPM aday araştırması · WAC kapalı";
@@ -90,9 +135,22 @@ export function getOpeningResearchReasonLabels(reasonCodes = []) {
     .map((code) => openingResearchReasonLabels[code] || String(code));
 }
 
+export function getUnlinkedReturnReasonLabels(reasons = {}) {
+  return Object.entries(reasons || {})
+    .filter(([, count]) => Number(count) > 0)
+    .sort(([, left], [, right]) => Number(right) - Number(left))
+    .map(([code, count]) => ({
+      code,
+      count: Number(count),
+      label: unlinkedReturnReasonLabels[code] || code,
+    }));
+}
+
 export function getInventoryEvidenceLabel({ selected = null, reviewCount = 0 } = {}) {
   if (!selected) return "Ürün seçilmedi";
-  return Number(reviewCount) > 0 ? `${reviewCount} kanıt incelenecek` : "Kanıt zinciri tamam";
+  return Number(reviewCount) > 0
+    ? `${integer.format(Number(reviewCount))} maliyet kanıtı incelenecek · Tam muavin doğrulanmadı`
+    : "Belge ve maliyet kanıtı ayrı · Tam muavin doğrulanmadı";
 }
 
 export function getInventoryEmptyStateLabel({ openingEvidenceDiagnostics = null, movementLoadTimedOut = false } = {}) {
@@ -132,6 +190,54 @@ function uniqueProducts(rows) {
     });
   }
   return [...products.values()];
+}
+
+export function buildChronologicalInventoryLedger({ movements = [], officialWacReady = false, currency = "EUR" } = {}) {
+  const rows = Array.isArray(movements) ? movements : [];
+  const canRenderOfficialWac = officialWacReady
+    && rows.length > 0
+    && rows.every(hasCompleteInventoryCostEvidence);
+  let runningBalance = 0;
+  let runningValue = 0;
+  let runningWac = 0;
+
+  return [...rows]
+    .sort((a, b) => String(a.documentDate || "").localeCompare(String(b.documentDate || "")))
+    .map((row) => {
+      const isPurchase = [9, 609].includes(Number(row.documentType));
+      const inQty = !row.isSale ? Number(row.quantity || 0) : 0;
+      const outQty = row.isSale ? Number(row.quantity || 0) : 0;
+      const unitPrice = canRenderOfficialWac ? row.financeV2.unitCostCurrencyExVat : null;
+
+      runningBalance += inQty - outQty;
+
+      if (canRenderOfficialWac) {
+        if (inQty > 0) {
+          runningValue += inQty * unitPrice;
+          runningWac = runningBalance > 0 ? runningValue / runningBalance : unitPrice;
+        } else if (outQty > 0) {
+          runningValue = Math.max(0, runningBalance * runningWac);
+        }
+      }
+
+      return {
+        id: row.id,
+        date: row.documentDate ? new Date(row.documentDate).toLocaleDateString("tr-TR") : "—",
+        kind: row.isSale ? "sale" : isPurchase ? "purchase" : "other",
+        kindLabel: row.isSale ? "Satış" : isPurchase ? "Alım" : "İade / Devir",
+        documentNo: `${row.documentType || ""}/${row.documentNo || ""}`,
+        depotCode: row.depotCode || "MRK",
+        inQty,
+        outQty,
+        runningBalance,
+        unitPrice: canRenderOfficialWac ? unitPrice : null,
+        runningWac: canRenderOfficialWac ? runningWac : null,
+        runningValue: canRenderOfficialWac ? runningValue : null,
+        currency: row.financeV2?.productCurrency || currency || "EUR",
+        status: row.verificationStatus,
+        statusLabel: row.verificationStatus === "verified" ? "Doğrulandı" : "İnceleme",
+      };
+    });
 }
 
 export function InventoryResearchPage({ year, mode = "live", refreshToken = 0 }) {
@@ -261,12 +367,14 @@ export function InventoryResearchPage({ year, mode = "live", refreshToken = 0 })
   }, [rawMovements, movementFilter]);
 
   const summary = useMemo(() => {
-    const covered = rawMovements.filter((row) => row.financeV2?.costStatus === "covered"
+    const covered = rawMovements.filter((row) => hasCompleteInventoryCostEvidence(row)
       && Number.isFinite(Number(row.financeV2?.lineCostTryExVat)));
     const validMargins = new Map();
     for (const row of rawMovements) {
       const finance = row.financeV2;
-      if (finance?.reviewReason == null && Number.isFinite(finance?.productListGrossMarginPct)) {
+      if (hasCompleteInventoryCostEvidence(row)
+        && finance?.reviewReason == null
+        && Number.isFinite(finance?.productListGrossMarginPct)) {
         validMargins.set(finance.observationKey || row.id, finance.productListGrossMarginPct);
       }
     }
@@ -274,7 +382,8 @@ export function InventoryResearchPage({ year, mode = "live", refreshToken = 0 })
     const totalQuantity = rawMovements.reduce((sum, row) => sum + Number(row.quantity || 0), 0);
     const totalCost = covered.reduce((sum, row) => sum + Math.abs(Number(row.financeV2?.lineCostTryExVat || 0)), 0);
 
-    const latestEvidence = rawMovements.find((r) => r.financeV2?.productListGrossMarginPct != null)?.financeV2;
+    const latestEvidence = rawMovements.find((r) => hasCompleteInventoryCostEvidence(r)
+      && r.financeV2?.productListGrossMarginPct != null)?.financeV2;
 
     return {
       movementCount: rawMovements.length,
@@ -331,44 +440,24 @@ export function InventoryResearchPage({ year, mode = "live", refreshToken = 0 })
     URL.revokeObjectURL(url);
   };
 
-  const chronologicalLedger = useMemo(() => {
-    let runningBalance = 0;
-    let runningValue = 0;
-    let runningWac = 0;
-    return [...movements].sort((a, b) => String(a.documentDate || "").localeCompare(String(b.documentDate || ""))).map((row) => {
-      const isPurchase = [9, 609].includes(Number(row.documentType));
-      const inQty = !row.isSale ? Number(row.quantity || 0) : 0;
-      const outQty = row.isSale ? Number(row.quantity || 0) : 0;
-      const unitPrice = row.financeV2?.unitCostCurrencyExVat ?? row.unitCost ?? 0;
+  const officialWacReady = isOfficialWacReady({
+    inventorySource: data.inventorySource,
+    comparableYearWac: data.comparableYearWac,
+    rows: rawMovements,
+  });
 
-      if (inQty > 0) {
-        runningBalance += inQty;
-        runningValue += inQty * unitPrice;
-        runningWac = runningBalance > 0 ? runningValue / runningBalance : unitPrice;
-      } else if (outQty > 0) {
-        runningBalance -= outQty;
-        runningValue = Math.max(0, runningBalance * runningWac);
-      }
+  const chronologicalLedger = useMemo(() => buildChronologicalInventoryLedger({
+    movements,
+    officialWacReady,
+    currency: summary.currency,
+  }), [movements, officialWacReady, summary.currency]);
 
-      return {
-        id: row.id,
-        date: row.documentDate ? new Date(row.documentDate).toLocaleDateString("tr-TR") : "—",
-        kind: row.isSale ? "sale" : isPurchase ? "purchase" : "other",
-        kindLabel: row.isSale ? "Satış" : isPurchase ? "Alım" : "İade / Devir",
-        documentNo: `${row.documentType || ""}/${row.documentNo || ""}`,
-        depotCode: row.depotCode || "MRK",
-        inQty,
-        outQty,
-        runningBalance,
-        unitPrice,
-        runningWac,
-        runningValue,
-        currency: row.financeV2?.productCurrency || summary.currency || "EUR",
-        status: row.verificationStatus,
-        statusLabel: row.verificationStatus === "verified" ? "Doğrulandı" : "İnceleme",
-      };
-    });
-  }, [movements, summary.currency]);
+  const movementEvidence = data.inventorySource?.evidence || {};
+  const movementReviewCounts = movementEvidence.movementReviewCounts || {};
+  const costEvidenceSummary = movementEvidence.costEvidenceSummary || {};
+  const marginEvidenceSummary = movementEvidence.marginEvidenceSummary || {};
+  const excludedHistoricalReturnCount = Object.values(movementEvidence.excludedUnlinkedReturnYearCounts || {})
+    .reduce((sum, value) => sum + (Number(value) || 0), 0);
 
   return (
     <main className="page inventory-research-page" id="top">
@@ -385,6 +474,8 @@ export function InventoryResearchPage({ year, mode = "live", refreshToken = 0 })
               mode: data.mode,
               rows: data.rows,
               openingEvidenceDiagnostics: data.openingEvidenceDiagnostics,
+              inventorySource: data.inventorySource,
+              comparableYearWac: data.comparableYearWac,
             })}
           </span>
         </div>
@@ -491,7 +582,7 @@ export function InventoryResearchPage({ year, mode = "live", refreshToken = 0 })
         </section>
       )}
 
-      {data.mode === "unavailable" && getInventorySourceNotice(data.inventorySource) && (
+      {getInventorySourceNotice(data.inventorySource) && (
         <section className="panel inventory-source-warning" role="status" aria-label="Stok kaynağı uyarısı">
           <div className="control-section-head">
             <div>
@@ -500,6 +591,54 @@ export function InventoryResearchPage({ year, mode = "live", refreshToken = 0 })
             </div>
             <span className="evidence-state evidence-state--review"><IconAlertTriangle size={17} /> Resmî finansal hesap kapalı</span>
           </div>
+          {getUnlinkedReturnReasonLabels(data.inventorySource?.evidence?.movementUnlinkedReturnReasons).length > 0 && (
+            <div className="inventory-diagnostics-grid" aria-label="Eşleşmeyen satış iadesi nedenleri">
+              {getUnlinkedReturnReasonLabels(data.inventorySource.evidence.movementUnlinkedReturnReasons).map((item) => (
+                <span key={item.code}>
+                  {item.label} <strong>{integer.format(item.count)}</strong> satır
+                </span>
+              ))}
+            </div>
+          )}
+          {(Number(movementReviewCounts.excludedInvalidCostRows) > 0
+            || Number(movementReviewCounts.excludedNonMovementRows) > 0
+            || excludedHistoricalReturnCount > 0
+            || Number(movementReviewCounts.unlinkedReturnRows) > 0) && (
+            <div className="inventory-diagnostics-grid" aria-label="Hesap kapsamı dışı ve incelemedeki hareketler">
+              {Number(movementReviewCounts.excludedInvalidCostRows) > 0 && (
+                <span>Geçersiz net maliyet · hesap dışı <strong>{integer.format(Number(movementReviewCounts.excludedInvalidCostRows))}</strong> satır</span>
+              )}
+              {Number(movementReviewCounts.excludedNonMovementRows) > 0 && (
+                <span>Sıfır miktarlı ekonomik olmayan satır · hesap dışı <strong>{integer.format(Number(movementReviewCounts.excludedNonMovementRows))}</strong> satır</span>
+              )}
+              {excludedHistoricalReturnCount > 0 && (
+                <span>2026 öncesi eşleşmeyen satış iadesi · hesap dışı <strong>{integer.format(excludedHistoricalReturnCount)}</strong> satır</span>
+              )}
+              {Number(movementReviewCounts.unlinkedReturnRows) > 0 && (
+                <span>2026 eşleşmeyen satış iadesi · incelemede <strong>{integer.format(Number(movementReviewCounts.unlinkedReturnRows))}</strong> satır</span>
+              )}
+            </div>
+          )}
+        </section>
+      )}
+
+      {Number(costEvidenceSummary.candidateRows) > 0 && (
+        <section className="panel inventory-evidence-diagnostics" aria-label="Tarihsel maliyet ve marj kanıtı özeti">
+          <div className="control-section-head">
+            <div>
+              <h2>Tarihsel alım maliyeti ve marj kanıtı ayrımı</h2>
+              <p>Pozitif TUTAR−ISKONTO bulunan satırlar alım maliyeti olarak ayrıca ölçülür. Perakende fiyatı veya ürün dövizi yoksa yalnız marj kanıtı eksik sayılır; alım faturası yokmuş gibi gösterilmez.</p>
+            </div>
+            <span className="evidence-state evidence-state--review"><IconShieldCheck size={17} /> WAC kapalı</span>
+          </div>
+          <div className="inventory-diagnostics-grid">
+            <span>Alım/devir maliyet adayı <strong>{integer.format(Number(costEvidenceSummary.candidateRows || 0))}</strong> satır</span>
+            <span>TRY maliyet kanıtı bulunan <strong>{integer.format(Number(costEvidenceSummary.coveredRows || 0))}</strong> satır</span>
+            <span>Kaynak belge numarası bulunan <strong>{integer.format(Number(costEvidenceSummary.sourceDocumentRows || 0))}</strong> satır</span>
+            <span>Perakende/döviz kanıtı incelenecek <strong>{integer.format(Number(marginEvidenceSummary.reviewRows || 0))}</strong> satır</span>
+            <span>Etkilenen ürün <strong>{integer.format(Number(marginEvidenceSummary.affectedProductCount || 0))}</strong></span>
+          </div>
+          <small>Bu özet maliyetin bulunduğunu gösterir; tek başına ürün marjını veya resmî WAC uygunluğunu açmaz. Manuel marj kararı yalnız ayrı, onaylı yönetim kararıyla kullanılabilir.</small>
         </section>
       )}
 
@@ -573,8 +712,8 @@ export function InventoryResearchPage({ year, mode = "live", refreshToken = 0 })
               <p>{selected?.category || "CPM stok kartı ve nihai defter kanıtı"}</p>
             </div>
             <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-              <span className={summary.reviewCount ? "evidence-state evidence-state--review" : "evidence-state"}>
-                {summary.reviewCount ? <IconAlertTriangle size={17} /> : <IconCircleCheck size={17} />}
+              <span className="evidence-state evidence-state--review">
+                <IconAlertTriangle size={17} />
                 {getInventoryEvidenceLabel({ selected, reviewCount: summary.reviewCount })}
               </span>
               <button
@@ -613,22 +752,22 @@ export function InventoryResearchPage({ year, mode = "live", refreshToken = 0 })
             <article>
               <span className="slate"><IconFileInvoice size={22} /></span>
               <div>
-                <small>Son Döviz Birim Maliyeti</small>
+                <small>Aday Döviz Birim Maliyeti</small>
                 <strong>
                   {summary.latestUnitCostCurrency == null ? "—" : `${money.format(summary.latestUnitCostCurrency)} ${summary.currency}`}
                 </strong>
-                <p>Halkbank satış kuru ile</p>
+                <p>Belge + maliyet kanıtı; WAC'a dahil değil</p>
               </div>
             </article>
 
             <article>
               <span className="amber"><IconTrendingUp size={22} /></span>
               <div>
-                <small>Ürün Liste Brüt Marjı</small>
+                <small>Aday Ürün Liste Brüt Marjı</small>
                 <strong style={{ color: "var(--amber)" }}>
                   {summary.averageMarginPct == null ? "—" : percent(summary.averageMarginPct)}
                 </strong>
-                <p>{summary.observationCount} benzersiz fatura gözlemi</p>
+                <p>{summary.observationCount} maliyet kanıtlı fatura gözlemi · WAC kararı değil</p>
               </div>
             </article>
           </section>
@@ -638,7 +777,7 @@ export function InventoryResearchPage({ year, mode = "live", refreshToken = 0 })
             <div className="control-section-head">
               <div>
                 <h2>Fatura ve Stok Hareket Defteri</h2>
-                <p>{movements.length} hareket listeleniyor · Alım, satış ve iade kanıtları</p>
+                <p>{movements.length} hareket listeleniyor · API en fazla 200 satır döndürür; toplam/sayfa bilgisi yok. Tam muavin doğrulanmadı.</p>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                 <div className="segmented" role="group" aria-label="Görünüm biçimi">
@@ -675,12 +814,17 @@ export function InventoryResearchPage({ year, mode = "live", refreshToken = 0 })
             </div>
 
             {viewMode === "ledger" ? (
-              <LedgerView
-                transactions={chronologicalLedger}
-                productCurrency={summary.currency}
-                productCode={selected?.code}
-                productName={selected?.name}
-              />
+              <>
+                {!officialWacReady && (
+                  <p className="control-empty">WAC ve stok değeri: — · Resmî WAC kanıtı hazır değil; hareketler belge ve maliyet kanıtı olarak ayrı incelenir.</p>
+                )}
+                <LedgerView
+                  transactions={chronologicalLedger}
+                  productCurrency={summary.currency}
+                  productCode={selected?.code}
+                  productName={selected?.name}
+                />
+              </>
             ) : (
               <div className="table-scroll">
                 <table className="control-table">
@@ -690,8 +834,8 @@ export function InventoryResearchPage({ year, mode = "live", refreshToken = 0 })
                       <th>Hareket</th>
                       <th>Belge No</th>
                       <th>Miktar</th>
-                      <th>Birim Maliyet (TL)</th>
-                      <th>Döviz Maliyet</th>
+                      <th>Belge Maliyeti (TL)</th>
+                      <th>Maliyet Kanıtı (Döviz)</th>
                       <th>Liste Brüt Marjı</th>
                       <th>Alım Kanıtı</th>
                       <th>Halkbank Kuru</th>
@@ -722,9 +866,9 @@ export function InventoryResearchPage({ year, mode = "live", refreshToken = 0 })
                           <td>
                             <strong>{row.isSale ? "−" : "+"}{money.format(row.quantity || 0)}</strong>
                           </td>
-                          <td>{row.unitCost == null ? "—" : `${money.format(row.unitCost)} TL`}</td>
+                          <td>{!(hasCompleteInventoryCostEvidence(row) || hasPurchaseInvoiceEvidence(row)) ? "—" : `${money.format(row.unitCost)} TL`}</td>
                           <td>
-                            {row.financeV2?.unitCostCurrencyExVat == null
+                            {!hasCompleteInventoryCostEvidence(row)
                               ? "—"
                               : `${money.format(row.financeV2.unitCostCurrencyExVat)} ${row.financeV2.productCurrency || summary.currency}`}
                           </td>
@@ -757,7 +901,7 @@ export function InventoryResearchPage({ year, mode = "live", refreshToken = 0 })
                                   <span className={`audit-status audit-status--${row.verificationStatus || "review"}`}>
                                     {validation.document}
                                   </span>
-                                  <span className={`audit-status audit-status--${row.financeV2?.costStatus === "covered" ? "verified" : "review"}`}>
+                                  <span className={`audit-status audit-status--${hasCompleteInventoryCostEvidence(row) ? "verified" : hasPurchaseInvoiceEvidence(row) ? "configured" : "review"}`}>
                                     {validation.cost}
                                   </span>
                                 </div>

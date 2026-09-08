@@ -894,6 +894,11 @@ test("gerçek target loader kur setini aynı onay akışına taşır", async () 
   const service = createLedgerService({
     loadYear: async (year) => {
       const ledger = apiFixtureLedger();
+      ledger.inventorySource = {
+        status: "verified",
+        contractVersion: 1,
+        financialStatus: "ready",
+      };
       ledger.rows = ledger.rows.map((row) => ({
         ...row,
         documentDate: row.documentDate.replace(/^2026/, String(year)),

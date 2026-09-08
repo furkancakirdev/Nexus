@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  IconAdjustmentsHorizontal,
   IconAlertTriangle,
-  IconCalendar,
   IconCheck,
   IconChevronDown,
   IconChevronUp,
@@ -11,8 +9,6 @@ import {
   IconFish,
   IconInfoCircle,
   IconLock,
-  IconLogout,
-  IconMenu2,
   IconX,
 } from "@tabler/icons-react";
 import {
@@ -53,6 +49,7 @@ import {
   mergeMonthlyTargetPools,
 } from "../shared/departmentTargetView.mjs";
 import { normalizePilotEmployees } from "../shared/employeePolicy.mjs";
+import { NexusShell } from "./components/layout/NexusShell.jsx";
 
 const DEFAULT_APPEARANCE = { theme: "light", density: "comfortable", highContrast: false, reducedMotion: false, defaultPage: "summary" };
 
@@ -151,7 +148,7 @@ function LoginPage({ onLogin }) {
           <h1 id="login-title">Oturum açın</h1>
           <p>Finansal ve operasyonel verileri görmek için yetkili hesabınızla giriş yapın.</p>
         </div>
-        <form className="login-form" onSubmit={submit}>
+        <form className="login-form" onSubmit={submit} noValidate>
           <label>Kullanıcı adı<input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" required /></label>
           <label>Parola<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required /></label>
           {error && <p className="login-error" role="alert">{error}</p>}
@@ -506,6 +503,19 @@ export function App() {
   const sessionView = sessionViewFor(session);
   if (sessionView === "loading") return <main className="login-shell"><section className="login-card" aria-busy="true"><div className="login-brand"><IconFish size={30} stroke={1.6} /><span><strong>Marlin Nexus</strong><small>Yönetim Sistemi</small></span></div><p>Oturum kontrol ediliyor…</p></section></main>;
   if (sessionView === "login") return <LoginPage onLogin={(user) => setSession({ status: "authenticated", user })} />;
+  if (session.status === "authenticated" && !effectivePage) {
+    return (
+      <main className="login-shell">
+        <section className="login-card" role="alert">
+          <div className="login-brand"><IconLock size={30} stroke={1.6} /><span><strong>Marlin Nexus</strong><small>Yönetim Sistemi</small></span></div>
+          <div>
+            <h1>Erişilebilir modül bulunamadı</h1>
+            <p>Bu oturum için yönetim ekranı yetkisi tanımlı değil. Veri görünümü açılmadı.</p>
+          </div>
+        </section>
+      </main>
+    );
+  }
 
   const persistState = (nextSettings, nextEmployees, nextCostOverrides = costOverrides) => {
     return apiFetch("/api/app-state", {
@@ -561,37 +571,22 @@ export function App() {
   };
 
   return (
-    <div className={`app-shell density-${appearance.density}`}>
-      <header className="topbar">
-        <button className="mobile-menu" onClick={() => setMobileNavOpen((value) => !value)} aria-label="Menüyü aç" aria-expanded={mobileNavOpen}>
-          <IconMenu2 size={22} />
-        </button>
-        <a className="brand" href="#top" aria-label="Marlin Nexus Yönetim Sistemi">
-          <IconFish size={30} stroke={1.6} />
-          <span className="brand__copy"><strong>Marlin Nexus</strong><small>Yönetim Sistemi</small></span>
-        </a>
-        <nav className={mobileNavOpen ? "nav nav--open" : "nav"} aria-label="Ana menü">
-          {visibleNavItems.map((item) => (
-            <button
-              key={item.page}
-              className={activePage === item.page ? "nav__item nav__item--active" : "nav__item"}
-              onClick={() => {
-                navigate(item.page);
-              }}
-            >{item.label}</button>
-          ))}
-        </nav>
-        <label className="year-control">
-          <IconCalendar size={18} />
-          <select aria-label="Yıl" value={year} onChange={(event) => setYear(Number(event.target.value))}>
-            {[2024, 2025, 2026].map((item) => <option key={item}>{item}</option>)}
-          </select>
-          <IconChevronDown size={16} />
-        </label>
-        <button className="icon-button" onClick={()=>setAppearanceOpen(true)} aria-label="Görünüm ayarları"><IconAdjustmentsHorizontal size={19} /></button>
-        <button className="icon-button" onClick={signOut} aria-label="Çıkış yap"><IconLogout size={19} /></button>
-      </header>
-
+    <NexusShell
+      activePage={effectivePage}
+      navItems={visibleNavItems}
+      onNavigate={navigate}
+      year={year}
+      onYearChange={setYear}
+      onOpenAppearance={() => setAppearanceOpen(true)}
+      onSignOut={signOut}
+      user={session.user}
+      connection={connection}
+      mode={mode}
+      density={appearance.density}
+      mobileNavOpen={mobileNavOpen}
+      onMobileNavToggle={() => setMobileNavOpen((value) => !value)}
+      onMobileNavClose={() => setMobileNavOpen(false)}
+    >
       {appearanceOpen&&<div className="appearance-backdrop" onMouseDown={(event)=>event.target===event.currentTarget&&setAppearanceOpen(false)}><aside className="appearance-drawer" role="dialog" aria-modal="true" aria-labelledby="appearance-title"><div className="appearance-drawer__head"><div><p className="eyebrow">Arayüz tercihleri</p><h2 id="appearance-title">Görünüm Ayarları</h2></div><button className="modal-close" onClick={()=>setAppearanceOpen(false)} aria-label="Kapat"><IconX size={20}/></button></div><div className="appearance-fields"><label><span>Tema</span><select value={appearance.theme} onChange={(event)=>setAppearance({...appearance,theme:event.target.value})}><option value="light">Açık</option><option value="dark">Koyu</option></select></label><label><span>Ekran yoğunluğu</span><select value={appearance.density} onChange={(event)=>setAppearance({...appearance,density:event.target.value})}><option value="comfortable">Rahat</option><option value="compact">Kompakt</option></select></label><label><span>Başlangıç sayfası</span><select value={appearance.defaultPage} onChange={(event)=>setAppearance({...appearance,defaultPage:event.target.value})}><option value="summary">Genel Bakış</option><option value="sales">Satış Analizi</option><option value="departments">Departman Analizi</option><option value="audit">Denetim</option><option value="inventory">Stok</option><option value="ledger">Havuz</option><option value="settings">Ayarlar</option></select></label><label className="appearance-check"><span><strong>Yüksek kontrast</strong><small>Metin ve sınır ayrımını güçlendirir.</small></span><input type="checkbox" checked={appearance.highContrast} onChange={(event)=>setAppearance((current) => ({ ...current, highContrast: event.target.checked }))}/></label><label className="appearance-check"><span><strong>Hareketi azalt</strong><small>Grafik ve geçiş animasyonlarını kapatır.</small></span><input type="checkbox" checked={appearance.reducedMotion} onChange={(event)=>setAppearance((current) => ({ ...current, reducedMotion: event.target.checked }))}/></label></div><div className="employee-modal__actions"><button className="secondary-button" onClick={()=>setAppearance(DEFAULT_APPEARANCE)}>Varsayılana dön</button><button className="primary-action" onClick={()=>setAppearanceOpen(false)}><IconCheck size={17}/> Tamam</button></div></aside></div>}
 
       {effectivePage === "summary" ? (
@@ -803,6 +798,6 @@ export function App() {
           </section>
         </div>
       )}
-    </div>
+    </NexusShell>
   );
 }

@@ -18,6 +18,26 @@ const JANUARY_RATE_SET = buildRateSet(buildExchangeRateIndex([
   },
 ]), "2026-01-31");
 
+const FEBRUARY_RATE_SET = buildRateSet(buildExchangeRateIndex([
+  {
+    rateDate: "2026-02-28",
+    rateCurrency: "EUR",
+    halkbankBuyingRate: 41,
+    halkbankSellingRate: 41.2,
+    exchangeSourceId: "DVZHAR-EUR-2",
+  },
+]), "2026-02-28");
+
+const APRIL_RATE_SET = buildRateSet(buildExchangeRateIndex([
+  {
+    rateDate: "2026-04-30",
+    rateCurrency: "EUR",
+    halkbankBuyingRate: 43,
+    halkbankSellingRate: 43.2,
+    exchangeSourceId: "DVZHAR-EUR-4",
+  },
+]), "2026-04-30");
+
 async function withApi({ loadDepartmentTargets }, run) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "marlin-approval-"));
   const store = createStateStore(path.join(directory, "app-state.json"));
@@ -47,6 +67,14 @@ function targetPayload(version = "ledger-v1", januaryPool = 30) {
     ledgerVersion: version,
     previousLedgerVersion: "ledger-2025-v1",
     generatedAt: "2026-07-28T11:59:00.000Z",
+    previousGeneratedAt: "2025-12-31T11:59:00.000Z",
+    mode: "live",
+    readOnly: true,
+    inventorySource: {
+      status: "verified",
+      contractVersion: 1,
+      financialStatus: "ready",
+    },
     exchangeRateSets: { "1": JANUARY_RATE_SET },
     rows: [
       {
@@ -92,7 +120,14 @@ test("aylık onay parasal istemci alanlarını yok sayıp sunucu snapshotı üre
     const response = await fetch(`${baseUrl}/api/approvals/2026/1`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pool: 999_999, approvedBy: "İstemci" }),
+      body: JSON.stringify({
+        pool: 999_999,
+        approvedBy: "İstemci",
+        inventorySource: { status: "verified", financialStatus: "ready" },
+        mode: "live",
+        readOnly: true,
+        ledgerVersion: "client-ledger",
+      }),
     });
     const payload = await response.json();
 
@@ -168,6 +203,22 @@ test("eksik Halkbank EUR kuru olan yeni onayı kaydetmez", async () => {
   });
 });
 
+test("geçersiz kur snapshotı yeni onay veya audit olayı yazmaz", async () => {
+  const invalidTargets = targetPayload();
+  invalidTargets.exchangeRateSets["1"] = { bank: "HALKBANK" };
+
+  await withApi({
+    loadDepartmentTargets: async () => invalidTargets,
+  }, async (baseUrl, store) => {
+    const response = await fetch(`${baseUrl}/api/approvals/2026/1`, { method: "PUT" });
+
+    assert.equal(response.status, 409);
+    const state = await store.read();
+    assert.deepEqual(state.approvals, {});
+    assert.deepEqual(state.auditEvents, []);
+  });
+});
+
 test("legacy onayda kur kanıtı durumunu açıkça ayırır", async () => {
   await withApi({
     loadDepartmentTargets: async () => targetPayload(),
@@ -212,6 +263,71 @@ test("bozuk v2 onayda kur kanıtını geçersiz olarak gösterir", async () => {
       `${baseUrl}/api/approvals?year=2026`,
     ).then((response) => response.json());
     assert.equal(approvals.approvals["1"].rateEvidenceStatus, "invalid");
+  });
+});
+
+test("onay listesi legacy, frozen, invalid ve stale durumlarını ayrı taşır", async () => {
+  const targets = targetPayload();
+  targets.rows.push(
+    ...targets.rows.map((row) => ({
+      ...row,
+      month: 4,
+      actual: row.actual + 10,
+      difference: row.difference + 10,
+    })),
+  );
+  targets.exchangeRateSets["4"] = APRIL_RATE_SET;
+
+  await withApi({
+    loadDepartmentTargets: async () => targets,
+  }, async (baseUrl, store) => {
+    await store.approve({
+      year: 2026,
+      month: 1,
+      snapshot: { year: 2026, month: 1, snapshotHash: "legacy-hash" },
+    });
+    await store.approve({
+      year: 2026,
+      month: 2,
+      snapshot: {
+        year: 2026,
+        month: 2,
+        snapshotSchemaVersion: 2,
+        snapshotHash: "frozen-hash",
+        exchangeRateSet: FEBRUARY_RATE_SET,
+      },
+    });
+    await store.approve({
+      year: 2026,
+      month: 3,
+      snapshot: {
+        year: 2026,
+        month: 3,
+        snapshotSchemaVersion: 2,
+        snapshotHash: "invalid-hash",
+        exchangeRateSet: { bank: "HALKBANK" },
+      },
+    });
+    await store.approve({
+      year: 2026,
+      month: 4,
+      snapshot: {
+        year: 2026,
+        month: 4,
+        snapshotSchemaVersion: 2,
+        snapshotHash: "stale-hash",
+        exchangeRateSet: APRIL_RATE_SET,
+      },
+    });
+
+    const payload = await fetch(`${baseUrl}/api/approvals?year=2026`).then((response) => response.json());
+
+    assert.equal(payload.approvals["1"].rateEvidenceStatus, "legacy-month-end-fallback");
+    assert.equal(payload.approvals["2"].rateEvidenceStatus, "frozen");
+    assert.equal(payload.approvals["3"].rateEvidenceStatus, "invalid");
+    assert.equal(payload.approvals["4"].rateEvidenceStatus, "frozen");
+    assert.equal(payload.approvals["4"].stale, true);
+    assert.match(payload.approvals["4"].currentSnapshotHash, /^[a-f0-9]{64}$/);
   });
 });
 
@@ -321,4 +437,98 @@ test("2026 öncesi ve bozuk dönemlere onay yazmaz", async () => {
       assert.equal(response.status, 400);
     }
   });
+});
+
+test("inventory source verified değilse onay ve audit olayı yazmaz", async () => {
+  const invalidTargets = targetPayload();
+  invalidTargets.inventorySource.status = "candidate";
+
+  await withApi({
+    loadDepartmentTargets: async () => invalidTargets,
+  }, async (baseUrl, store) => {
+    const response = await fetch(`${baseUrl}/api/approvals/2026/1`, { method: "PUT" });
+
+    assert.equal(response.status, 409);
+    const state = await store.read();
+    assert.deepEqual(state.approvals, {});
+    assert.deepEqual(state.auditEvents, []);
+  });
+});
+
+test("mevcut onay güncel kaynak kanıtı bozulunca GET yanıtında güncel değildir", async () => {
+  let targets = targetPayload();
+
+  await withApi({
+    loadDepartmentTargets: async () => targets,
+  }, async (baseUrl) => {
+    const saved = await fetch(`${baseUrl}/api/approvals/2026/1`, { method: "PUT" });
+    assert.equal(saved.status, 200);
+
+    targets = targetPayload();
+    targets.inventorySource.status = "candidate";
+
+    const response = await fetch(`${baseUrl}/api/approvals?year=2026`);
+    const payload = await response.json();
+    assert.equal(payload.approvals["1"].stale, true);
+  });
+});
+
+test("official financial status ready değilse onay ve audit olayı yazmaz", async () => {
+  const invalidTargets = targetPayload();
+  invalidTargets.inventorySource.financialStatus = "blocked";
+
+  await withApi({
+    loadDepartmentTargets: async () => invalidTargets,
+  }, async (baseUrl, store) => {
+    const response = await fetch(`${baseUrl}/api/approvals/2026/1`, { method: "PUT" });
+
+    assert.equal(response.status, 409);
+    const state = await store.read();
+    assert.deepEqual(state.approvals, {});
+    assert.deepEqual(state.auditEvents, []);
+  });
+});
+
+test("başarısız yeni onay mevcut eski onayı ve audit olayını silmez", async () => {
+  let targets = targetPayload();
+  await withApi({
+    loadDepartmentTargets: async () => targets,
+  }, async (baseUrl, store) => {
+    const savedResponse = await fetch(`${baseUrl}/api/approvals/2026/1`, { method: "PUT" });
+    assert.equal(savedResponse.status, 200);
+    const saved = (await store.read()).approvals["2026"]["1"];
+
+    targets = targetPayload();
+    targets.inventorySource.status = "candidate";
+    const rejectedResponse = await fetch(`${baseUrl}/api/approvals/2026/1`, { method: "PUT" });
+
+    assert.equal(rejectedResponse.status, 409);
+    const state = await store.read();
+    assert.deepEqual(state.approvals["2026"]["1"], saved);
+    assert.equal(state.auditEvents.length, 1);
+    assert.equal(state.auditEvents[0].action, "approval-approved");
+  });
+});
+
+test("geçersiz ledger veya hedef snapshotı onay ve audit olayı yazmaz", async () => {
+  for (const mutate of [
+    (payload) => { delete payload.ledgerVersion; },
+    (payload) => { payload.mode = "unavailable"; },
+    (payload) => { payload.readOnly = false; },
+    (payload) => { payload.rows = []; },
+  ]) {
+    const invalidTargets = targetPayload();
+    mutate(invalidTargets);
+
+    await withApi({
+      loadDepartmentTargets: async () => invalidTargets,
+    }, async (baseUrl, store) => {
+      const response = await fetch(`${baseUrl}/api/approvals/2026/1`, { method: "PUT" });
+
+      assert.equal(response.status, 409);
+      const state = await store.read();
+      assert.deepEqual(state.approvals, {});
+      assert.deepEqual(state.auditEvents, []);
+    });
+  }
 });

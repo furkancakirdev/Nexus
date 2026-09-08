@@ -963,6 +963,43 @@ function validYear(value) {
   return Number.isInteger(year) && year >= 2023 && year <= 2030 ? year : null;
 }
 
+export function validateDepartmentTargetSnapshot(targets, year) {
+  if (!targets || typeof targets !== "object" || Array.isArray(targets)) {
+    throw new TypeError("Departman hedef snapshotı geçersiz.");
+  }
+  if (Number(targets.year) !== Number(year)) {
+    throw new RangeError("Departman hedef snapshotı yanlış yıla ait.");
+  }
+  if (targets.mode !== "live" || targets.readOnly !== true) {
+    throw new RangeError("Canlı ve salt-okunur hedef snapshotı zorunludur.");
+  }
+  if (typeof targets.ledgerVersion !== "string" || !targets.ledgerVersion.trim()) {
+    throw new RangeError("Ledger snapshot sürümü geçersiz.");
+  }
+  if (typeof targets.previousLedgerVersion !== "string" || !targets.previousLedgerVersion.trim()) {
+    throw new RangeError("Önceki ledger snapshot sürümü geçersiz.");
+  }
+  for (const [field, value] of [
+    ["generatedAt", targets.generatedAt],
+    ["previousGeneratedAt", targets.previousGeneratedAt],
+  ]) {
+    if (typeof value !== "string" || !value.trim() || !Number.isFinite(Date.parse(value))) {
+      throw new RangeError(`${field} geçersiz.`);
+    }
+  }
+  const inventorySource = targets.inventorySource;
+  if (!inventorySource || typeof inventorySource !== "object" || Array.isArray(inventorySource)) {
+    throw new RangeError("Inventory source kanıtı eksik.");
+  }
+  if (inventorySource.status !== "verified") {
+    throw new RangeError("Inventory source doğrulanmamış.");
+  }
+  if (inventorySource.financialStatus !== "ready") {
+    throw new RangeError("Resmi finansal durum hazır değil.");
+  }
+  return targets;
+}
+
 function targetSourceRows(analysis) {
   return (analysis?.months || []).flatMap((month) => (
     ["service", "parts"].map((department) => ({

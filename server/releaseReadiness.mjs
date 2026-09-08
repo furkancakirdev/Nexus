@@ -23,7 +23,9 @@ export function evaluateReleaseReadiness({
     blockers.push("source-provenance-unverified");
   }
   if (inventorySource?.status !== "verified") blockers.push("inventory-source-not-verified");
-  if (inventorySource?.financialStatus === "blocked") blockers.push("official-cost-coverage-insufficient");
+  if (inventorySource && inventorySource.financialStatus !== "ready") {
+    blockers.push("official-cost-coverage-insufficient");
+  }
   if (inventorySource?.evidence?.openingEvidenceStatus === "ambiguous") {
     blockers.push("inventory-opening-evidence-ambiguous");
   }

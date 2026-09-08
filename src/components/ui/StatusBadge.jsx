@@ -14,10 +14,22 @@ export function StatusBadge({ status, label, variant, size = "md", children }) {
   );
 
   const displayText = label || children || status || "";
+  const marker = {
+    success: "✓",
+    warning: "!",
+    danger: "×",
+    info: "i",
+    neutral: "•",
+  }[resolvedVariant] || "•";
 
   return (
-    <span className={`nexus-badge nexus-badge--${resolvedVariant} nexus-badge--${size}`}>
-      <span className="nexus-badge__dot" />
+    <span
+      className={`nexus-badge nexus-badge--${resolvedVariant} nexus-badge--${size}`}
+      role="status"
+      aria-label={String(displayText)}
+      data-status={status || resolvedVariant}
+    >
+      <span className="nexus-badge__dot" aria-hidden="true">{marker}</span>
       <span className="nexus-badge__label">{displayText}</span>
     </span>
   );

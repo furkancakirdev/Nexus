@@ -120,11 +120,23 @@ test("Stok hareketi belge kanıtı ile finansal maliyet doğrulamasını ayrı g
   assert.deepEqual(inventory.getFinancialValidationLabel({
     verificationStatus: "verified",
     financeV2: { costStatus: "review" },
-  }), { document: "Belge: Doğrulandı", cost: "Maliyet: İnceleme gerekli" });
+  }), { document: "Belge: Doğrulandı", cost: "Maliyet kanıtı: İnceleme gerekli" });
   assert.deepEqual(inventory.getFinancialValidationLabel({
     verificationStatus: "verified",
-    financeV2: { costStatus: "covered" },
-  }), { document: "Belge: Doğrulandı", cost: "Maliyet: Kapsandı" });
+    unitCost: 100,
+    financeV2: { costStatus: "covered", unitCostCurrencyExVat: 2.5 },
+  }), { document: "Belge: Doğrulandı", cost: "Maliyet kanıtı: Kapsandı" });
+  assert.equal(inventory.hasPurchaseInvoiceEvidence({
+    purchaseNo: "DNP2023000001985",
+    purchaseQuantity: 1,
+    purchaseNetAmount: 3064.59,
+  }), true);
+  assert.deepEqual(inventory.getFinancialValidationLabel({
+    verificationStatus: "verified",
+    purchaseNo: "DNP2023000001985",
+    purchaseQuantity: 1,
+    purchaseNetAmount: 3064.59,
+  }), { document: "Belge: Doğrulandı", cost: "Alım faturası bulundu · perakende/döviz kanıtı eksik" });
 });
 
 test("doğrulanmamış stok kaynağı araştırma verisini resmi WAC'tan ayırır", async (t) => {
@@ -143,6 +155,10 @@ test("doğrulanmamış stok kaynağı araştırma verisini resmi WAC'tan ayırı
     rows: [],
     openingEvidenceDiagnostics: { status: "available" },
   }), "CPM aday araştırması · WAC kapalı");
+  assert.deepEqual(inventory.getInventorySourceNotice({ status: "verified", financialStatus: "blocked" }), {
+    title: "Resmî WAC/maliyet kanıtı hazır değil",
+    message: "Aşağıdaki satırlar yalnızca denetim araştırmasıdır; resmi WAC, maliyet ve kâr havuzuna dahil değildir.",
+  });
   assert.equal(inventory.getInventorySourceBadge({ mode: "unavailable", rows: [] }), "Kaynak kullanılamıyor");
   assert.equal(inventory.getInventoryEmptyStateLabel({ movementLoadTimedOut: true }), "CPM hareket defteri yanıt vermedi; aday açılış kanıtı aşağıda.");
   assert.equal(inventory.getInventoryEmptyStateLabel({ openingEvidenceDiagnostics: { status: "available" } }), "Hareket defteri satırı yok; aday açılış kanıtı aşağıda.");
@@ -183,13 +199,107 @@ test("doğrulanmamış stok kaynağı araştırma verisini resmi WAC'tan ayırı
       "Maliyet alanlarının anlamı ve kaynağı doğrulanmadı",
     ],
   );
+  assert.deepEqual(
+    inventory.getUnlinkedReturnReasonLabels({
+      "source-lineage-not-collected": 7,
+      "source-line-not-found": 2,
+    }),
+    [
+      { code: "source-lineage-not-collected", count: 7, label: "Kaynak ara belge zinciri tamamlanamadı" },
+      { code: "source-line-not-found", count: 2, label: "Kaynak satır numarası bulunamadı" },
+    ],
+  );
   assert.equal(inventory.buildOpeningEvidenceUrl(2026, 20), "/api/research/inventory-opening-evidence?year=2026&sampleLimit=20");
   assert.match(await readFile(resolve(process.cwd(), "src/InventoryResearchPage.jsx"), "utf8"), /current\.openingEvidenceDiagnostics/);
   assert.match(await readFile(resolve(process.cwd(), "src/InventoryResearchPage.jsx"), "utf8"), /Aday CPM kaynak nüfusu/);
   assert.match(await readFile(resolve(process.cwd(), "src/InventoryResearchPage.jsx"), "utf8"), /Kaynak nüfusu eşleşme özeti/);
   assert.match(await readFile(resolve(process.cwd(), "src/InventoryResearchPage.jsx"), "utf8"), /Satış örtüşmesi/);
   assert.match(await readFile(resolve(process.cwd(), "src/InventoryResearchPage.jsx"), "utf8"), /Aday araştırma durumu/);
+  assert.match(await readFile(resolve(process.cwd(), "src/InventoryResearchPage.jsx"), "utf8"), /Geçersiz net maliyet · hesap dışı/);
+  assert.match(await readFile(resolve(process.cwd(), "src/InventoryResearchPage.jsx"), "utf8"), /2026 öncesi eşleşmeyen satış iadesi/);
   assert.match(await readFile(resolve(process.cwd(), "src/styles.css"), "utf8"), /\.inventory-diagnostics-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(auto-fit/);
+});
+
+test("inventory official WAC gate fails closed for ready-but-ineligible comparable WAC", async (t) => {
+  const vite = await createServer({ configFile: resolve(process.cwd(), "vite.config.mjs") });
+  t.after(() => vite.close());
+  const inventory = await vite.ssrLoadModule("/src/InventoryResearchPage.jsx");
+  const validRow = {
+    unitCost: 100,
+    financeV2: { costStatus: "covered", unitCostCurrencyExVat: 2.5 },
+  };
+  const readySource = { status: "verified", financialStatus: "ready" };
+
+  assert.equal(inventory.isOfficialWacReady({
+    inventorySource: readySource,
+    comparableYearWac: { eligibleForOfficialWac: false },
+    rows: [validRow],
+  }), false);
+  assert.equal(inventory.isOfficialWacReady({
+    inventorySource: readySource,
+    comparableYearWac: { eligibleForOfficialWac: true },
+    rows: [validRow],
+  }), true);
+  assert.equal(inventory.getInventorySourceBadge({
+    mode: "live",
+    inventorySource: readySource,
+    comparableYearWac: { eligibleForOfficialWac: false },
+  }), "CPM canlı · WAC kapalı");
+});
+
+test("inventory official WAC gate rejects missing row cost evidence and never emits official values", async (t) => {
+  const vite = await createServer({ configFile: resolve(process.cwd(), "vite.config.mjs") });
+  t.after(() => vite.close());
+  const inventory = await vite.ssrLoadModule("/src/InventoryResearchPage.jsx");
+  const readySource = { status: "verified", financialStatus: "ready" };
+  const eligibleWac = { eligibleForOfficialWac: true };
+  const incompleteRows = [{
+    id: "purchase-1",
+    documentDate: "2026-01-01",
+    documentType: 9,
+    isSale: false,
+    quantity: 4,
+    unitCost: null,
+    financeV2: { costStatus: "covered", unitCostCurrencyExVat: null },
+  }];
+
+  assert.equal(inventory.isOfficialWacReady({
+    inventorySource: readySource,
+    comparableYearWac: eligibleWac,
+    rows: incompleteRows,
+  }), false);
+  assert.equal(inventory.getInventorySourceBadge({
+    mode: "live",
+    inventorySource: readySource,
+    comparableYearWac: eligibleWac,
+    rows: incompleteRows,
+  }), "CPM canlı · WAC kapalı");
+  const ledger = inventory.buildChronologicalInventoryLedger({
+    movements: incompleteRows,
+    officialWacReady: true,
+    currency: "EUR",
+  });
+  assert.equal(ledger[0].runningBalance, 4);
+  assert.equal(ledger[0].unitPrice, null);
+  assert.equal(ledger[0].runningWac, null);
+  assert.equal(ledger[0].runningValue, null);
+});
+
+test("inventory covered status does not hide null or non-finite cost fields", async (t) => {
+  const vite = await createServer({ configFile: resolve(process.cwd(), "vite.config.mjs") });
+  t.after(() => vite.close());
+  const inventory = await vite.ssrLoadModule("/src/InventoryResearchPage.jsx");
+
+  for (const row of [
+    { unitCost: null, financeV2: { costStatus: "covered", unitCostCurrencyExVat: null } },
+    { unitCost: Number.NaN, financeV2: { costStatus: "covered", unitCostCurrencyExVat: 2.5 } },
+  ]) {
+    assert.equal(inventory.hasCompleteInventoryCostEvidence(row), false);
+    assert.deepEqual(inventory.getFinancialValidationLabel({ verificationStatus: "verified", ...row }), {
+      document: "Belge: Doğrulandı",
+      cost: "Maliyet kanıtı: İnceleme gerekli",
+    });
+  }
 });
 
 test("Departman uzlaşma farkının TRY tabanını açıkça etiketler", async (t) => {
@@ -242,10 +352,10 @@ test("finansal UI eksik kanıtı tahmini maliyet veya ham kârla doldurmaz", asy
   assert.match(summarySource, /const canonicalReady = canonicalMetric\?\.status === "TAMAM"/);
   assert.match(summarySource, /const totalProfitTry = canonicalProfit \?\? null/);
   assert.match(summarySource, /cost: eurCostComplete \? sumField\(reportRows, "cost"\) : null/);
-  assert.match(departmentSource, /selectedCanonicalMetric = projectCanonicalMetric\(selectedMetric\?\.canonicalMetric/);
+  assert.match(departmentSource, /selectedEurMetric = projectDepartmentEurMetric\(selectedMetric\)/);
   assert.match(departmentSource, /selectedProfit != null/);
   assert.match(departmentSource, /item\.profit == null \? ""/);
-  assert.match(departmentSource, /className=\{profitTone\(row\.eurEquivalent\?\.profit\)\}/);
+  assert.match(departmentSource, /className=\{profitTone\(eur\.profit\)\}/);
 });
 
 test("finansal UI mixed CPM/TCMB kur kaynağını Halkbank-only diye göstermemeli", async () => {
@@ -289,10 +399,12 @@ test("critical light-theme panels keep readable interactive text in dark mode", 
 
 test("live shell exposes logout and preserves independent appearance toggles", async () => {
   const appSource = await source("src/App.jsx");
+  const shellSource = await source("src/components/layout/NexusShell.jsx");
 
   assert.match(appSource, /apiFetch\("\/api\/session\/logout"/);
-  assert.match(appSource, /IconLogout/);
-  assert.match(appSource, /aria-label="Çıkış yap"/);
+  assert.match(appSource, /signOut/);
+  assert.match(shellSource, /IconLogout/);
+  assert.match(shellSource, /aria-label="Çıkış yap"/);
   assert.match(appSource, /setAppearance\(\(current\) => \(\{ \.\.\.current, highContrast: event\.target\.checked \}\)\)/);
   assert.match(appSource, /setAppearance\(\(current\) => \(\{ \.\.\.current, reducedMotion: event\.target\.checked \}\)\)/);
 });
@@ -355,8 +467,8 @@ test("inventory evidence label does not claim completion without a selected prod
   const inventory = await vite.ssrLoadModule("/src/InventoryResearchPage.jsx");
 
   assert.equal(inventory.getInventoryEvidenceLabel({ selected: null, reviewCount: 0 }), "Ürün seçilmedi");
-  assert.equal(inventory.getInventoryEvidenceLabel({ selected: { code: "P-1" }, reviewCount: 0 }), "Kanıt zinciri tamam");
-  assert.equal(inventory.getInventoryEvidenceLabel({ selected: { code: "P-1" }, reviewCount: 2 }), "2 kanıt incelenecek");
+  assert.equal(inventory.getInventoryEvidenceLabel({ selected: { code: "P-1" }, reviewCount: 0 }), "Belge ve maliyet kanıtı ayrı · Tam muavin doğrulanmadı");
+  assert.equal(inventory.getInventoryEvidenceLabel({ selected: { code: "P-1" }, reviewCount: 2 }), "2 maliyet kanıtı incelenecek · Tam muavin doğrulanmadı");
 });
 
 test("Task 3 charts render semantic legends outside image wrappers and consume spacing classes", async (t) => {
@@ -466,6 +578,14 @@ test("authenticated navigation follows capability boundaries and guards direct r
   assert.equal(gate.firstAccessiblePage(operational, "summary"), "inventory");
 });
 
+test("authenticated sessions without an accessible module fail closed before shell rendering", async () => {
+  const appSource = await source("src/App.jsx");
+
+  assert.match(appSource, /session\.status === "authenticated" && !effectivePage/);
+  assert.match(appSource, /Erişilebilir modül bulunamadı/);
+  assert.match(appSource, /Veri görünümü açılmadı/);
+});
+
 test("overview response policy never substitutes pilot finance data for blocked or empty responses", async (t) => {
   const vite = await createServer({ configFile: resolve(process.cwd(), "vite.config.mjs") });
   t.after(() => vite.close());
@@ -518,8 +638,7 @@ test("Department financial subviews render only canonical EUR projections", asyn
   const departmentSource = await source("src/DepartmentAnalysisPage.jsx");
   const reportsSource = await source("src/ReportsPage.jsx");
 
-  assert.match(departmentSource, /formatEur\(item\.eurEquivalent\?\.netSales\)/);
-  assert.match(departmentSource, /formatEur\(row\.eurEquivalent\?\.netSales\)/);
+  assert.match(departmentSource, /formatEur\(eur\.netSales\)/);
   assert.match(departmentSource, /dataKey: "merkezEur"/);
   assert.doesNotMatch(departmentSource, /formatMoney\(item\.netSales\)/);
   assert.doesNotMatch(departmentSource, /formatMoney\(row\.(netSales|cost|profit)\)/);

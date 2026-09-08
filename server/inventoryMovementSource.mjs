@@ -1,4 +1,6 @@
 const MOVEMENT_KINDS = new Set(["opening", "purchase", "purchaseReturn", "sale", "saleReturn"]);
+const CPM_LINEAGE_DOCUMENT_TYPES = new Set([13, 14, 15, 64]);
+const CPM_TERMINAL_SALE_TYPES = new Set([17, 85, 91]);
 
 function text(value) {
   return value === null || value === undefined ? "" : String(value).trim();
@@ -22,6 +24,12 @@ function positiveNumber(value, label) {
   return number;
 }
 
+function finiteNumberOrNull(value) {
+  if (value === null || value === undefined || String(value).trim() === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
 function movementKind(value) {
   const normalized = text(value);
   if (MOVEMENT_KINDS.has(normalized)) return normalized;
@@ -30,6 +38,10 @@ function movementKind(value) {
 }
 
 const CPM_DOCUMENT_TYPE_KINDS = Object.freeze({
+  13: "lineage",
+  14: "lineage",
+  15: "lineage",
+  64: "lineage",
   81: "opening",
   9: "purchase",
   609: "purchase",
@@ -45,6 +57,7 @@ export function summarizeCpmMovementCandidates({ rows = [] } = {}) {
   const kindCounts = {};
   const unmappedDocumentTypes = new Set();
   let mappedRowCount = 0;
+  let lineageRowCount = 0;
   for (const row of rows) {
     const documentType = Number(row?.documentType ?? row?.EVRAKTIP);
     const kind = CPM_DOCUMENT_TYPE_KINDS[documentType];
@@ -53,6 +66,7 @@ export function summarizeCpmMovementCandidates({ rows = [] } = {}) {
       continue;
     }
     mappedRowCount += 1;
+    if (kind === "lineage") lineageRowCount += 1;
     kindCounts[kind] = (kindCounts[kind] || 0) + 1;
   }
   const unmapped = [...unmappedDocumentTypes].sort((left, right) => left - right);
@@ -60,6 +74,8 @@ export function summarizeCpmMovementCandidates({ rows = [] } = {}) {
     status: "candidate",
     rowCount: rows.length,
     mappedRowCount,
+    movementRowCount: mappedRowCount - lineageRowCount,
+    lineageRowCount,
     kindCounts,
     unmappedDocumentTypes: unmapped,
     reviewReason: unmapped.length ? "movement-kind-unverified" : "movement-source-not-verified",
@@ -134,21 +150,82 @@ function movementDocumentKey(row, { includeLine = true } = {}) {
   return `${documentType}|${documentNumber}|${productCode}|${includeLine ? lineNumber : ""}`;
 }
 
-function sourceSaleIdForReturn(row, rowsByDocumentKey) {
-  const sourceType = Number(row?.sourceDocumentType);
-  const sourceNumber = text(row?.sourceDocumentNumber);
-  const sourceLine = text(row?.sourceLineNumber);
-  if (!CPM_DOCUMENT_TYPE_KINDS[sourceType] || ![17, 85, 91].includes(sourceType)
-    || !sourceNumber) return null;
-  const productCode = text(row?.productCode);
+function sourceReference(row) {
+  const sourceTypeText = text(row?.sourceDocumentType ?? row?.sourceDocumentTypeCode);
+  const sourceType = Number(row?.sourceDocumentType ?? row?.sourceDocumentTypeCode);
+  const sourceNumber = text(row?.sourceDocumentNumber ?? row?.sourceDocumentNo);
+  const sourceLine = text(row?.sourceLineNumber ?? row?.sourceLineNo) === "0"
+    ? ""
+    : text(row?.sourceLineNumber ?? row?.sourceLineNo);
+  return { sourceTypeText, sourceType, sourceNumber, sourceLine };
+}
+
+function uniqueSourceRows(rows = []) {
+  const byId = new Map();
+  for (const row of rows) {
+    const id = text(row?.id);
+    if (!id || !byId.has(id)) byId.set(id || `${byId.size}`, row);
+  }
+  return [...byId.values()];
+}
+
+function sourceRowsForReference({ sourceType, sourceNumber, productCode, sourceLine }, rowsByDocumentKey) {
   const exactKey = `${sourceType}|${sourceNumber}|${productCode}|${sourceLine}`;
-  const exact = rowsByDocumentKey.get(exactKey) || [];
-  if (exact.length === 1) return exact[0].id;
-  if (sourceLine) return null;
+  const exact = uniqueSourceRows(rowsByDocumentKey.get(exactKey) || []);
+  if (sourceLine) return { rows: exact, lineScoped: true };
   const documentMatches = [...rowsByDocumentKey.entries()]
     .filter(([key]) => key.startsWith(`${sourceType}|${sourceNumber}|${productCode}|`))
     .flatMap(([, matches]) => matches);
-  return documentMatches.length === 1 ? documentMatches[0].id : null;
+  return { rows: uniqueSourceRows(documentMatches), lineScoped: false };
+}
+
+function sourceSaleResolutionForReturn(row, rowsByDocumentKey, visited = new Set()) {
+  const { sourceTypeText, sourceType, sourceNumber, sourceLine } = sourceReference(row);
+  if (!sourceTypeText || !Number.isFinite(sourceType)) return { id: null, reason: "missing-source-document-type" };
+  if (!sourceNumber) return { id: null, reason: "missing-source-document-number" };
+  const referenceKey = `${sourceType}|${sourceNumber}|${text(row?.productCode)}|${sourceLine}`;
+  if (visited.has(referenceKey)) return { id: null, reason: "source-lineage-cycle" };
+  const nextVisited = new Set(visited).add(referenceKey);
+  if (!CPM_TERMINAL_SALE_TYPES.has(sourceType) && !CPM_LINEAGE_DOCUMENT_TYPES.has(sourceType)) {
+    return {
+      id: null,
+      reason: "unsupported-source-document-type",
+    };
+  }
+  const productCode = text(row?.productCode);
+  const { rows: matches, lineScoped } = sourceRowsForReference(
+    { sourceType, sourceNumber, productCode, sourceLine },
+    rowsByDocumentKey,
+  );
+  if (matches.length === 0) {
+    return {
+      id: null,
+      reason: lineScoped ? "source-line-not-found" : "source-document-not-found",
+    };
+  }
+  if (CPM_TERMINAL_SALE_TYPES.has(sourceType)) {
+    const ids = [...new Set(matches.map((candidate) => text(candidate?.id)).filter(Boolean))];
+    if (ids.length === 1) return { id: ids[0], reason: null };
+    return { id: null, reason: lineScoped ? "ambiguous-source-line" : "ambiguous-source-document" };
+  }
+
+  const terminalIds = new Set();
+  let firstReason = null;
+  for (const candidate of matches) {
+    const resolution = sourceSaleResolutionForReturn({
+      productCode,
+      sourceDocumentType: candidate.sourceDocumentType,
+      sourceDocumentNumber: candidate.sourceDocumentNumber,
+      sourceLineNumber: candidate.sourceLineNumber,
+    }, rowsByDocumentKey, nextVisited);
+    if (resolution.id) terminalIds.add(resolution.id);
+    else if (!firstReason) firstReason = resolution.reason;
+  }
+  if (terminalIds.size === 1) return { id: [...terminalIds][0], reason: null };
+  if (terminalIds.size > 1 || matches.length > 1) {
+    return { id: null, reason: lineScoped ? "ambiguous-source-line" : "ambiguous-source-document" };
+  }
+  return { id: null, reason: firstReason || "source-lineage-not-collected" };
 }
 
 /**
@@ -162,8 +239,10 @@ function sourceSaleIdForReturn(row, rowsByDocumentKey) {
  * sinyali taşır; WAC motoru depo transfer sözleşmesi doğrulanmadan ürünleri
  * depolar arasında birleştirmez.
  */
-export function buildCpmWacMovementCandidates({ rows = [] } = {}) {
+export function buildCpmWacMovementCandidates({ rows = [], excludeUnlinkedReturnBeforeYear = null } = {}) {
   if (!Array.isArray(rows)) throw new TypeError("CPM hareket adayları dizi olmalıdır.");
+  const exclusionYear = Number.isInteger(Number(excludeUnlinkedReturnBeforeYear))
+    ? Number(excludeUnlinkedReturnBeforeYear) : null;
   const rowsByDocumentKey = new Map();
   for (const row of rows) {
     const key = movementDocumentKey(row);
@@ -172,6 +251,9 @@ export function buildCpmWacMovementCandidates({ rows = [] } = {}) {
     rowsByDocumentKey.get(key).push({
       id: text(row?.id ?? row?.movementId),
       productCode: text(row?.productCode ?? row?.cardCode ?? row?.MALKOD),
+      sourceDocumentType: row?.sourceDocumentType ?? row?.sourceDocumentTypeCode,
+      sourceDocumentNumber: row?.sourceDocumentNumber ?? row?.sourceDocumentNo,
+      sourceLineNumber: row?.sourceLineNumber ?? row?.sourceLineNo,
     });
   }
 
@@ -179,10 +261,27 @@ export function buildCpmWacMovementCandidates({ rows = [] } = {}) {
   let invalidCostRows = 0;
   let pendingForeignCostRows = 0;
   let invalidMovementRows = 0;
+  let excludedNonMovementRows = 0;
   let unlinkedReturnRows = 0;
   const productsByDepot = new Map();
   const reviewReasons = {};
+  const unlinkedReturnReasons = {};
+  const invalidCostReasons = {};
+  const unlinkedReturnYearCounts = {};
+  const invalidCostYearCounts = {};
+  const excludedUnlinkedReturnYearCounts = {};
+  const excludedUnlinkedReturnReasons = {};
+  const lineageRowCount = rows.filter((row) => CPM_LINEAGE_DOCUMENT_TYPES.has(Number(row?.documentType ?? row?.EVRAKTIP))).length;
   const addReview = (reason) => { reviewReasons[reason] = (reviewReasons[reason] || 0) + 1; };
+  const addYearCount = (target, value) => {
+    const year = String(value || "").slice(0, 4);
+    if (/^\d{4}$/.test(year)) target[year] = (target[year] || 0) + 1;
+    else target.unknown = (target.unknown || 0) + 1;
+  };
+  const addUnlinkedReturnReview = (reason) => {
+    unlinkedReturnReasons[reason] = (unlinkedReturnReasons[reason] || 0) + 1;
+  };
+  const addInvalidCostReview = (reason) => { invalidCostReasons[reason] = (invalidCostReasons[reason] || 0) + 1; };
 
   for (const row of rows) {
     const id = text(row?.id ?? row?.movementId);
@@ -191,11 +290,19 @@ export function buildCpmWacMovementCandidates({ rows = [] } = {}) {
     const kind = CPM_DOCUMENT_TYPE_KINDS[documentType];
     const movementDate = date(row?.movementDate ?? row?.documentDate ?? row?.date);
     const quantity = Number(row?.quantity);
+    if (CPM_LINEAGE_DOCUMENT_TYPES.has(documentType)) continue;
     if (productCode && text(row?.depotCode)) {
       if (!productsByDepot.has(productCode)) productsByDepot.set(productCode, new Set());
       productsByDepot.get(productCode).add(text(row.depotCode));
     }
-    if (!id || !productCode || !kind || !movementDate || !Number.isFinite(quantity) || quantity <= 0) {
+    // CPM'de bazı STKHAR satırları belge içinde sıfır miktarlı açıklama/boş
+    // satırı olarak tutuluyor. Bunlar ekonomik stok hareketi değildir; eksik
+    // veya negatif miktarlı satırlar ise gerçek veri hatası olarak kalır.
+    if (id && productCode && kind && movementDate && Number.isFinite(quantity) && quantity === 0) {
+      excludedNonMovementRows += 1;
+      continue;
+    }
+    if (!id || !productCode || !kind || !movementDate || !Number.isFinite(quantity) || quantity < 0) {
       invalidMovementRows += 1;
       addReview(!kind ? "movement-kind-unverified" : "invalid-movement-fields");
       continue;
@@ -208,6 +315,7 @@ export function buildCpmWacMovementCandidates({ rows = [] } = {}) {
       date: movementDate,
       quantity,
       sourceSequence: Number.isFinite(Number(row?.lineNumber)) ? Number(row.lineNumber) : null,
+      ...(currency(row?.cardCurrency) ? { productCurrency: currency(row.cardCurrency) } : {}),
       ...(text(row?.depotCode) ? { depotCode: text(row.depotCode) } : {}),
       ...(text(row?.depotCode) ? { stockKey: `${productCode}\u001f${text(row.depotCode)}` } : {}),
       sourceEvidence: {
@@ -219,11 +327,17 @@ export function buildCpmWacMovementCandidates({ rows = [] } = {}) {
     };
 
     if (["opening", "purchase"].includes(kind)) {
-      const gross = Number(row?.grossAmount);
-      const discount = Number(row?.discountAmount);
+      const gross = finiteNumberOrNull(row?.grossAmount);
+      const discount = finiteNumberOrNull(row?.discountAmount);
       const net = gross - discount;
       if (!Number.isFinite(gross) || !Number.isFinite(discount) || !Number.isFinite(net) || net <= 0) {
         invalidCostRows += 1;
+        addInvalidCostReview(
+          gross === null ? "missing-gross-amount"
+            : discount === null ? "missing-discount-amount"
+              : net <= 0 ? "non-positive-net-amount" : "non-finite-cost-amount",
+        );
+        addYearCount(invalidCostYearCounts, movementDate);
         addReview("invalid-purchase-cost-evidence");
         continue;
       }
@@ -242,8 +356,8 @@ export function buildCpmWacMovementCandidates({ rows = [] } = {}) {
         documentDate: movementDate,
         rateEvidence: null,
       };
-      const tryParity = (!sourceCurrency || sourceCurrency === "TRY")
-        && (!normalizedSourceRate || normalizedSourceRate === 1);
+      const tryParity = sourceCurrency === "TRY"
+        || (!sourceCurrency && normalizedSourceRate === 1);
       if (tryParity) {
         movement.unitCostTryExVat = net / quantity;
         movement.costEvidence.rateEvidence = {
@@ -256,10 +370,10 @@ export function buildCpmWacMovementCandidates({ rows = [] } = {}) {
         movement.costEvidence.rateEvidence = {
           source: null,
           status: "review_required",
-          reason: "foreign-cost-awaiting-halkbank-rate",
+          reason: sourceCurrency ? "foreign-cost-awaiting-halkbank-rate" : "missing-source-currency",
         };
-        pendingForeignCostRows += 1;
-        addReview("foreign-cost-awaiting-halkbank-rate");
+        if (sourceCurrency) pendingForeignCostRows += 1;
+        addReview(movement.costEvidence.rateEvidence.reason);
       }
     }
 
@@ -275,13 +389,22 @@ export function buildCpmWacMovementCandidates({ rows = [] } = {}) {
     }
 
     if (kind === "saleReturn") {
-      const originalSaleId = sourceSaleIdForReturn(row, rowsByDocumentKey);
-      if (!originalSaleId) {
+      const originalSale = sourceSaleResolutionForReturn(row, rowsByDocumentKey);
+      if (!originalSale.id) {
+        addYearCount(unlinkedReturnYearCounts, movementDate);
+        const movementYear = Number(String(movementDate).slice(0, 4));
+        if (exclusionYear !== null && Number.isInteger(movementYear) && movementYear < exclusionYear) {
+          addYearCount(excludedUnlinkedReturnYearCounts, movementDate);
+          const exclusionReason = "unlinked-sale-return-before-calculation-year";
+          excludedUnlinkedReturnReasons[exclusionReason] = (excludedUnlinkedReturnReasons[exclusionReason] || 0) + 1;
+          continue;
+        }
         unlinkedReturnRows += 1;
         addReview("unlinked-sale-return");
+        addUnlinkedReturnReview(originalSale.reason);
         continue;
       }
-      movement.originalSaleId = originalSaleId;
+      movement.originalSaleId = originalSale.id;
     }
     movements.push(movement);
   }
@@ -289,15 +412,19 @@ export function buildCpmWacMovementCandidates({ rows = [] } = {}) {
   const multiDepotProductCount = [...productsByDepot.values()].filter((depots) => depots.size > 1).length;
   const reviewCounts = {
     invalidCostRows,
+    excludedInvalidCostRows: invalidCostRows,
     pendingForeignCostRows,
     invalidMovementRows,
+    excludedNonMovementRows,
     unlinkedReturnRows,
+    excludedUnlinkedReturnRows: Object.values(excludedUnlinkedReturnYearCounts).reduce((sum, value) => sum + value, 0),
     multiDepotProductCount,
     missingDepotCount: rows.filter((row) => !text(row?.depotCode)).length,
   };
+  const unresolvedMovementRows = invalidMovementRows || unlinkedReturnRows;
   const reviewReason = multiDepotProductCount > 0
     ? "depot-grain-not-resolved"
-    : (invalidCostRows || invalidMovementRows || unlinkedReturnRows
+    : (unresolvedMovementRows
       ? "movement-evidence-incomplete"
       : "movement-source-not-verified");
   return {
@@ -306,7 +433,15 @@ export function buildCpmWacMovementCandidates({ rows = [] } = {}) {
     reviewReason,
     reviewCounts,
     reviewReasons,
+    unlinkedReturnReasons,
+    invalidCostReasons,
+    unlinkedReturnYearCounts,
+    invalidCostYearCounts,
+    excludedUnlinkedReturnYearCounts,
+    excludedUnlinkedReturnReasons,
     sourceRowCount: rows.length,
+    movementRowCount: rows.length - lineageRowCount,
+    lineageRowCount,
     candidateMovementCount: movements.length,
   };
 }

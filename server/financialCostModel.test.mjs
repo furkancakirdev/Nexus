@@ -76,7 +76,7 @@ test("karşılaştırmalı yıl negatif stok marjı tahminini covered kapsamına
 
 test("doğrulanmış WAC hareket maliyeti ekonomik satıra bağlanır", () => {
   const rows = attachOfficialMovementCosts({
-    source: { status: "verified", contractVersion: 1 },
+    source: { status: "verified", contractVersion: 1, financialStatus: "ready" },
     economicRows: [{ rootId: "S-1", productCode: "P-1", quantity: 2, financeV2: { costStatus: "review" } }],
     movements: [
       { id: "O-1", productCode: "P-1", kind: "opening", date: "2026-01-01", quantity: 10, unitCostTryExVat: 100 },
@@ -114,7 +114,7 @@ test("aday CPM hareketleri doğrulanmadan resmi WAC maliyetine bağlanmaz", () =
 
 test("resmi WAC satırı bağlı tarihsel liste marjı ve kur kanıtını korur", () => {
   const rows = attachOfficialMovementCosts({
-    source: { status: "verified", contractVersion: 1 },
+    source: { status: "verified", contractVersion: 1, financialStatus: "ready" },
     movements: [{
       id: "M-PRICE-1", productCode: "P-PRICE", depotCode: "D1", kind: "purchase",
       date: "2026-02-01", quantity: 2, unitCostTryExVat: 400,
@@ -162,9 +162,27 @@ test("finansal kanıt kapalıysa verified hareket kaynağı resmi WAC'a bağlanm
   assert.deepEqual(rows[0].financeV2, legacy);
 });
 
+test("financialStatus eksik, null veya blocked ise verified hareket kaynağı fail-closed kalır", () => {
+  const legacy = { costStatus: "review", costMethod: "priorPurchase" };
+  for (const financialStatus of [undefined, null, "blocked"]) {
+    const source = { status: "verified", contractVersion: 1 };
+    if (financialStatus !== undefined) source.financialStatus = financialStatus;
+    const rows = attachOfficialMovementCosts({
+      source,
+      economicRows: [{ rootId: `S-NOT-READY-${String(financialStatus)}`, financeV2: legacy }],
+      movements: [
+        { id: "O-NOT-READY", productCode: "P-1", kind: "opening", date: "2026-01-01", quantity: 1, unitCostTryExVat: 10 },
+        { id: `S-NOT-READY-${String(financialStatus)}`, productCode: "P-1", kind: "sale", date: "2026-01-02", quantity: 1 },
+      ],
+    });
+
+    assert.deepEqual(rows[0].financeV2, legacy, `financialStatus=${String(financialStatus)}`);
+  }
+});
+
 test("ledger adaptörü satış tarihine göre WAC katmanını seçer", () => {
   const rows = attachOfficialMovementCosts({
-    source: { status: "verified", contractVersion: 1 },
+    source: { status: "verified", contractVersion: 1, financialStatus: "ready" },
     economicRows: [
       { rootId: "S-BEFORE", productCode: "P-1" },
       { rootId: "S-AFTER", productCode: "P-1" },
@@ -533,7 +551,7 @@ test("resmi negatif stok fallback marjını tüm satış adedine uygular", () =>
 
 test("resmi fallback alanları ekonomik ledger financeV2 alanlarına taşınır", () => {
   const rows = attachOfficialMovementCosts({
-    source: { status: "verified", contractVersion: 1 },
+    source: { status: "verified", contractVersion: 1, financialStatus: "ready" },
     economicRows: [{ rootId: "S-1", productCode: "P-1", quantity: 14 }],
     movements: [
       { id: "O-1", productCode: "P-1", depotCode: "D-1", kind: "opening", date: "2026-01-01", quantity: 10, unitCostTryExVat: 100 },

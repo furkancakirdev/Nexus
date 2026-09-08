@@ -79,6 +79,38 @@ test("alış ve satış tarafları farklı günlerde olsa bile kendi kanıtlı t
   assert.equal(index.get("USD").find((entry) => entry.date === "2026-08-27").sellingRate, 41);
 });
 
+test("raporlama dönüşümü satış kurunu kullanmaz ve yanlış yönü fail-closed tutar", () => {
+  const index = buildExchangeRateIndex([
+    { rateDate: "2026-08-28", rateCurrency: "EUR", halkbankBuyingRate: 47.1, halkbankSellingRate: 47.3 },
+    { rateDate: "2026-08-28", rateCurrency: "USD", halkbankBuyingRate: null, halkbankSellingRate: 41.3 },
+  ]);
+  const rateSet = buildRateSet(index, "2026-08-28");
+  const converted = convertToEur(rateSet, "USD", 100);
+
+  assert.equal(converted.amountEur, null);
+  assert.equal(converted.reviewReason, "missing-exchange-rate");
+  assert.equal(rateSet.rates.USD, undefined);
+});
+
+test("Halkbank kaynağı ve rapor tarihindeki önceki iş günü kanıtı korunur", () => {
+  const rateSet = buildRateSet(buildExchangeRateIndex([
+    {
+      rateDate: "2026-08-28",
+      rateCurrency: "EUR",
+      halkbankBuyingRate: 47.1,
+      halkbankSellingRate: 47.3,
+      source: "CPM",
+      sourceIdentifier: "DVZHAR-6",
+    },
+  ]), "2026-08-30");
+
+  assert.equal(rateSet.bank, "HALKBANK");
+  assert.equal(rateSet.sourcePolicy, "CPM_HALKBANK_V1");
+  assert.equal(rateSet.rates.EUR.sourceIdentifier, "DVZHAR-6");
+  assert.equal(rateSet.rates.EUR.rateDate, "2026-08-28");
+  assert.match(rateSet.weekendOrHolidayNote, /önceki iş günü/);
+});
+
 test("EUR paritesi kur setinde birebir sabittir", () => {
   const rateSet = buildRateSet(buildExchangeRateIndex(SAMPLE_RATES), "2026-08-28");
   const converted = convertToEur(rateSet, "EUR", 123.45);

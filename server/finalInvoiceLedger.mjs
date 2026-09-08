@@ -1664,6 +1664,21 @@ OPTION (MAXRECURSION 100);
 CREATE UNIQUE CLUSTERED INDEX IX_nexus_return_original_sales
   ON #returnOriginalSales(rootId);
 
+SELECT DISTINCT
+  h.SIRKETNO,
+  LTRIM(RTRIM(h.MALKOD)) cardProductCode
+INTO #ledgerCardProductKeys
+FROM STKHAR h
+WHERE h.SIRKETNO = @company
+  AND YEAR(h.EVRAKTARIH) = @year
+  AND h.KAYITDURUM = 1
+  AND h.EVRAKTIP IN (17,85,91,18)
+  AND h.MIKTAR > 0
+  AND NULLIF(LTRIM(RTRIM(h.MALKOD)), '') IS NOT NULL;
+
+CREATE UNIQUE CLUSTERED INDEX IX_nexus_ledger_card_product_keys
+  ON #ledgerCardProductKeys(SIRKETNO, cardProductCode);
+
 SELECT
   h.ID rootId,
   h.EVRAKTIP documentType,
@@ -1739,7 +1754,28 @@ SELECT
   END costValidationReason
 INTO #economics
 FROM STKHAR h
-LEFT JOIN STKKRT k ON k.SIRKETNO = h.SIRKETNO AND k.MALKOD = h.MALKOD
+LEFT JOIN (
+  SELECT
+    CASE
+      WHEN MIN(NULLIF(LTRIM(RTRIM(card.MALAD)), '')) = MAX(NULLIF(LTRIM(RTRIM(card.MALAD)), ''))
+        THEN MIN(NULLIF(LTRIM(RTRIM(card.MALAD)), ''))
+      ELSE NULL
+    END MALAD,
+    CASE
+      WHEN MIN(NULLIF(LTRIM(RTRIM(card.MARKAAD)), '')) = MAX(NULLIF(LTRIM(RTRIM(card.MARKAAD)), ''))
+        THEN MIN(NULLIF(LTRIM(RTRIM(card.MARKAAD)), ''))
+      ELSE NULL
+    END MARKAAD,
+    card.SIRKETNO,
+    LTRIM(RTRIM(card.MALKOD)) cardProductCode
+  FROM STKKRT card
+  JOIN #ledgerCardProductKeys wanted
+    ON wanted.SIRKETNO = card.SIRKETNO
+   AND wanted.cardProductCode = LTRIM(RTRIM(card.MALKOD))
+  GROUP BY card.SIRKETNO, LTRIM(RTRIM(card.MALKOD))
+) k
+  ON k.SIRKETNO = h.SIRKETNO
+ AND k.cardProductCode = LTRIM(RTRIM(h.MALKOD))
 LEFT JOIN CARKRT c ON c.SIRKETNO = h.SIRKETNO AND c.HESAPKOD = h.HESAPKOD
 LEFT JOIN #returnOriginalSales originalSale ON originalSale.rootId = h.ID
 OUTER APPLY (

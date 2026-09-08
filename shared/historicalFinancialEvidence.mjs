@@ -83,10 +83,15 @@ function resolveSourceCostToTry({ movement, rateIndex }) {
 
   const quantity = number(movement?.quantity);
   const sourceAmount = number(movement?.costEvidence?.sourceAmount);
-  const sourceCurrency = currencyCode(movement?.costEvidence?.sourceCurrency) || "TRY";
   if (quantity === null || quantity <= 0 || sourceAmount === null || sourceAmount <= 0) {
     return { unitCostTryExVat: null, sourceExchangeEvidence: null, reviewReason: "missing-source-cost-conversion" };
   }
+  const declaredSourceCurrency = currencyCode(movement?.costEvidence?.sourceCurrency);
+  const declaredSourceRate = number(movement?.costEvidence?.sourceRate);
+  if (!declaredSourceCurrency && declaredSourceRate !== 1) {
+    return { unitCostTryExVat: null, sourceExchangeEvidence: null, reviewReason: "missing-source-currency" };
+  }
+  const sourceCurrency = declaredSourceCurrency || "TRY";
 
   const sourceUnitCost = sourceAmount / quantity;
   if (sourceCurrency === "TRY") {
@@ -143,29 +148,40 @@ export function buildHistoricalFinancialEvidence({ movements = [], priceRows = [
 
   for (const movement of enrichedMovements) {
     const productCode = text(movement.productCode);
-    const knownCurrencies = currencies.get(productCode) || new Set();
+    const isCostMovement = ["opening", "purchase"].includes(movement.kind);
+    const sourceCost = isCostMovement ? resolveSourceCostToTry({ movement, rateIndex }) : null;
+    if (isCostMovement && sourceCost.reviewReason) {
+      addReview(sourceCost.reviewReason);
+      addCostReview(sourceCost.reviewReason);
+      continue;
+    }
+    const knownCurrencies = new Set(currencies.get(productCode) || []);
+    const movementCurrency = currencyCode(movement.productCurrency);
+    if (movementCurrency) knownCurrencies.add(movementCurrency);
     if (knownCurrencies.size !== 1) {
-      if (["opening", "purchase"].includes(movement.kind)) {
+      if (isCostMovement) {
+        movement.unitCostTryExVat = sourceCost.unitCostTryExVat;
+        if (sourceCost.sourceExchangeEvidence) {
+          movement.costEvidence = {
+            ...(movement.costEvidence || {}),
+            rateEvidence: { status: "verified", ...sourceCost.sourceExchangeEvidence },
+          };
+          movement.sourceCostExchangeEvidence = sourceCost.sourceExchangeEvidence;
+        }
+        costReviewCounts.covered += 1;
         const reason = knownCurrencies.size ? "ambiguous-product-currency" : "missing-historical-retail-price";
         addReview(reason);
-        addCostReview(reason);
       }
       continue;
     }
     const productCurrency = [...knownCurrencies][0];
     movement.productCurrency = productCurrency;
-    if (!["opening", "purchase"].includes(movement.kind)) continue;
+    if (!isCostMovement) continue;
 
     const rate = sellingRateOnOrBefore(rateIndex, productCurrency, movement.date);
     if (!rate) {
       addReview("missing-exchange-rate");
       addCostReview("missing-exchange-rate");
-      continue;
-    }
-    const sourceCost = resolveSourceCostToTry({ movement, rateIndex });
-    if (sourceCost.reviewReason) {
-      addReview(sourceCost.reviewReason);
-      addCostReview(sourceCost.reviewReason);
       continue;
     }
     const unitCostTryExVat = sourceCost.unitCostTryExVat;
@@ -233,6 +249,19 @@ export function buildHistoricalFinancialEvidence({ movements = [], priceRows = [
     reviewCounts.covered += 1;
   }
 
+  const costMovements = enrichedMovements.filter((movement) => ["opening", "purchase"].includes(movement.kind));
+  const countByYear = (rows) => rows.reduce((counts, movement) => {
+    const year = String(dateKey(movement.date) || "").slice(0, 4);
+    if (/^\d{4}$/.test(year)) counts[year] = (counts[year] || 0) + 1;
+    return counts;
+  }, {});
+  const costCoveredRows = costMovements.filter((movement) =>
+    Number.isFinite(Number(movement.unitCostTryExVat)) && Number(movement.unitCostTryExVat) > 0);
+  const marginReviewRows = costMovements.filter((movement) => !movement.historicalPriceEvidence);
+  const sourceDocumentRows = costMovements.filter((movement) =>
+    text(movement?.sourceEvidence?.documentNumber));
+  const affectedProducts = new Set(marginReviewRows.map((movement) => text(movement.productCode)).filter(Boolean));
+
   return {
     movements: enrichedMovements,
     marginObservationsByStockKey,
@@ -243,5 +272,19 @@ export function buildHistoricalFinancialEvidence({ movements = [], priceRows = [
     costReviewReasons,
     priceRowCount: prices.length,
     exchangeRateCount: Array.isArray(exchangeRates) ? exchangeRates.length : 0,
+    costEvidenceSummary: {
+      candidateRows: costMovements.length,
+      coveredRows: costCoveredRows.length,
+      reviewRows: costMovements.length - costCoveredRows.length,
+      sourceDocumentRows: sourceDocumentRows.length,
+      byYear: countByYear(costMovements),
+      coveredByYear: countByYear(costCoveredRows),
+    },
+    marginEvidenceSummary: {
+      reviewRows: marginReviewRows.length,
+      coveredRows: costMovements.length - marginReviewRows.length,
+      affectedProductCount: affectedProducts.size,
+      byYear: countByYear(marginReviewRows),
+    },
   };
 }

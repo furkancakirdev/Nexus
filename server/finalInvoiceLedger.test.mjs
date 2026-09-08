@@ -1761,6 +1761,9 @@ test("final invoice SQL exposes four read-only recordsets with separate invoice 
   assert.match(finalInvoiceLedgerSql, /candidateAttributionDocumentType/i);
   assert.match(finalInvoiceLedgerSql, /candidateAttributionDocumentNo/i);
   assert.match(finalInvoiceLedgerSql, /candidateAttributionDocumentDate/i);
+  assert.doesNotMatch(finalInvoiceLedgerSql, /LEFT\s+JOIN\s+STKKRT/i);
+  assert.match(finalInvoiceLedgerSql, /#ledgerCardProductKeys/i);
+  assert.match(finalInvoiceLedgerSql, /LEFT\s+JOIN\s*\([\s\S]*MIN\(NULLIF\(LTRIM\(RTRIM\(card\.MALAD\)[\s\S]*GROUP\s+BY\s+card\.SIRKETNO/i);
   assert.match(finalInvoiceLedgerSql, /h2\.HESAPKOD\s*=\s*h\.HESAPKOD/i);
   assert.match(finalInvoiceLedgerSql, /h2\.MALKOD\s*=\s*h\.MALKOD/i);
   assert.match(

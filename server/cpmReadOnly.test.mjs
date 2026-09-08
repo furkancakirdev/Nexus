@@ -12,11 +12,12 @@ import { sourceProvenanceSql } from "./sourceProvenanceSql.mjs";
 import { sourceProvenanceByCanonicalIdsSql } from "./sourceProvenanceSql.mjs";
 import { cpmMovementCandidateSql, dvzharRateCandidateSql, stkhArType81SampleSql, stkhArType81SummarySql, stkhArType82SampleSql, stkhArType82SummarySql, stkkrtPriceCandidateSql, stksymDevirSampleSql } from "./inventoryOpeningResearchSql.mjs";
 import { stksymDevirSummarySql, stksymSalesOverlapSummarySql, stksymStkhArDocumentMatchSummarySql, stksymStkhArMatchReasonSummarySql, stksymStkhArMatchSummarySql } from "./inventoryOpeningResearchSql.mjs";
+import { settlementEvidenceSql } from "./settlementEvidenceSql.mjs";
 
 const healthSql = "SELECT DB_NAME() AS databaseName";
 
 test("production CPM queries pass the local-temp-only structural guard", () => {
-  for (const query of [healthSql, salesCaseSql, finalInvoiceLedgerSql, sourceProvenanceSql, cpmMovementCandidateSql, dvzharRateCandidateSql, stkkrtPriceCandidateSql, stkhArType81SampleSql, stkhArType81SummarySql, stkhArType82SampleSql, stkhArType82SummarySql, stksymDevirSampleSql, stksymDevirSummarySql, stksymStkhArMatchSummarySql, stksymStkhArDocumentMatchSummarySql, stksymStkhArMatchReasonSummarySql, stksymSalesOverlapSummarySql]) {
+  for (const query of [healthSql, salesCaseSql, finalInvoiceLedgerSql, sourceProvenanceSql, cpmMovementCandidateSql, dvzharRateCandidateSql, stkkrtPriceCandidateSql, stkhArType81SampleSql, stkhArType81SummarySql, stkhArType82SampleSql, stkhArType82SummarySql, stksymDevirSampleSql, stksymDevirSummarySql, stksymStkhArMatchSummarySql, stksymStkhArDocumentMatchSummarySql, stksymStkhArMatchReasonSummarySql, stksymSalesOverlapSummarySql, settlementEvidenceSql]) {
     assert.equal(assertCpmReadOnlySql(query), query);
   }
 });
@@ -96,6 +97,34 @@ test("CPM executor rejects unknown or modified query before request.query", asyn
   assert.equal(auditEvents.length, 2);
   assert.ok(auditEvents.every((event) => event.status === "rejected"));
   assert.ok(auditEvents.every((event) => !("query" in event) && !("parameters" in event)));
+});
+
+test("settlement evidence is quarantined before request.query with a deterministic policy error", async () => {
+  let callCount = 0;
+  const request = { query: async () => { callCount += 1; } };
+  const auditEvents = [];
+
+  await assert.rejects(
+    () => executeCpmReadOnlyQuery({ request, queryId: "settlement-evidence-v1", query: settlementEvidenceSql }),
+    (error) => error.code === "CPM_READ_ONLY_POLICY"
+      && error.reason === "query-quarantined-settlement-evidence-unavailable",
+  );
+
+  assert.equal(callCount, 0);
+
+  const execute = createCpmReadOnlyExecutor({
+    allowedFingerprints: { "settlement-evidence-v1": fingerprintCpmQuery(settlementEvidenceSql) },
+    audit: (event) => auditEvents.push(event),
+  });
+  await assert.rejects(
+    () => execute({ request, queryId: "settlement-evidence-v1", query: settlementEvidenceSql }),
+    (error) => error.reason === "query-quarantined-settlement-evidence-unavailable",
+  );
+
+  assert.equal(callCount, 0);
+  assert.deepEqual(auditEvents.map(({ queryId, status, reason }) => ({ queryId, status, reason })), [
+    { queryId: "settlement-evidence-v1", status: "rejected", reason: "query-quarantined-settlement-evidence-unavailable" },
+  ]);
 });
 
 test("production fingerprint registry executes the approved queries", async () => {

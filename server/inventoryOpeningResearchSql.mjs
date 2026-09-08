@@ -17,15 +17,29 @@ SELECT
   h.SONKAYNAKHESAPKOD sourceCustomerCode,
   h.SONKAYNAKSIRANO sourceLineNumber,
   h.GIRISCIKIS directionCode,
+  k.cardCurrency,
   CAST(h.MIKTAR AS decimal(28, 6)) quantity,
-  CAST(ISNULL(h.TUTAR, 0) AS decimal(28, 4)) grossAmount,
-  CAST(ISNULL(h.ISKONTO, 0) AS decimal(28, 4)) discountAmount,
+  CAST(h.TUTAR AS decimal(28, 4)) grossAmount,
+  CAST(h.ISKONTO AS decimal(28, 4)) discountAmount,
   NULLIF(CAST(h.BIRIMFIYAT AS decimal(28, 6)), 0) unitPrice,
   NULLIF(LTRIM(RTRIM(h.FIYATDOVIZCINS)), '') currency,
   NULLIF(CAST(h.FIYATDOVIZKUR AS decimal(28, 8)), 0) currencyRate,
   NULLIF(LTRIM(RTRIM(h.DOVIZCINS)), '') transactionCurrency,
   NULLIF(CAST(h.DOVIZKUR AS decimal(28, 8)), 0) transactionCurrencyRate
 FROM STKHAR h
+LEFT JOIN (
+  SELECT CASE
+    WHEN MIN(NULLIF(LTRIM(RTRIM(k.MKOD2)), '')) = MAX(NULLIF(LTRIM(RTRIM(k.MKOD2)), ''))
+      THEN MIN(NULLIF(LTRIM(RTRIM(k.MKOD2)), ''))
+    ELSE NULL
+  END cardCurrency,
+  k.SIRKETNO,
+  LTRIM(RTRIM(k.MALKOD)) cardProductCode
+  FROM STKKRT k
+  GROUP BY k.SIRKETNO, LTRIM(RTRIM(k.MALKOD))
+) k
+  ON k.SIRKETNO = h.SIRKETNO
+ AND k.cardProductCode = LTRIM(RTRIM(h.MALKOD))
 WHERE h.SIRKETNO = @company
   AND h.KAYITDURUM = 1
   AND h.EVRAKTARIH >= @movementStartDate
@@ -35,10 +49,14 @@ WHERE h.SIRKETNO = @company
     @purchaseDocumentType,
     @purchase609DocumentType,
     @sale17DocumentType,
-    @sale85DocumentType,
-    @sale91DocumentType,
-    @returnDocumentType
-  )
+  @sale85DocumentType,
+  @sale91DocumentType,
+    @returnDocumentType,
+    13,
+    14,
+    15,
+    64
+)
 ORDER BY h.EVRAKTARIH, h.MALKOD, h.DEPOKOD, h.EVRAKNO, h.SIRANO, h.ID;
 `;
 
@@ -66,9 +84,20 @@ ORDER BY h.DOVIZTARIH, h.DOVIZCINS, h.ID;
 /** FYTKRT aktif kartını ve MIRFYTKRT eski durumlarını tarihsel fiyat adaylarına açar. */
 export const stkkrtPriceCandidateSql = `
 SET NOCOUNT ON;
+WITH card_currency AS (
+  SELECT CASE
+    WHEN MIN(NULLIF(LTRIM(RTRIM(s0.MKOD2)), '')) = MAX(NULLIF(LTRIM(RTRIM(s0.MKOD2)), ''))
+      THEN MIN(NULLIF(LTRIM(RTRIM(s0.MKOD2)), ''))
+    ELSE NULL
+  END cardCurrency,
+  s0.SIRKETNO,
+  LTRIM(RTRIM(s0.MALKOD)) cardProductCode
+  FROM STKKRT s0
+  GROUP BY s0.SIRKETNO, LTRIM(RTRIM(s0.MALKOD))
+)
 SELECT
   LTRIM(RTRIM(f.STOKKOD)) productCode,
-  NULLIF(LTRIM(RTRIM(s.MKOD2)), '') cardCurrency,
+  s.cardCurrency,
   f.SABLONNO priceListNo,
   CAST(CASE
     WHEN f.DEGISTIRENTARIH > '1900-01-01' THEN f.DEGISTIRENTARIH
@@ -82,9 +111,9 @@ SELECT
   'FYTKRT' sourceTable,
   f.ID sourceRecordId
 FROM FYTKRT f
-LEFT JOIN STKKRT s
+LEFT JOIN card_currency s
   ON s.SIRKETNO = @company
- AND LTRIM(RTRIM(s.MALKOD)) = LTRIM(RTRIM(f.STOKKOD))
+ AND s.cardProductCode = LTRIM(RTRIM(f.STOKKOD))
 WHERE f.KDVDH = 0
   AND f.FIYAT > 0
   AND NULLIF(LTRIM(RTRIM(f.STOKKOD)), '') IS NOT NULL
@@ -97,7 +126,7 @@ WHERE f.KDVDH = 0
 UNION ALL
 SELECT
   LTRIM(RTRIM(m.STOKKOD)) productCode,
-  NULLIF(LTRIM(RTRIM(s.MKOD2)), '') cardCurrency,
+  s.cardCurrency,
   m.SABLONNO priceListNo,
   CAST(CASE
     WHEN m.DEGISTIRENTARIH > '1900-01-01' THEN m.DEGISTIRENTARIH
@@ -111,9 +140,9 @@ SELECT
   'MIRFYTKRT' sourceTable,
   m.RECID sourceRecordId
 FROM MIRFYTKRT m
-LEFT JOIN STKKRT s
+LEFT JOIN card_currency s
   ON s.SIRKETNO = @company
- AND LTRIM(RTRIM(s.MALKOD)) = LTRIM(RTRIM(m.STOKKOD))
+ AND s.cardProductCode = LTRIM(RTRIM(m.STOKKOD))
 WHERE m.UPDATESTATUS = 0
   AND m.KDVDH = 0
   AND m.FIYAT > 0

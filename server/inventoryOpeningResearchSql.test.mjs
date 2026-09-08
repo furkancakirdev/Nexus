@@ -41,15 +41,21 @@ test("inventory opening research SQL is bounded, parameterized, and read-only", 
 test("CPM hareket aday sorgusu WAC kaynağı için sabit alanları ve belge türlerini taşır", () => {
   assert.match(cpmMovementCandidateSql, /SELECT/i);
   assert.doesNotMatch(cpmMovementCandidateSql, /OPENJSON|STRING_AGG|UPDATE|DELETE|INSERT|MERGE|EXEC/i);
-  for (const field of ["h.ID id", "h.MALKOD productCode", "h.EVRAKTARIH movementDate", "h.EVRAKTIP documentType", "h.MIKTAR", "h.TUTAR", "h.ISKONTO", "h.BIRIMFIYAT", "h.FIYATDOVIZCINS", "h.FIYATDOVIZKUR", "h.DOVIZCINS", "h.DOVIZKUR", "transactionCurrency", "transactionCurrencyRate", "h.DEPOKOD depotCode", "h.EVRAKNO documentNumber", "h.SIRANO lineNumber", "h.SONKAYNAKEVRAKTIP sourceDocumentType", "h.SONKAYNAKEVRAKNO sourceDocumentNumber", "h.SONKAYNAKSIRANO sourceLineNumber", "quantity", "grossAmount", "discountAmount", "unitPrice", "currency", "currencyRate"]) {
+  for (const field of ["h.ID id", "h.MALKOD productCode", "h.EVRAKTARIH movementDate", "h.EVRAKTIP documentType", "h.MIKTAR", "h.TUTAR", "h.ISKONTO", "h.BIRIMFIYAT", "h.FIYATDOVIZCINS", "h.FIYATDOVIZKUR", "h.DOVIZCINS", "h.DOVIZKUR", "k.MKOD2", "cardCurrency", "transactionCurrency", "transactionCurrencyRate", "h.DEPOKOD depotCode", "h.EVRAKNO documentNumber", "h.SIRANO lineNumber", "h.SONKAYNAKEVRAKTIP sourceDocumentType", "h.SONKAYNAKEVRAKNO sourceDocumentNumber", "h.SONKAYNAKSIRANO sourceLineNumber", "quantity", "grossAmount", "discountAmount", "unitPrice", "currency", "currencyRate"]) {
     assert.match(cpmMovementCandidateSql, new RegExp(field.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&"), "i"));
   }
   assert.doesNotMatch(cpmMovementCandidateSql, /NULLIF\(LTRIM\(RTRIM\(h\.DOVIZCINS\)\), ''\) currency/i);
   assert.doesNotMatch(cpmMovementCandidateSql, /ISNULL\(h\.DOVIZKUR, 1\).*currencyRate/i);
+  assert.doesNotMatch(cpmMovementCandidateSql, /ISNULL\(h\.TUTAR, 0\).*grossAmount/i);
+  assert.doesNotMatch(cpmMovementCandidateSql, /ISNULL\(h\.ISKONTO, 0\).*discountAmount/i);
   for (const parameter of ["@company", "@movementStartDate", "@endDate", "@openingDocumentType", "@purchaseDocumentType", "@purchase609DocumentType", "@sale17DocumentType", "@sale85DocumentType", "@sale91DocumentType", "@returnDocumentType"]) {
     assert.match(cpmMovementCandidateSql, new RegExp(parameter.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&"), "i"));
   }
   assert.match(cpmMovementCandidateSql, /EVRAKTIP\s+IN\s*\(/i);
+  assert.match(cpmMovementCandidateSql, /\b13\s*,\s*14\s*,\s*15\s*,\s*64\b/i);
+  assert.match(cpmMovementCandidateSql, /LEFT\s+JOIN\s*\([\s\S]*FROM\s+STKKRT[\s\S]*GROUP\s+BY\s+k\.SIRKETNO/i);
+  assert.doesNotMatch(cpmMovementCandidateSql, /LEFT\s+JOIN\s+STKKRT/i);
+  assert.match(cpmMovementCandidateSql, /MIN\(NULLIF\(LTRIM\(RTRIM\(k\.MKOD2\)/i);
 });
 
 test("DVZHAR kur aday sorgusu banka, tarih, döviz ve kur tipini parametreler", () => {
@@ -64,8 +70,10 @@ test("DVZHAR kur aday sorgusu banka, tarih, döviz ve kur tipini parametreler", 
 test("tarihsel fiyat aday sorgusu aktif ve denetim kaynaklarını KDV hariç taşır", () => {
   assert.match(stkkrtPriceCandidateSql, /SELECT/i);
   assert.doesNotMatch(stkkrtPriceCandidateSql, /\bOPENJSON\b|\bUPDATE\b|\bDELETE\b|\bINSERT\b|\bMERGE\b|\bEXEC(?:UTE)?\b/i);
-  for (const field of ["FYTKRT", "MIRFYTKRT", "f.STOKKOD", "s.MKOD2", "f.FIYAT", "f.DOVIZCINS", "f.KDVDH", "m.UPDATESTATUS", "m.CHANGEDATE", "validUntil"]) assert.match(stkkrtPriceCandidateSql, new RegExp(field, "i"));
+  for (const field of ["FYTKRT", "MIRFYTKRT", "f.STOKKOD", "s0.MKOD2", "s.cardCurrency", "f.FIYAT", "f.DOVIZCINS", "f.KDVDH", "m.UPDATESTATUS", "m.CHANGEDATE", "validUntil"]) assert.match(stkkrtPriceCandidateSql, new RegExp(field, "i"));
   for (const parameter of ["@company", "@startDate", "@endDate"]) assert.match(stkkrtPriceCandidateSql, new RegExp(parameter.replace("@", "\\@"), "i"));
+  assert.doesNotMatch(stkkrtPriceCandidateSql, /LEFT\s+JOIN\s+STKKRT/i);
+  assert.match(stkkrtPriceCandidateSql, /WITH\s+card_currency\s+AS\s*\([\s\S]*MIN\(NULLIF\(LTRIM\(RTRIM\(s0\.MKOD2\)/i);
 });
 
 test("tarihsel fiyat adayı aktif kart ve değişiklik geçmişini KDV hariç olarak dönemler", () => {

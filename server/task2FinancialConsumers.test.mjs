@@ -224,7 +224,7 @@ test("department monthly review profit stays unavailable instead of becoming zer
   assert.equal(service.canonicalMetric.status, "INCELEME");
   assert.equal(service.canonicalMetric.scope.costReview.lines, 1);
   const source = await readFile(new URL("../src/DepartmentAnalysisPage.jsx", import.meta.url), "utf8");
-  assert.match(source, /eurEquivalent\?\.profit/);
+  assert.match(source, /projectDepartmentEurMetric/);
   assert.doesNotMatch(source, /Number\(item\.(service|parts|review)\?\.profit \|\| 0\)/);
   assert.doesNotMatch(source, /net - Number\(row\.cost/);
 });

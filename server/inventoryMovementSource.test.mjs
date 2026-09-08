@@ -208,6 +208,32 @@ test("CPM hareket adayları belge türü eşlemesini ve doğrulama sınırını 
   assert.equal(result.rowCount, 5);
 });
 
+test("CPM iade kaynağı ara belgeler üzerinden tekil nihai satışa bağlanır", () => {
+  const result = buildCpmWacMovementCandidates({
+    rows: [
+      {
+        id: "S-CHAIN", productCode: "P-CHAIN", documentType: 85,
+        documentNumber: "F-CHAIN", lineNumber: 1, depotCode: "D-1", movementDate: "2026-01-01", quantity: 1,
+      },
+      {
+        id: "D-CHAIN", productCode: "P-CHAIN", documentType: 14,
+        documentNumber: "D-CHAIN", lineNumber: 1, depotCode: "D-1", movementDate: "2026-01-01", quantity: 1,
+        sourceDocumentType: 85, sourceDocumentNumber: "F-CHAIN", sourceLineNumber: 1,
+      },
+      {
+        id: "R-CHAIN", productCode: "P-CHAIN", documentType: 18,
+        documentNumber: "R-CHAIN", lineNumber: 1, depotCode: "D-1", movementDate: "2026-01-02", quantity: 1,
+        sourceDocumentType: 14, sourceDocumentNumber: "D-CHAIN", sourceLineNumber: 1,
+      },
+    ],
+  });
+
+  assert.equal(result.reviewCounts.unlinkedReturnRows, 0);
+  assert.equal(result.movements.find((row) => row.id === "R-CHAIN")?.originalSaleId, "S-CHAIN");
+  assert.equal(result.lineageRowCount, 1);
+  assert.equal(result.movementRowCount, 2);
+});
+
 test("CPM aday satırı yalnız açık tür eşlemesi ve kaynak kanıtıyla doğrulanır", () => {
   const result = resolveCpmMovementCandidates({
     source: { status: "verified", contractVersion: 1 },
@@ -230,11 +256,11 @@ test("CPM hareket adayları net alış maliyetini üretir ve iadeyi benzersiz ka
     rows: [
       {
         id: "O-1", productCode: "P-1", depotCode: "D-1", movementDate: "2022-12-31",
-        documentType: 81, quantity: 10, grossAmount: 1_000, discountAmount: 100,
+        documentType: 81, quantity: 10, grossAmount: 1_000, discountAmount: 100, currencyRate: 1,
       },
       {
         id: "P-1", productCode: "P-1", depotCode: "D-1", movementDate: "2026-01-02",
-        documentType: 9, quantity: 5, grossAmount: 600, discountAmount: 100,
+        documentType: 9, quantity: 5, grossAmount: 600, discountAmount: 100, currencyRate: 1,
       },
       {
         id: "S-1", productCode: "P-1", depotCode: "D-1", movementDate: "2026-01-03",
@@ -287,6 +313,18 @@ test("CPM yabancı kaynak maliyetini TRY diye etiketlemez ve ham döviz kanıtı
   assert.equal(result.reviewReasons["foreign-cost-awaiting-halkbank-rate"], 1);
   assert.equal(result.reviewCounts.invalidCostRows, 0);
   assert.equal(result.reviewCounts.pendingForeignCostRows, 1);
+});
+
+test("CPM hareket adayı ürün kartı dövizini maliyet hareketine taşır", () => {
+  const result = buildCpmWacMovementCandidates({
+    rows: [{
+      id: "P-CARD-CURRENCY", productCode: "P-EUR", cardCurrency: "EUR", depotCode: "D-1",
+      movementDate: "2026-01-02", documentType: 9, quantity: 2,
+      grossAmount: 200, discountAmount: 20,
+    }],
+  });
+
+  assert.equal(result.movements[0].productCurrency, "EUR");
 });
 
 test("CPM satış adayı net KDV hariç tutarı negatif stok fallback'ine taşır", () => {
@@ -348,7 +386,140 @@ test("CPM hareket adayları hatalı maliyeti ve belirsiz iadeyi resmi harekete s
   assert.equal(result.movements.some((row) => row.id === "R-BAD"), false);
   assert.equal(result.reviewCounts.invalidCostRows, 1);
   assert.equal(result.reviewCounts.unlinkedReturnRows, 1);
+  assert.deepEqual(result.unlinkedReturnReasons, { "source-line-not-found": 1 });
+  assert.deepEqual(result.unlinkedReturnYearCounts, { "2026": 1 });
+  assert.deepEqual(result.invalidCostYearCounts, { "2026": 1 });
   assert.equal(result.reviewReason, "movement-evidence-incomplete");
+});
+
+test("CPM satış iadesi eşleşme tanısı eksik, zincir ve çoklu kaynakları ayırır", () => {
+  const result = buildCpmWacMovementCandidates({
+    rows: [
+      {
+        id: "S-1", productCode: "P-1", depotCode: "D-1", movementDate: "2026-01-01",
+        documentType: 85, documentNumber: "F-1", lineNumber: 1, quantity: 1,
+      },
+      {
+        id: "S-2", productCode: "P-1", depotCode: "D-1", movementDate: "2026-01-01",
+        documentType: 85, documentNumber: "F-1", lineNumber: 2, quantity: 1,
+      },
+      {
+        id: "R-MISSING", productCode: "P-1", depotCode: "D-1", movementDate: "2026-01-02",
+        documentType: 18, quantity: 1, sourceDocumentType: 85,
+        sourceDocumentNumber: "NOPE", sourceLineNumber: 1,
+      },
+      {
+        id: "R-AMBIGUOUS", productCode: "P-1", depotCode: "D-1", movementDate: "2026-01-02",
+        documentType: 18, quantity: 1, sourceDocumentType: 85,
+        sourceDocumentNumber: "F-1",
+      },
+      {
+        id: "R-CHAIN", productCode: "P-1", depotCode: "D-1", movementDate: "2026-01-02",
+        documentType: 18, quantity: 1, sourceDocumentType: 64,
+        sourceDocumentNumber: "O-1", sourceLineNumber: 1,
+      },
+    ],
+  });
+
+  assert.deepEqual(result.unlinkedReturnReasons, {
+    "source-line-not-found": 2,
+    "ambiguous-source-document": 1,
+  });
+  assert.deepEqual(result.unlinkedReturnYearCounts, { "2026": 3 });
+  assert.equal(result.reviewCounts.unlinkedReturnRows, 3);
+});
+
+test("CPM kart birleştirmesi aynı hareketi çoğaltsa bile tekil kaynak satırını kaybetmez", () => {
+  const result = buildCpmWacMovementCandidates({
+    rows: [
+      {
+        id: "S-1", productCode: "P-1", depotCode: "D-1", movementDate: "2026-01-01",
+        documentType: 85, documentNumber: "F-1", lineNumber: 1, quantity: 1,
+      },
+      {
+        id: "S-1", productCode: "P-1", depotCode: "D-1", movementDate: "2026-01-01",
+        documentType: 85, documentNumber: "F-1", lineNumber: 1, quantity: 1,
+      },
+      {
+        id: "R-1", productCode: "P-1", depotCode: "D-1", movementDate: "2026-01-02",
+        documentType: 18, quantity: 1, sourceDocumentType: 85,
+        sourceDocumentNumber: "F-1", sourceLineNumber: 1,
+      },
+    ],
+  });
+
+  assert.equal(result.reviewCounts.unlinkedReturnRows, 0);
+  assert.equal(result.movements.find((row) => row.id === "R-1")?.originalSaleId, "S-1");
+});
+
+test("CPM satış iadesinde boş kaynak türü ve sıfır satır numarası yanlış eşleşme üretmez", () => {
+  const result = buildCpmWacMovementCandidates({
+    rows: [{
+      id: "R-MISSING-TYPE", productCode: "P-1", depotCode: "D-1", movementDate: "2026-01-02",
+      documentType: 18, quantity: 1, sourceDocumentType: null,
+      sourceDocumentNumber: "F-1", sourceLineNumber: 0,
+    }],
+  });
+
+  assert.equal(result.reviewCounts.unlinkedReturnRows, 1);
+  assert.deepEqual(result.unlinkedReturnReasons, { "missing-source-document-type": 1 });
+});
+
+test("hesap yılı öncesindeki eşleşmeyen iadeyi karantinada tutar, güncel yılı incelemede bırakır", () => {
+  const result = buildCpmWacMovementCandidates({
+    excludeUnlinkedReturnBeforeYear: 2026,
+    rows: [
+      {
+        id: "R-2025", productCode: "P-1", depotCode: "D-1", movementDate: "2025-12-31",
+        documentType: 18, quantity: 1, sourceDocumentType: 85, sourceDocumentNumber: "NOPE",
+        sourceLineNumber: 1,
+      },
+      {
+        id: "R-2026", productCode: "P-1", depotCode: "D-1", movementDate: "2026-01-01",
+        documentType: 18, quantity: 1, sourceDocumentType: 85, sourceDocumentNumber: "NOPE",
+        sourceLineNumber: 1,
+      },
+    ],
+  });
+
+  assert.equal(result.reviewCounts.excludedUnlinkedReturnRows, 1);
+  assert.equal(result.reviewCounts.unlinkedReturnRows, 1);
+  assert.deepEqual(result.excludedUnlinkedReturnYearCounts, { "2025": 1 });
+  assert.deepEqual(result.unlinkedReturnYearCounts, { "2025": 1, "2026": 1 });
+  assert.deepEqual(result.unlinkedReturnReasons, { "source-line-not-found": 1 });
+});
+
+test("CPM hareket adayları null ve sıfır maliyet nedenlerini birbirinden ayırır", () => {
+  const result = buildCpmWacMovementCandidates({
+    rows: [
+      { id: "P-NULL-GROSS", productCode: "P-1", depotCode: "D-1", movementDate: "2026-01-01", documentType: 9, quantity: 1, grossAmount: null, discountAmount: 0 },
+      { id: "P-NULL-DISCOUNT", productCode: "P-2", depotCode: "D-1", movementDate: "2026-01-01", documentType: 9, quantity: 1, grossAmount: 100, discountAmount: null },
+      { id: "P-ZERO-NET", productCode: "P-3", depotCode: "D-1", movementDate: "2026-01-01", documentType: 9, quantity: 1, grossAmount: 100, discountAmount: 100 },
+    ],
+  });
+
+  assert.equal(result.reviewCounts.invalidCostRows, 3);
+  assert.deepEqual(result.invalidCostReasons, {
+    "missing-gross-amount": 1,
+    "missing-discount-amount": 1,
+    "non-positive-net-amount": 1,
+  });
+  assert.deepEqual(result.invalidCostYearCounts, { "2026": 3 });
+});
+
+test("CPM sıfır miktarlı belge satırını ekonomik hareketten ayırır", () => {
+  const result = buildCpmWacMovementCandidates({
+    rows: [{
+      id: "P-ZERO-QUANTITY", productCode: "P-1", depotCode: "D-1",
+      movementDate: "2026-01-01", documentType: 609, quantity: 0,
+      grossAmount: 0, discountAmount: 0,
+    }],
+  });
+
+  assert.equal(result.movements.length, 0);
+  assert.equal(result.reviewCounts.invalidMovementRows, 0);
+  assert.equal(result.reviewCounts.excludedNonMovementRows, 1);
+  assert.deepEqual(result.reviewReasons, {});
 });
 
 test("CPM hareket adayları çoklu depo ürünlerini resmi WAC için incelemeye ayırır", () => {

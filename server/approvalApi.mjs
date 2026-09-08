@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import express from "express";
 import { normalizeExchangeRateSet } from "./exchangeRateSet.mjs";
+import { validateDepartmentTargetSnapshot } from "./ledgerApi.mjs";
 
 const MONTH_NAMES = [
   "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
@@ -176,15 +177,19 @@ export function createApprovalRouter({
         });
       }
       let currentTargets = null;
+      let currentTargetsValid = null;
       try {
         currentTargets = await loadDepartmentTargets(year, { refresh: false });
+        validateDepartmentTargetSnapshot(currentTargets, year);
+        currentTargetsValid = true;
       } catch (error) {
+        currentTargetsValid = currentTargets ? false : null;
         logger.error("Marlin Nexus approval freshness read failed:", error);
       }
       const approvals = Object.fromEntries(
         Object.entries(storedApprovals).map(([monthKey, approval]) => {
           let currentHash = null;
-          if (currentTargets) {
+          if (currentTargetsValid === true) {
             try {
               currentHash = buildSnapshot(
                 currentTargets,
@@ -202,7 +207,9 @@ export function createApprovalRouter({
             ...approval,
             rateEvidenceStatus: rateEvidenceStatus(approval),
             currentSnapshotHash: currentHash,
-            stale: currentHash === null
+            stale: currentTargetsValid === false
+              ? true
+              : currentHash === null
               ? null
               : currentHash !== approval.snapshotHash,
           }];
@@ -229,6 +236,7 @@ export function createApprovalRouter({
     }
     try {
       const targets = await loadDepartmentTargets(year, { refresh: true });
+      validateDepartmentTargetSnapshot(targets, year);
       const state = await store.read();
       const economicSnapshot = buildSnapshot(targets, year, month);
       const approval = {

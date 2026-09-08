@@ -90,6 +90,30 @@ test("TRY maliyet kanıtı yoksa sıfır maliyet veya marj üretmez", () => {
   assert.equal(result.reviewReasons["missing-source-cost-conversion"], 1);
 });
 
+test("boş kaynak dövizi yalnız açık 1 parite kanıtıyla TRY kabul edilir", () => {
+  const parity = buildHistoricalFinancialEvidence({
+    movements: [{
+      ...purchase,
+      id: "P-BLANK-PARITY",
+      unitCostTryExVat: null,
+      costEvidence: { sourceAmount: 1000, sourceCurrency: null, sourceRate: 1 },
+    }],
+  });
+  assert.equal(parity.movements[0].unitCostTryExVat, 100);
+  assert.equal(parity.costReviewCounts.review, 0);
+
+  const missing = buildHistoricalFinancialEvidence({
+    movements: [{
+      ...purchase,
+      id: "P-BLANK-CURRENCY",
+      unitCostTryExVat: null,
+      costEvidence: { sourceAmount: 1000, sourceCurrency: null, sourceRate: null },
+    }],
+  });
+  assert.equal(missing.movements[0].unitCostTryExVat, null);
+  assert.equal(missing.costReviewReasons["missing-source-currency"], 1);
+});
+
 test("yabancı maliyet kanıtı kaynak dövizden TRY ve ürün dövizine satış kuru zinciriyle taşınır", () => {
   const result = buildHistoricalFinancialEvidence({
     movements: [{
@@ -167,4 +191,84 @@ test("tarihsel perakende fiyatı gelecekteyse TRY maliyet kanıtı ayrışır, m
   assert.deepEqual(result.costReviewCounts, { review: 0, covered: 1 });
   assert.deepEqual(result.reviewCounts, { review: 1, covered: 0 });
   assert.equal(result.reviewReasons["missing-historical-retail-price"], 1);
+});
+
+test("ürün kartı dövizi varsa tarihsel perakende fiyatı yokluğu maliyeti bloke etmez", () => {
+  const result = buildHistoricalFinancialEvidence({
+    movements: [{ ...purchase, id: "P-CARD-CURRENCY", productCurrency: "EUR" }],
+    priceRows: [],
+    exchangeRates: [{
+      exchangeSourceId: "EUR-SELL", rateDate: "2026-02-10", rateCurrency: "EUR",
+      halkbankSellingRate: 40,
+    }],
+  });
+
+  assert.equal(result.movements[0].productCurrency, "EUR");
+  assert.equal(result.movements[0].unitCostCurrencyExVat, 17.5);
+  assert.deepEqual(result.costReviewCounts, { review: 0, covered: 1 });
+  assert.equal(result.reviewReasons["missing-historical-retail-price"], 1);
+  assert.equal(result.marginObservationsByStockKey.size, 0);
+});
+
+test("ürün dövizi kanıtı yoksa doğrulanabilir TRY WAC maliyeti marj incelemesinden ayrılır", () => {
+  const result = buildHistoricalFinancialEvidence({
+    movements: [{
+      ...purchase,
+      id: "P-MISSING-PRODUCT-CURRENCY",
+      unitCostTryExVat: null,
+      costEvidence: {
+        sourceAmount: 7000,
+        sourceCurrency: "TRY",
+        documentDate: "2026-02-10",
+      },
+    }],
+    priceRows: [],
+    exchangeRates: [],
+  });
+
+  assert.equal(result.movements[0].unitCostTryExVat, 700);
+  assert.deepEqual(result.costReviewCounts, { review: 0, covered: 1 });
+  assert.equal(result.reviewReasons["missing-historical-retail-price"], 1);
+  assert.equal(result.marginObservationsByStockKey.size, 0);
+});
+
+test("pozitif alım maliyeti ile eksik perakende marj kanıtını ayrı özetler", () => {
+  const result = buildHistoricalFinancialEvidence({
+    movements: [
+      {
+        ...purchase,
+        id: "P-COVERED-COST",
+        date: "2023-09-01",
+        sourceEvidence: { documentType: 609, documentNumber: "DNP2023000001985", lineNumber: 1 },
+        costEvidence: { sourceAmount: 3064.59, sourceCurrency: "TRY", sourceRate: 1 },
+        unitCostTryExVat: 3064.59,
+        productCurrency: "EUR",
+      },
+      {
+        ...purchase,
+        id: "P-MISSING-MARGIN",
+        date: "2024-02-01",
+        sourceEvidence: { documentType: 609, documentNumber: "DNP2024000000001", lineNumber: 1 },
+        costEvidence: { sourceAmount: 2000, sourceCurrency: "TRY", sourceRate: 1 },
+        unitCostTryExVat: 200,
+        productCurrency: "EUR",
+      },
+    ],
+    priceRows: [],
+  });
+
+  assert.deepEqual(result.costEvidenceSummary, {
+    candidateRows: 2,
+    coveredRows: 2,
+    reviewRows: 0,
+    sourceDocumentRows: 2,
+    byYear: { "2023": 1, "2024": 1 },
+    coveredByYear: { "2023": 1, "2024": 1 },
+  });
+  assert.deepEqual(result.marginEvidenceSummary, {
+    reviewRows: 2,
+    coveredRows: 0,
+    affectedProductCount: 1,
+    byYear: { "2023": 1, "2024": 1 },
+  });
 });

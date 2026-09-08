@@ -65,7 +65,7 @@ test("readiness payload exposes accepted CPM risk separately from hard blockers"
       buildCommit: "abc123",
       imageDigest: "sha256:abc",
     },
-    inventorySource: { status: "verified" },
+    inventorySource: { status: "verified", financialStatus: "ready" },
   });
   assert.equal(result.ready, true);
   assert.deepEqual(result.blockers, []);

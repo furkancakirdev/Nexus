@@ -82,7 +82,7 @@ test("critical consumers require complete canonical EUR data and do not calculat
     readFile(new URL("../src/ReportsPage.jsx", import.meta.url), "utf8"),
   ]);
   for (const source of sources) {
-    assert.match(source, /eurComplete|canonicalMetric/);
+    assert.match(source, /eurComplete|canonicalMetric|projectDepartmentEurMetric/);
     assert.doesNotMatch(source, /profit\s*\/\s*.*netSales/);
   }
   assert.doesNotMatch(sources[0], /eurEquivalent\?\.netSales/);

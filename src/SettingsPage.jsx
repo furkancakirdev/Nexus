@@ -75,6 +75,9 @@ export function SettingsPage({ settings, onSave, connection, mode, annualProfit,
   const [activeTab, setActiveTab] = useState("policy");
   const [message, setMessage] = useState("");
   const [employeeEditor, setEmployeeEditor] = useState(null);
+  const [manualMarginDraft, setManualMarginDraft] = useState({
+    productCode: "", marginPct: "", year: new Date().getFullYear(), reference: "", note: "",
+  });
 
   useEffect(() => setDraft(settings), [settings]);
 
@@ -153,6 +156,54 @@ export function SettingsPage({ settings, onSave, connection, mode, annualProfit,
   const deleteEmployee = (index) => {
     onSaveEmployees(employees.filter((_, employeeIndex) => employeeIndex !== index));
     setMessage("Personel kaydı uygulama listesinden çıkarıldı. CPM'e yazılmadı.");
+  };
+
+  const addManualMarginPolicy = (event) => {
+    event.preventDefault();
+    const productCode = manualMarginDraft.productCode.trim().toUpperCase();
+    const marginPct = Number(manualMarginDraft.marginPct);
+    const year = Number(manualMarginDraft.year);
+    if (!/^[A-Z0-9._/-]{1,64}$/u.test(productCode)) {
+      setMessage("Ürün kodunu harf, rakam, nokta, tire, alt çizgi veya eğik çizgiyle girin.");
+      return;
+    }
+    if (!Number.isFinite(marginPct) || marginPct < 0 || marginPct > 100) {
+      setMessage("Manuel marj %0–%100 arasında olmalı.");
+      return;
+    }
+    if (!Number.isInteger(year) || year < 1900 || year > 2100) {
+      setMessage("Geçerlilik yılı 1900–2100 arasında tam sayı olmalı.");
+      return;
+    }
+    if ((draft.manualMarginPolicies || []).some((policy) => policy.productCode === productCode && policy.year === year)) {
+      setMessage("Bu ürün ve yıl için zaten bir manuel marj kararı var.");
+      return;
+    }
+    const policy = {
+      id: `manual-margin-${Date.now()}`,
+      productCode,
+      marginPct,
+      year,
+      reason: "missing-purchase-or-opening-cost",
+      reference: manualMarginDraft.reference.trim(),
+      note: manualMarginDraft.note.trim(),
+      status: draft.requireManagementApprovalForManualMargin === false ? "approved" : "pending",
+    };
+    set("manualMarginPolicies", [...(draft.manualMarginPolicies || []), policy]);
+    setManualMarginDraft({ productCode: "", marginPct: "", year: new Date().getFullYear(), reference: "", note: "" });
+    setMessage("Manuel marj kararı taslağa eklendi. Ayarları kaydetmeden kalıcı olmaz.");
+  };
+
+  const approveManualMarginPolicy = (id) => {
+    setDraft((current) => ({ ...current, manualMarginPolicies: (current.manualMarginPolicies || []).map((policy) => (
+      policy.id === id ? { ...policy, status: "approved" } : policy
+    )) }));
+    setMessage("Manuel marj kararı taslakta onaylandı. Ayarları kaydetmeden kalıcı olmaz.");
+  };
+
+  const deleteManualMarginPolicy = (id) => {
+    setDraft((current) => ({ ...current, manualMarginPolicies: (current.manualMarginPolicies || []).filter((policy) => policy.id !== id) }));
+    setMessage("Manuel marj kararı taslaktan silindi. Ayarları kaydetmeden kalıcı olmaz.");
   };
 
   return (
@@ -284,6 +335,38 @@ export function SettingsPage({ settings, onSave, connection, mode, annualProfit,
                 <Toggle checked={draft.enableCrossDepotTracking ?? true} onChange={(v) => set("enableCrossDepotTracking", v)} label="Çapraz-depo sevkiyatlarını ayrı izle" help="Servis departmanının merkez depodan sevk edilen parçalarını ticari sahiplikten ayırmadan takip eder." />
                 <Toggle checked={draft.filterAccountingActors ?? true} onChange={(v) => set("filterAccountingActors", v)} label="Bircan ve muhasebe aktörlerini filtrele" help="Bircan veya cari kart benzeri aktörlerin ticari sorumlu sıralamalarına girmesini engeller." />
                 <Toggle checked={draft.requireManagementApprovalForManualCost} onChange={(v) => set("requireManagementApprovalForManualCost", v)} label="Manuel maliyette yönetim onayı zorunlu" help="Açıksa manuel girilen maliyetler yönetim onayı verilene kadar kesin havuz hesabına alınmaz. Kapalıysa kayıt, kaydedildiği anda hesaplamaya katılabilir." />
+                <Toggle checked={draft.requireManagementApprovalForManualMargin ?? true} onChange={(v) => set("requireManagementApprovalForManualMargin", v)} label="Manuel marjda yönetim onayı zorunlu" help="Varsayılan olarak açıktır. Bekleyen kararlar yönetim onayı verilmeden onaylı sayılmaz." />
+              </div>
+              <div className="settings-card">
+                <h3>Eksik maliyet kanıtı için manuel marj</h3>
+                <p className="settings-card__intro">Yalnız alım faturası veya devir maliyeti gerçekten bulunamayan ürünler içindir. Bu turda hesaplamaya bağlanmaz.</p>
+                <form className="form-grid form-grid--3" onSubmit={addManualMarginPolicy} noValidate>
+                  <Field label="Ürün kodu"><input value={manualMarginDraft.productCode} maxLength={64} onChange={(event) => setManualMarginDraft((current) => ({ ...current, productCode: event.target.value }))} placeholder="Örn. GD-100" /></Field>
+                  <Field label="Marj yüzdesi"><NumberInput value={manualMarginDraft.marginPct} onChange={(value) => setManualMarginDraft((current) => ({ ...current, marginPct: value }))} max={100} suffix="%" /></Field>
+                  <Field label="Geçerlilik yılı"><NumberInput value={manualMarginDraft.year} onChange={(value) => setManualMarginDraft((current) => ({ ...current, year: value }))} min={1900} max={2100} /></Field>
+                  <Field label="Gerekçe"><input value="Alım/devir maliyeti bulunamadı" disabled /></Field>
+                  <Field label="Referans" help="Varsa belge, araştırma veya karar referansı."><input value={manualMarginDraft.reference} maxLength={200} onChange={(event) => setManualMarginDraft((current) => ({ ...current, reference: event.target.value }))} /></Field>
+                  <Field label="Not"><input value={manualMarginDraft.note} maxLength={1000} onChange={(event) => setManualMarginDraft((current) => ({ ...current, note: event.target.value }))} /></Field>
+                  <button className="primary-action" type="submit"><IconCheck size={17} /> Marj kararını ekle</button>
+                </form>
+              </div>
+              <div className="people-table-wrap">
+                <table className="people-table">
+                  <thead><tr><th>Ürün</th><th>Yıl</th><th>Marj</th><th>Gerekçe / referans</th><th>Durum</th><th aria-label="İşlemler" /></tr></thead>
+                  <tbody>
+                    {(draft.manualMarginPolicies || []).map((policy) => (
+                      <tr key={policy.id}>
+                        <td><strong>{policy.productCode}</strong><small>{policy.note || "Not yok"}</small></td>
+                        <td>{policy.year}</td>
+                        <td>%{policy.marginPct.toLocaleString("tr-TR")}</td>
+                        <td>Alım/devir maliyeti bulunamadı{policy.reference ? ` · ${policy.reference}` : ""}</td>
+                        <td><span className={policy.status === "approved" ? "person-status" : "person-status off"}>{policy.status === "approved" ? "Onaylandı" : "Onay bekliyor"}</span></td>
+                        <td><div className="table-actions">{policy.status === "pending" && <button type="button" onClick={() => approveManualMarginPolicy(policy.id)} aria-label={`${policy.productCode} manuel marjını onayla`}><IconShieldCheck size={17} /></button>}<button type="button" className="danger" onClick={() => deleteManualMarginPolicy(policy.id)} aria-label={`${policy.productCode} manuel marjını sil`}><IconTrash size={17} /></button></div></td>
+                      </tr>
+                    ))}
+                    {!(draft.manualMarginPolicies || []).length && <tr><td colSpan="6" className="empty-people">Henüz manuel marj kararı eklenmedi.</td></tr>}
+                  </tbody>
+                </table>
               </div>
               <div className="readonly-banner"><IconLock /><div><strong>Faturayla kanıtlanan maliyet ve veri sınırı</strong><p>BARNACLE, SRF oranına bağlıdır. Diğer ürünlerde satıştan önceki son; bu yoksa satıştan sonraki en yakın aktif net alım faturası kullanılır. KOMİSYON, GD-0187, GD-0079 ve PDI kapsam dışıdır; alımı bulunmayan diğer gelir esas kâr ve havuzdan çıkarılır. CPM yalnızca SELECT sorgularıyla okunur.</p></div><span>{mode === "live" ? "Canlı CPM" : "Pilot veri"}</span></div>
             </div>

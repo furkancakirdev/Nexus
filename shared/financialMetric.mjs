@@ -325,16 +325,18 @@ export function projectCanonicalMetric(metric = null, currency = "TRY") {
   const hasRevenueProjection = metric?.eurRevenue && typeof metric.eurRevenue === "object";
   const eurRevenueComplete = hasRevenueProjection ? metric.eurRevenue.complete === true : eurComplete;
   const eurRevenue = hasRevenueProjection ? metric.eurRevenue : metric?.eur;
-  const source = currency === "EUR" ? eurRevenue : metric?.try;
+  const isEur = currency === "EUR";
+  const source = isEur ? eurRevenue : metric?.try;
+  const costSource = isEur ? metric?.eur : metric?.try;
   return {
     status,
-    complete: currency === "EUR" ? eurComplete : complete,
-    revenueComplete: currency === "EUR" ? eurRevenueComplete : complete,
-    costComplete: currency === "EUR" ? eurComplete : complete,
+    complete: isEur ? eurComplete : complete,
+    revenueComplete: isEur ? eurRevenueComplete : complete,
+    costComplete: isEur ? eurComplete : complete,
     netSales: source?.netSales ?? null,
-    cost: complete && (currency !== "EUR" || eurComplete) ? metric?.eur?.cost ?? source?.cost ?? null : null,
-    profit: complete && (currency !== "EUR" || eurComplete) ? metric?.eur?.profit ?? source?.profit ?? null : null,
-    margin: complete && (currency !== "EUR" || eurComplete) ? metric?.eur?.margin ?? source?.margin ?? null : null,
+    cost: complete && (!isEur || eurComplete) ? costSource?.cost ?? null : null,
+    profit: complete && (!isEur || eurComplete) ? costSource?.profit ?? null : null,
+    margin: complete && (!isEur || eurComplete) ? costSource?.margin ?? null : null,
     evidence: metric?.evidence || null,
     byCurrency: metric?.byCurrency || null,
   };

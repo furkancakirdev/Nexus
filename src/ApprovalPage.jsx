@@ -72,6 +72,22 @@ export function getRateEvidencePresentation(status, rateSet = null) {
   };
 }
 
+export function getApprovalStatusPresentation(approval) {
+  if (approval?.stale) {
+    return { tone: "blocked", label: "Güncelliğini yitirdi" };
+  }
+  if (approval?.stale === null) {
+    return { tone: "blocked", label: "Güncellik doğrulanamadı" };
+  }
+  if (approval?.rateEvidenceStatus === "invalid") {
+    return { tone: "blocked", label: "Kur kanıtı geçersiz" };
+  }
+  if (approval) {
+    return { tone: "approved", label: "Onaylandı" };
+  }
+  return null;
+}
+
 export function getRateEvidenceDetails(rateSet) {
   if (!rateSet || typeof rateSet !== "object") {
     return {
@@ -216,6 +232,7 @@ export function ApprovalPage({
       row,
       targetRows: monthTargets,
       approval,
+      approvalStatus: getApprovalStatusPresentation(approval),
       hasData,
       pool: approval?.pool ?? currentPool,
       profit: approval
@@ -231,7 +248,10 @@ export function ApprovalPage({
   }), [approvals, rows, targetMode, targetRows]);
   const selected = periods.find((item) => item.month === selectedMonth)
     || periods[0];
-  const approvedCount = periods.filter((item) => item.approval).length;
+  const selectedApprovalStatus = selected.approvalStatus;
+  const approvedCount = periods.filter((item) => (
+    item.approvalStatus?.tone === "approved"
+  )).length;
   const pendingCount = periods.filter((item) => (
     item.hasData && !item.approval
   )).length;
@@ -433,16 +453,10 @@ export function ApprovalPage({
                     <td>
                       {historical
                         ? <span className="goal-status">Dağıtılmadı</span>
-                        : period.approval?.stale
-                          ? (
-                            <span className="goal-status goal-status--blocked">
-                              Güncelliğini yitirdi
-                            </span>
-                          )
-                          : period.approval
+                        : period.approvalStatus
                             ? (
-                              <span className="goal-status goal-status--approved">
-                                Onaylandı
+                              <span className={`goal-status goal-status--${period.approvalStatus.tone}`}>
+                                {period.approvalStatus.label}
                               </span>
                             )
                             : period.hasData
@@ -466,7 +480,7 @@ export function ApprovalPage({
               <p className="eyebrow">Seçili dönem</p>
               <h2>{selected.monthName} {year}</h2>
             </div>
-            {selected.approval && <IconCheck />}
+            {selected.approval && selectedApprovalStatus?.tone === "approved" && <IconCheck />}
           </div>
 
           {historical ? (

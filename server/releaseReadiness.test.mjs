@@ -17,7 +17,7 @@ test("readiness is ready only with verified source, read-only connection and bui
   const result = evaluateReleaseReadiness({
     connected: true,
     readOnly: true,
-    inventorySource: { status: "verified" },
+    inventorySource: { status: "verified", financialStatus: "ready" },
     buildId: "2026.08.31-test",
     buildVersion: "2.0.0",
     buildCommit: "abc123",
@@ -41,6 +41,34 @@ test("readiness blocks official finance when WAC coverage is insufficient", () =
   assert.ok(result.blockers.includes("official-cost-coverage-insufficient"));
 });
 
+test("readiness blocks verified inventory when financial status is missing", () => {
+  const result = evaluateReleaseReadiness({
+    connected: true,
+    readOnly: true,
+    inventorySource: { status: "verified" },
+    buildId: "2026.08.31-test",
+    buildVersion: "2.0.0",
+    buildCommit: "abc123",
+    imageDigest: "sha256:abc",
+  });
+  assert.equal(result.ready, false);
+  assert.deepEqual(result.blockers, ["official-cost-coverage-insufficient"]);
+});
+
+test("readiness blocks verified inventory when financial status is null", () => {
+  const result = evaluateReleaseReadiness({
+    connected: true,
+    readOnly: true,
+    inventorySource: { status: "verified", financialStatus: null },
+    buildId: "2026.08.31-test",
+    buildVersion: "2.0.0",
+    buildCommit: "abc123",
+    imageDigest: "sha256:abc",
+  });
+  assert.equal(result.ready, false);
+  assert.deepEqual(result.blockers, ["official-cost-coverage-insufficient"]);
+});
+
 test("readiness blocks ambiguous opening evidence", () => {
   const result = evaluateReleaseReadiness({
     connected: true,
@@ -59,7 +87,7 @@ test("readiness rejects writable or unidentified runtime", () => {
   const result = evaluateReleaseReadiness({
     connected: true,
     readOnly: false,
-    inventorySource: { status: "verified" },
+    inventorySource: { status: "verified", financialStatus: "ready" },
     buildId: "",
     buildVersion: "2.0.0",
     buildCommit: "abc123",
@@ -74,7 +102,7 @@ test("readiness separates the explicitly accepted CPM extra-permission risk", ()
     connected: true,
     readOnly: false,
     acceptedRisks: ["cpm-extra-permissions"],
-    inventorySource: { status: "verified" },
+    inventorySource: { status: "verified", financialStatus: "ready" },
     buildId: "2026.09.01-test",
     buildVersion: "2.0.0",
     buildCommit: "abc123",
@@ -89,7 +117,7 @@ test("readiness keeps the CPM permission risk hard-blocking when it is not expli
   const result = evaluateReleaseReadiness({
     connected: true,
     readOnly: false,
-    inventorySource: { status: "verified" },
+    inventorySource: { status: "verified", financialStatus: "ready" },
     buildId: "2026.09.01-test",
     buildVersion: "2.0.0",
     buildCommit: "abc123",

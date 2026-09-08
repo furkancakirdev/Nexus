@@ -78,7 +78,7 @@ export function DataTable({
   return (
     <div className={`nexus-data-table-wrap ${className}`}>
       {searchable && (
-        <div className="nexus-data-table__toolbar">
+        <div className="nexus-data-table__toolbar" role="search">
           <div className="nexus-search-input">
             <IconSearch size={16} className="nexus-search-icon" />
             <input
@@ -98,11 +98,11 @@ export function DataTable({
         </div>
       )}
 
-      <div className="nexus-data-table__scroller">
-        <table className="nexus-data-table">
+      <div className="nexus-data-table__scroller" tabIndex={0}>
+        <table className="nexus-data-table" aria-label="Veri tablosu">
           <thead>
             <tr>
-              {expandable && <th className="nexus-col-expand" aria-label="Genişlet" />}
+              {expandable && <th className="nexus-col-expand" scope="col" aria-label="Genişlet" />}
               {columns.map((col) => {
                 const isSorted = sortKey === col.key;
                 return (
@@ -110,12 +110,22 @@ export function DataTable({
                     key={col.key}
                     style={{ textAlign: col.align || "left", width: col.width }}
                     className={col.sortable !== false ? "nexus-sortable-th" : ""}
-                    onClick={col.sortable !== false ? () => handleSort(col.key) : undefined}
+                    scope="col"
+                    aria-sort={col.sortable !== false ? (isSorted ? sortDir === "asc" ? "ascending" : "descending" : "none") : undefined}
                   >
                     <div className="nexus-th-content" style={{ justifyContent: col.align === "right" ? "flex-end" : col.align === "center" ? "center" : "flex-start" }}>
-                      <span>{col.label}</span>
+                      {col.sortable !== false ? (
+                        <button
+                          type="button"
+                          className="nexus-sort-button"
+                          onClick={() => handleSort(col.key)}
+                          aria-label={`${col.label} sütununa göre sırala${isSorted ? `, şu an ${sortDir === "asc" ? "artan" : "azalan"}` : ""}`}
+                        >
+                          <span>{col.label}</span>
+                        </button>
+                      ) : <span>{col.label}</span>}
                       {col.sortable !== false && (
-                        <span className="nexus-sort-icon">
+                        <span className="nexus-sort-icon" aria-hidden="true">
                           {isSorted && sortDir === "desc" ? (
                             <IconChevronDown size={14} />
                           ) : (
@@ -138,7 +148,7 @@ export function DataTable({
               </tr>
             ) : (
               pagedData.map((row, index) => {
-                const rowKey = row[keyField] || index;
+                const rowKey = row[keyField] ?? index;
                 const isExpanded = expandedKeys.has(rowKey);
 
                 return (
@@ -158,7 +168,7 @@ export function DataTable({
                               toggleExpand(rowKey);
                             }}
                             aria-expanded={isExpanded}
-                            aria-label="Satır detaylarını göster"
+                            aria-label={isExpanded ? "Satır detaylarını gizle" : "Satır detaylarını göster"}
                           >
                             <IconChevronRight
                               size={16}
@@ -196,7 +206,9 @@ export function DataTable({
       {paginated && totalPages > 1 && (
         <div className="nexus-pagination">
           <button
+            type="button"
             disabled={currentPage <= 1}
+            aria-label="Önceki sayfa"
             onClick={() => setCurrentPage((p) => p - 1)}
             className="nexus-pagination-btn"
           >
@@ -206,7 +218,9 @@ export function DataTable({
             Sayfa {currentPage} / {totalPages}
           </span>
           <button
+            type="button"
             disabled={currentPage >= totalPages}
+            aria-label="Sonraki sayfa"
             onClick={() => setCurrentPage((p) => p + 1)}
             className="nexus-pagination-btn"
           >

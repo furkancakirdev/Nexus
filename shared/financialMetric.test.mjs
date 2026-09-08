@@ -211,6 +211,36 @@ test("cost review keeps evidence-backed EUR revenue but never publishes EUR cost
   assert.equal(projected.margin, null);
 });
 
+test("currency projection keeps TRY sales, cost, and profit on the TRY basis", () => {
+  const metric = aggregateFinancialMetric([coveredRow()], { rateSets: RATE_SETS });
+  const projectedTry = projectCanonicalMetric(metric, "TRY");
+  const projectedEur = projectCanonicalMetric(metric, "EUR");
+
+  assert.deepEqual(
+    {
+      netSales: projectedTry.netSales,
+      cost: projectedTry.cost,
+      profit: projectedTry.profit,
+    },
+    { netSales: 500, cost: 200, profit: 300 },
+  );
+  assert.equal(projectedEur.netSales, 500 / 25 * 35 / 50);
+  assert.equal(projectedEur.cost, 200 / 25 * 35 / 50);
+  assert.equal(projectedEur.profit, 300 / 25 * 35 / 50);
+});
+
+test("document selling rate and EUR reporting buying rate remain separate", () => {
+  const metric = aggregateFinancialMetric([coveredRow({
+    signedNetSalesTry: 2_500,
+    documentSellingRate: 25,
+    financeV2: { reviewReason: null, lineCostTryExVat: 1_000, lineCostCurrencyExVat: 40 },
+  })], { rateSets: RATE_SETS });
+
+  assert.equal(metric.byCurrency.USD.netSales, 100);
+  assert.equal(metric.eur.netSales, 70);
+  assert.equal(metric.eur.cost, 28);
+});
+
 test("signed returns reverse cost and profit without losing the negative sign", () => {
   const result = aggregateFinancialMetric([
     coveredRow({ signedNetSalesTry: -500, financeV2: { reviewReason: null, lineCostTryExVat: -200, lineCostCurrencyExVat: -8 } }),

@@ -19,6 +19,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   minimumCoverage: 85,
   exchangeRateRule: "document",
   requireManagementApprovalForManualCost: true,
+  requireManagementApprovalForManualMargin: true,
+  manualMarginPolicies: Object.freeze([]),
   allocationMethod: "coefficient",
   departmentTargets: DEFAULT_DEPARTMENT_TARGETS,
   monthlyCloseDay: 10,
@@ -91,6 +93,60 @@ function enumValue(value, fieldName, allowedValues) {
     throw new RangeError(`${fieldName} geçerli bir değer olmalı.`);
   }
   return value;
+}
+
+function textValue(value, fieldName, { required = false, maximum = 500 } = {}) {
+  if (typeof value !== "string") {
+    throw new TypeError(`${fieldName} metin olmalı.`);
+  }
+  const text = value.trim();
+  if (required && !text) {
+    throw new RangeError(`${fieldName} boş olamaz.`);
+  }
+  if (text.length > maximum || /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/u.test(text)) {
+    throw new RangeError(`${fieldName} geçerli uzunlukta metin olmalı.`);
+  }
+  return text;
+}
+
+function normalizeManualMarginPolicies(value) {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) {
+    throw new TypeError("Manuel marj politikaları dizi olmalı.");
+  }
+
+  const periods = new Set();
+  return value.map((policy, index) => {
+    const source = optionalRecord(policy, `Manuel marj politikası ${index + 1}`);
+    const productCode = textValue(source.productCode, "Ürün kodu", {
+      required: true,
+      maximum: 64,
+    }).toUpperCase();
+    if (!/^[A-Z0-9._/-]+$/u.test(productCode)) {
+      throw new RangeError("Ürün kodu yalnız harf, rakam, nokta, tire, alt çizgi veya eğik çizgi içerebilir.");
+    }
+    const year = integerInRange(source.year, "Manuel marj geçerlilik yılı", 1900, 2100);
+    const periodKey = `${productCode}:${year}`;
+    if (periods.has(periodKey)) {
+      throw new RangeError("Aynı ürün ve yıl için birden fazla manuel marj politikası olamaz.");
+    }
+    periods.add(periodKey);
+
+    return {
+      id: textValue(source.id, "Manuel marj kayıt kimliği", { required: true, maximum: 100 }),
+      productCode,
+      marginPct: rangedNumber(source.marginPct, "Manuel marj yüzdesi", 0, 100),
+      year,
+      reason: enumValue(
+        source.reason,
+        "Manuel marj gerekçesi",
+        ["missing-purchase-or-opening-cost"],
+      ),
+      reference: textValue(source.reference ?? "", "Manuel marj referansı", { maximum: 200 }),
+      note: textValue(source.note ?? "", "Manuel marj notu", { maximum: 1000 }),
+      status: enumValue(source.status, "Manuel marj durumu", ["pending", "approved"]),
+    };
+  });
 }
 
 function legacyDepartmentValue(record, department, fallback) {
@@ -200,6 +256,7 @@ export function normalizeSettings(stored) {
         return [code, name];
       }),
     ),
+    manualMarginPolicies: normalizeManualMarginPolicies(source.manualMarginPolicies),
   };
 
   result.rates.conservative = rangedNumber(
@@ -280,6 +337,14 @@ export function normalizeSettings(stored) {
       DEFAULT_SETTINGS.requireManagementApprovalForManualCost,
     ),
     "Manuel maliyet yönetim onayı",
+  );
+  result.requireManagementApprovalForManualMargin = booleanValue(
+    valueOrDefault(
+      source,
+      "requireManagementApprovalForManualMargin",
+      DEFAULT_SETTINGS.requireManagementApprovalForManualMargin,
+    ),
+    "Manuel marj yönetim onayı",
   );
   result.allocationMethod = enumValue(
     valueOrDefault(
@@ -387,5 +452,6 @@ export function serializeSettings(settings) {
     },
     pilotCardCostRates: { ...normalized.pilotCardCostRates },
     identityMap: { ...normalized.identityMap },
+    manualMarginPolicies: normalized.manualMarginPolicies.map((policy) => ({ ...policy })),
   };
 }

@@ -13,7 +13,11 @@ export function ChartCard({
   className = "",
 }) {
   return (
-    <div className={`nexus-chart-card ${className}`}>
+    <section
+      className={`nexus-chart-card ${className}`}
+      aria-label={title || "Grafik"}
+      role="region"
+    >
       <div className="nexus-chart-card__header">
         <div>
           <h3 className="nexus-chart-card__title">{title}</h3>
@@ -32,6 +36,7 @@ export function ChartCard({
               <span
                 className="nexus-chart-card__legend-dot"
                 style={{ backgroundColor: item.color }}
+                aria-hidden="true"
               />
               <span className="nexus-chart-card__legend-label">{item.name}</span>
             </li>
@@ -39,13 +44,19 @@ export function ChartCard({
         </ul>
       )}
 
-      <div className="nexus-chart-card__body" style={{ minHeight: height }}>
+      <div
+        className="nexus-chart-card__body"
+        style={{ "--nexus-chart-card-height": typeof height === "number" ? `${height}px` : height }}
+      >
         {empty ? (
-          <div className="nexus-chart-card__empty">{emptyMessage}</div>
+          <div className="nexus-chart-card__empty" role="status">
+            <span className="nexus-chart-card__empty-mark" aria-hidden="true">∅</span>
+            <span>{emptyMessage}</span>
+          </div>
         ) : (
           children
         )}
       </div>
-    </div>
+    </section>
   );
 }

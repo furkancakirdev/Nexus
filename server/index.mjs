@@ -161,7 +161,10 @@ async function loadFinalInvoiceLedger(year) {
   const rateRows = result.rateCandidates?.recordsets?.[0] || [];
   const priceRows = result.priceCandidates?.recordsets?.[0] || [];
   const movementEvidence = summarizeCpmMovementCandidates({ rows: movementRows });
-  const movementCandidates = buildCpmWacMovementCandidates({ rows: movementRows });
+  const movementCandidates = buildCpmWacMovementCandidates({
+    rows: movementRows,
+    excludeUnlinkedReturnBeforeYear: year,
+  });
   const rateCandidates = buildCpmExchangeRateCandidates({
     rows: rateRows,
     bankCode: Number(process.env.CPM_RATE_BANK_CODE || DEFAULT_HALK_BANK_CODE),
@@ -178,10 +181,17 @@ async function loadFinalInvoiceLedger(year) {
     movements: movementCandidates.movements,
     priceRows,
   });
-  const historicalDateCap = Number.isInteger(Number(process.env.NEXUS_TCMB_HISTORICAL_DATE_CAP))
-    && Number(process.env.NEXUS_TCMB_HISTORICAL_DATE_CAP) >= 0
-    ? Number(process.env.NEXUS_TCMB_HISTORICAL_DATE_CAP)
-    : 32;
+  // Varsayılan olarak tüm tarihleri CPM ile karşılaştır. Tarih kapatma yalnız
+  // açıkça yapılandırılmışsa uygulanır; aksi halde daha sonraki tarihlerin
+  // TCMB fallback kontrolünden sessizce atlanması sahte bir "kanıt var"
+  // görünümü oluşturur. Ağ çağrısının kendi deneme ve süre bütçesi ayrıca
+  // korunur.
+  const configuredHistoricalDateCap = String(process.env.NEXUS_TCMB_HISTORICAL_DATE_CAP ?? "").trim();
+  const historicalDateCap = configuredHistoricalDateCap !== ""
+    && Number.isInteger(Number(configuredHistoricalDateCap))
+    && Number(configuredHistoricalDateCap) >= 0
+    ? Number(configuredHistoricalDateCap)
+    : Infinity;
   const historicalDatePlan = planTcmbFallbackDates({
     requestedDates: historicalMovementDates,
     maxRequestedDates: historicalDateCap,
@@ -243,9 +253,13 @@ async function loadFinalInvoiceLedger(year) {
   });
   const movementContractVerified = String(process.env.CPM_INVENTORY_SOURCE_CONTRACT_VERIFIED).toLowerCase() === "true";
   const sourceVerified = movementContractVerified;
+  const excludedMovementRowCount = (movementCandidates.reviewCounts.invalidCostRows || 0)
+    + (movementCandidates.reviewCounts.invalidMovementRows || 0)
+    + (movementCandidates.reviewCounts.unlinkedReturnRows || 0)
+    + (movementCandidates.reviewCounts.excludedNonMovementRows || 0)
+    + (movementCandidates.reviewCounts.excludedUnlinkedReturnRows || 0);
   const movementEvidenceComplete = movementEvidence.mappedRowCount === movementRows.length
-    && movementCandidates.candidateMovementCount === movementRows.length
-    && movementCandidates.reviewCounts.invalidCostRows === 0
+    && movementEvidence.movementRowCount === movementCandidates.candidateMovementCount + excludedMovementRowCount
     && movementCandidates.reviewCounts.invalidMovementRows === 0
     && movementCandidates.reviewCounts.unlinkedReturnRows === 0
     && movementCandidates.reviewCounts.missingDepotCount === 0;
@@ -257,10 +271,18 @@ async function loadFinalInvoiceLedger(year) {
       return Number.isFinite(Number(movement.unitCostCurrencyExVat))
         && Number(movement.unitCostCurrencyExVat) > 0;
     });
+  const costMovements = movementCandidates.movements
+    .filter((movement) => ["opening", "purchase"].includes(movement.kind));
+  const historicalCostMovements = historicalEvidence.movements
+    .filter((movement) => ["opening", "purchase"].includes(movement.kind));
+  const historicalCostEvidenceComplete = costMovements.length > 0
+    && historicalCostMovements.length === costMovements.length
+    && historicalCostMovements.every((movement) => Number.isFinite(Number(movement.unitCostTryExVat))
+      && Number(movement.unitCostTryExVat) > 0)
+    && historicalEvidence.costReviewCounts.review === 0;
   const costEvidenceComplete = movementEvidenceComplete
-    && historicalCurrencyComplete
-    && historicalEvidence.costReviewCounts.review === 0
-    && historicalEvidence.priceRowCount > 0
+    && movementCandidates.reviewCounts.invalidCostRows === 0
+    && historicalCostEvidenceComplete
     && historicalEvidence.exchangeRateCount > 0;
   const marginEvidenceComplete = movementEvidenceComplete
     && historicalCurrencyComplete
@@ -289,6 +311,8 @@ async function loadFinalInvoiceLedger(year) {
       evidence: {
         queryId: "inventory-movement-candidate-v1",
         candidateRowCount: movementRows.length,
+        movementRowCount: movementEvidence.movementRowCount,
+        lineageRowCount: movementEvidence.lineageRowCount,
         movementCandidateStatus: movementEvidence.status,
         movementMappedRowCount: movementEvidence.mappedRowCount,
         movementKindCounts: movementEvidence.kindCounts,
@@ -299,6 +323,13 @@ async function loadFinalInvoiceLedger(year) {
         movementReviewCounts: movementCandidates.reviewCounts,
         movementEvidenceComplete,
         movementReviewReasons: movementCandidates.reviewReasons,
+        movementUnlinkedReturnReasons: movementCandidates.unlinkedReturnReasons,
+        movementInvalidCostReasons: movementCandidates.invalidCostReasons,
+        unlinkedReturnYearCounts: movementCandidates.unlinkedReturnYearCounts,
+        invalidCostYearCounts: movementCandidates.invalidCostYearCounts,
+        excludedUnlinkedReturnYearCounts: movementCandidates.excludedUnlinkedReturnYearCounts,
+        excludedUnlinkedReturnReasons: movementCandidates.excludedUnlinkedReturnReasons,
+        excludedMovementRowCount,
         documentTypes: [...new Set(movementRows.map((row) => Number(row.documentType)).filter(Number.isFinite))].sort((a, b) => a - b),
         rateCandidateRowCount: rateRows.length,
         rateCandidateStatus: rateCandidates.status,
@@ -315,7 +346,10 @@ async function loadFinalInvoiceLedger(year) {
         historicalEvidenceReviewReasons: historicalEvidence.reviewReasons,
         historicalCostEvidenceReviewCounts: historicalEvidence.costReviewCounts,
         historicalCostEvidenceReviewReasons: historicalEvidence.costReviewReasons,
+        costEvidenceSummary: historicalEvidence.costEvidenceSummary,
+        marginEvidenceSummary: historicalEvidence.marginEvidenceSummary,
         historicalCurrencyComplete,
+        historicalCostEvidenceComplete,
         costEvidenceComplete,
         marginEvidenceComplete,
         historicalEvidenceComplete,

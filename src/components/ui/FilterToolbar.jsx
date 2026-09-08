@@ -11,10 +11,12 @@ export function FilterToolbar({
   onReset,
   className = "",
 }) {
-  const hasActiveFilters = searchValue || filters.some((f) => f.value && f.value !== "all");
+  const hasActiveFilters = Boolean(
+    searchValue || filters.some((f) => f.value != null && f.value !== "" && f.value !== "all"),
+  );
 
   return (
-    <div className={`nexus-filter-toolbar ${className}`}>
+    <div className={`nexus-filter-toolbar ${className}`} role="search" aria-label="Filtreler">
       <div className="nexus-filter-toolbar__left">
         {onSearchChange && (
           <div className="nexus-filter-toolbar__search">
@@ -43,7 +45,7 @@ export function FilterToolbar({
           <label key={filter.key} className="nexus-filter-select-label">
             {filter.label && <span className="nexus-filter-select-title">{filter.label}</span>}
             <select
-              value={filter.value}
+              value={filter.value ?? "all"}
               onChange={(e) => filter.onChange(e.target.value)}
               aria-label={filter.label || filter.key}
             >
@@ -63,6 +65,7 @@ export function FilterToolbar({
             type="button"
             className="nexus-filter-reset-btn"
             onClick={onReset}
+            aria-label="Filtreleri sıfırla"
           >
             Sıfırla
           </button>

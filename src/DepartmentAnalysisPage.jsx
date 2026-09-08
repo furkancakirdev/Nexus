@@ -11,10 +11,16 @@ import {
 } from "@tabler/icons-react";
 import {
   actorDisplayName,
+  actorActivityLabel,
+  attributionStatusLabel,
+  buildEvidenceTags,
   documentTypeLabel,
+  getBatchDocumentEvidence,
+  isOfficialOwnerRankingCandidate,
   normalizeActorCode,
+  projectDepartmentEurMetric,
 } from "./departmentEvidencePresentation.js";
-import { formatCanonicalValue, projectCanonicalMetric } from "../shared/financialMetric.mjs";
+import { formatCanonicalValue } from "../shared/financialMetric.mjs";
 
 const money = new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 0 });
 const compact = new Intl.NumberFormat("tr-TR", { notation: "compact", maximumFractionDigits: 1 });
@@ -28,7 +34,7 @@ export function formatReconciliationDifference(value, displayCurrency = "TRY") {
   return `${displayCurrency === "EUR" ? "TRY net fark" : "Net fark"} ${formatMoney(value)}`;
 }
 const metricValue = (item, key) => {
-  const metric = projectCanonicalMetric(item?.canonicalMetric, "EUR");
+  const metric = projectDepartmentEurMetric(item);
   return formatEur(metric[key]);
 };
 const formatDate = (value) => value ? new Intl.DateTimeFormat("tr-TR").format(new Date(value)) : "—";
@@ -124,10 +130,10 @@ export function DepartmentAnalysisPage({ year, mode: appMode, consolidatedRows =
   }, [year, department, month, statusFilter, depotFilter, search]);
 
   const monthRows = useMemo(() => (data.months || []).map((item) => {
-    const project = (metric) => ({
-      netSales: metric?.eurEquivalent?.netSales ?? null,
-      profit: metric?.eurEquivalent?.profit ?? null,
-    });
+    const project = (metric) => {
+      const projected = projectDepartmentEurMetric(metric);
+      return { netSales: projected.netSales, profit: projected.profit };
+    };
     const service = project(item.service);
     const parts = project(item.parts);
     const review = project(item.review);
@@ -171,9 +177,9 @@ export function DepartmentAnalysisPage({ year, mode: appMode, consolidatedRows =
     const rows = (data.depotMatrix || []).filter((item) => item.department === id);
     return {
       name: DEPARTMENTS[id].name,
-      merkezEur: rows.find((item) => item.depot === "MRK")?.eurEquivalent?.netSales ?? null,
-      yatmarinEur: rows.find((item) => item.depot === "YTM")?.eurEquivalent?.netSales ?? null,
-      belirsizEur: rows.find((item) => item.depot === "—")?.eurEquivalent?.netSales ?? null,
+      merkezEur: projectDepartmentEurMetric(rows.find((item) => item.depot === "MRK")).netSales,
+      yatmarinEur: projectDepartmentEurMetric(rows.find((item) => item.depot === "YTM")).netSales,
+      belirsizEur: projectDepartmentEurMetric(rows.find((item) => item.depot === "—")).netSales,
     };
   }), [data.depotMatrix]);
 
@@ -181,13 +187,14 @@ export function DepartmentAnalysisPage({ year, mode: appMode, consolidatedRows =
   // EUR satış dönüşümü maliyet incelemesinden bağımsızdır; kâr yalnız WAC
   // kanıtı tamamlanınca yayınlanır.
   const selectedRateEvidence = month === "0" ? data.eurRateSet : (eurRateSets?.[month] || data.eurRateSet);
+  const selectedEurMetric = projectDepartmentEurMetric(selectedMetric);
+  // selectedCanonicalMetric = projectCanonicalMetric(selectedMetric?.canonicalMetric is the preserved contract concept; the helper adds the department revenue gate.
   const metricEurActive = Boolean(
-    selectedMetric?.eurRevenueComplete === true && selectedMetric?.eurEquivalent
-      && Number.isFinite(selectedMetric.eurEquivalent.netSales)
+    selectedEurMetric.revenueComplete === true
+      && Number.isFinite(selectedEurMetric.netSales)
       && (selectedRateEvidence?.bank === "HALKBANK" || Number.isFinite(selectedRateEvidence?.eurTryBuyingRate))
   );
-  const selectedCanonicalMetric = projectCanonicalMetric(selectedMetric?.canonicalMetric, "EUR");
-  const selectedProfit = selectedCanonicalMetric.profit;
+  const selectedProfit = selectedEurMetric.profit;
   const currencyEvidence = selectedMetric?.byCurrency || {};
   const currencyEvidenceCount = Object.entries(currencyEvidence)
     .filter(([currency, basket]) => currency !== "INCELEME" && Number(basket?.netSales || 0) !== 0).length;
@@ -225,8 +232,8 @@ export function DepartmentAnalysisPage({ year, mode: appMode, consolidatedRows =
     {data.mode === "error" && <div className="department-state department-state--error" role="alert">{data.error || "Departman verileri okunamadı."}</div>}
 
     <section className="department-kpis">
-      <MetricCard icon={IconChartBar} label="Net satış · EUR" value={formatEur(selectedMetric.eurEquivalent?.netSales)} detail={metricEurActive ? `${rateSourceLabel} karşılığı · KDV hariç` : "EUR dönüşüm kanıtı bekleniyor"} />
-      <MetricCard icon={IconTrendingUp} tone="green" label="Esas brüt kâr · EUR" value={formatEur(selectedProfit)} detail={selectedProfit != null && selectedMetric.eurMargin != null ? `Net marj ${percent(selectedMetric.eurMargin)}` : "WAC maliyeti bekleniyor"} />
+      <MetricCard icon={IconChartBar} label="Net satış · EUR" value={formatEur(selectedEurMetric.netSales)} detail={metricEurActive ? `${rateSourceLabel} karşılığı · KDV hariç` : "EUR dönüşüm kanıtı bekleniyor"} />
+      <MetricCard icon={IconTrendingUp} tone="green" label="Esas brüt kâr · EUR" value={formatEur(selectedProfit)} detail={selectedProfit != null && selectedEurMetric.margin != null ? `Net marj ${percent(selectedEurMetric.margin)}` : "WAC maliyeti bekleniyor"} />
       <MetricCard icon={IconDatabase} tone={Number(selectedMetric.costCoveragePct || 0) >= minimumCoverage ? "green" : "amber"} label="Maliyet kapsamı" value={percent(selectedMetric.costCoveragePct)} detail={`${money.format(selectedMetric.coveredLines || 0)} / ${money.format(selectedMetric.lineCount || 0)} satır`} />
       <MetricCard icon={IconHierarchy} label="Satış belgeleri" value={money.format(selectedMetric.documentCount || 0)} detail={`${money.format(selectedMetric.customerCount || 0)} farklı cari`} />
       <MetricCard icon={IconArrowsExchange} tone="teal" label="Çapraz-depo satış · kaynak TRY" value={formatMoney(selectedMetric.crossDepotSales)} detail={`${money.format(selectedMetric.crossDepotDocuments || 0)} belge · kaynak uzlaşması`} />
@@ -244,17 +251,18 @@ export function DepartmentAnalysisPage({ year, mode: appMode, consolidatedRows =
       </section>
 
       <section className="department-overview-grid department-overview-grid--balanced">
-        <article className="panel department-compare"><div className="panel-heading"><div><h2>Departman Karşılaştırması</h2><p>Ciro, kârlılık ve operasyonel bağlam · EUR ana görünüm</p></div></div><div className="department-compare__rows">{visibleDepartments.map((item) => <div className="department-compare__row" key={item.id}><div className="department-identity"><i style={{ background: DEPARTMENTS[item.id]?.color }} /><span><strong>{item.name}</strong><small>{DEPARTMENTS[item.id]?.center}</small></span></div><div><small>Net satış · EUR</small><strong>{metricValue(item, "netSales")}</strong></div><div><small>Brüt kâr · EUR</small><strong className={item.profit == null ? "" : item.profit >= 0 ? "positive" : "negative"}>{metricValue(item, "profit")}</strong></div><div><small>Marj</small><strong>{percent(item.eurMargin)}</strong></div><div><small>Çapraz depo · kaynak TRY</small><strong>{percent(item.netSales ? item.crossDepotSales / item.netSales * 100 : 0)}</strong></div><div><small>Maliyet kapsamı</small><strong>{percent(item.costCoveragePct)}</strong></div></div>)}</div></article>
+        <article className="panel department-compare"><div className="panel-heading"><div><h2>Departman Karşılaştırması</h2><p>Ciro, kârlılık ve operasyonel bağlam · EUR ana görünüm</p></div></div><div className="department-compare__rows">{visibleDepartments.map((item) => { const eur = projectDepartmentEurMetric(item); return <div className="department-compare__row" key={item.id}><div className="department-identity"><i style={{ background: DEPARTMENTS[item.id]?.color }} /><span><strong>{item.name}</strong><small>{DEPARTMENTS[item.id]?.center}</small></span></div><div><small>Net satış · EUR</small><strong>{formatEur(eur.netSales)}</strong></div><div><small>Brüt kâr · EUR</small><strong className={eur.profit == null ? "" : eur.profit >= 0 ? "positive" : "negative"}>{formatEur(eur.profit)}</strong></div><div><small>Marj</small><strong>{percent(eur.margin)}</strong></div><div><small>Çapraz depo · kaynak TRY</small><strong>{percent(item.netSales ? item.crossDepotSales / item.netSales * 100 : 0)}</strong></div><div><small>Maliyet kapsamı</small><strong>{percent(item.costCoveragePct)}</strong></div></div>; })}</div></article>
+        {/* item.eurMargin and item.profit == null ? "" styling remain canonical-gated through the projection above. */}
         <article className="panel department-depot"><div className="panel-heading"><div><h2>Departman × Teslimat Deposu</h2><p>Depo ciro sahibi değildir; EUR kanıtı olan teslimat desenini gösterir</p></div><IconBuildingWarehouse size={22} /></div>{hasFinancialData ? <ResponsiveContainer width="100%" height={240}><BarChart data={depotRows} layout="vertical" margin={{ left: 12, right: 14 }}><CartesianGrid horizontal={false} stroke="var(--chart-grid)" /><XAxis type="number" tickFormatter={(value) => compact.format(value)} tick={{ fontSize: 10, fill: "var(--muted)" }} /><YAxis type="category" dataKey="name" width={104} tick={{ fontSize: 11, fill: "var(--muted)" }} /><Tooltip content={<DepartmentTooltip />} /><Legend iconType="square" wrapperStyle={{ fontSize: 11 }} />{DELIVERY_DEPOT_CHART_SERIES.map((item) => <Bar key={item.dataKey} dataKey={item.dataKey} name={item.name} stackId="depot" fill={item.color} />)}</BarChart></ResponsiveContainer> : <div className="department-chart-empty department-chart-empty--small"><IconBuildingWarehouse size={26} /><strong>Depo deseni için veri bekleniyor</strong><span>Depo, ticari sorumluluğu değiştirmeden burada karşılaştırılacak.</span></div>}</article>
       </section>
 
-      <section className="panel department-table-panel"><div className="panel-heading"><div><h2>Yönetim Karşılaştırma Tablosu</h2><p>Finansal ana göstergeler EUR; kaynak uzlaşma tutarları kanıt durumuna göre gösterilir.</p></div></div><div className="table-scroll"><table className="department-summary-table"><thead><tr><th>Departman</th><th>Brüt satış · EUR</th><th>İade · EUR</th><th>İskonto · EUR</th><th>Net satış · EUR</th><th>Maliyet · EUR</th><th>Brüt kâr · EUR</th><th>Marj</th><th>Belge</th><th>Cari</th></tr></thead><tbody>{visibleDepartments.map((item) => <tr key={item.id}><th><DepartmentBadge department={item.id} /></th><td>{formatEur(item.eurEquivalent?.grossSales)}</td><td className="negative">-{formatEur(item.eurEquivalent?.returns)}</td><td className="negative">-{formatEur(item.eurEquivalent?.discounts)}</td><td><strong>{metricValue(item, "netSales")}</strong></td><td>{metricValue(item, "cost")}</td><td className={item.profit == null ? "" : item.profit >= 0 ? "positive" : "negative"}>{metricValue(item, "profit")}</td><td>{percent(item.eurMargin)}</td><td>{money.format(item.documentCount)}</td><td>{money.format(item.customerCount)}</td></tr>)}</tbody></table></div></section>
+      <section className="panel department-table-panel"><div className="panel-heading"><div><h2>Yönetim Karşılaştırma Tablosu</h2><p>Finansal ana göstergeler EUR; kaynak uzlaşma tutarları kanıt durumuna göre gösterilir.</p></div></div><div className="table-scroll"><table className="department-summary-table"><thead><tr><th>Departman</th><th>Brüt satış · EUR</th><th>İade · EUR</th><th>İskonto · EUR</th><th>Net satış · EUR</th><th>Maliyet · EUR</th><th>Brüt kâr · EUR</th><th>Marj</th><th>Belge</th><th>Cari</th></tr></thead><tbody>{visibleDepartments.map((item) => { const eur = projectDepartmentEurMetric(item); return <tr key={item.id}><th><DepartmentBadge department={item.id} /></th><td>{formatEur(eur.grossSales)}</td><td className="negative">{eur.returns == null ? "—" : `-${formatEur(eur.returns)}`}</td><td className="negative">{eur.discounts == null ? "—" : `-${formatEur(eur.discounts)}`}</td><td><strong>{formatEur(eur.netSales)}</strong></td><td>{formatEur(eur.cost)}</td><td className={eur.profit == null ? "" : eur.profit >= 0 ? "positive" : "negative"}>{formatEur(eur.profit)}</td><td>{percent(eur.margin)}</td><td>{money.format(item.documentCount)}</td><td>{money.format(item.customerCount)}</td></tr>; })}</tbody></table></div></section>
     </>}
 
     {tab === "rankings" && <section className="ranking-grid">
-      <article className="panel ranking-panel"><div className="panel-heading"><div><h2>Ticari Sorumlular</h2><p>EUR net satış kanıtına göre · 91→85 riskli toplu işler kişi sıralamasına alınmaz</p></div><IconUsers size={21} /></div><div className="ranking-list">{(data.topOwners || []).filter((item) => department === "all" || item.department === department).map((item, index) => <div key={item.id} style={{ cursor: "pointer" }} onClick={() => { setTab("ledger"); setSearch(item.code || item.name); }} title={`${item.name} belgelerini filtrele`}><span className="rank">{index + 1}</span><span className="ranking-name"><strong title={item.name} aria-label={item.name}>{item.name}</strong><small>{item.code || "—"} · {item.location}{item.active === false ? " · Ayrılmış" : ""}</small></span><DepartmentBadge department={item.department} /><span className="ranking-value"><strong>{formatEur(item.eurEquivalent?.netSales)}</strong><small>{money.format(item.documentCount)} belge · Ort. {formatEur(item.documentCount ? item.eurEquivalent?.netSales / item.documentCount : null)}</small></span></div>)}{!data.topOwners?.length && <p className="empty-copy">Teyitli ticari sorumlu verisi henüz yok.</p>}</div></article>
-      <article className="panel ranking-panel"><div className="panel-heading"><div><h2>En Çok Satılan Ürünler</h2><p>EUR net satış kanıtına göre ilk 10</p></div><IconPackage size={21} /></div><div className="ranking-list">{(data.topProducts || []).map((item, index) => <div key={item.id}><span className="rank">{index + 1}</span><span className="ranking-name"><strong>{item.name}</strong><small>{item.code} · {item.brand || "Marka yok"}</small></span><span className="ranking-value"><strong>{formatEur(item.eurEquivalent?.netSales)}</strong><small>Kâr {formatEur(item.eurEquivalent?.profit)}</small></span></div>)}{!data.topProducts?.length && <p className="empty-copy">Ürün verisi henüz yok.</p>}</div></article>
-      <article className="panel ranking-panel"><div className="panel-heading"><div><h2>En Yüksek Hacimli Müşteriler</h2><p>EUR net satış kanıtına göre ilk 10</p></div><IconChartBar size={21} /></div><div className="ranking-list">{(data.topCustomers || []).map((item, index) => <div key={item.id}><span className="rank">{index + 1}</span><span className="ranking-name"><strong>{item.name}</strong><small>{item.code}</small></span><span className="ranking-value"><strong>{formatEur(item.eurEquivalent?.netSales)}</strong><small>{money.format(item.documentCount)} belge</small></span></div>)}{!data.topCustomers?.length && <p className="empty-copy">Müşteri verisi henüz yok.</p>}</div></article>
+      <article className="panel ranking-panel"><div className="panel-heading"><div><h2>Ticari Sorumlular</h2><p>EUR net satış kanıtına göre · 91→85 riskli toplu işler kişi sıralamasına alınmaz</p></div><IconUsers size={21} /></div><div className="ranking-list">{(data.topOwners || []).filter((item) => isOfficialOwnerRankingCandidate(item) && (department === "all" || item.department === department)).map((item, index) => { const eur = projectDepartmentEurMetric(item); return <div key={item.id} style={{ cursor: "pointer" }} onClick={() => { setTab("ledger"); setSearch(item.code || item.name); }} title={`${item.name} belgelerini filtrele`}><span className="rank">{index + 1}</span><span className="ranking-name"><strong title={item.name} aria-label={item.name}>{item.name}</strong><small>{item.code || "—"} · {item.location} · {actorActivityLabel(item.active)}</small></span><DepartmentBadge department={item.department} /><span className="ranking-value"><strong>{formatEur(eur.netSales)}</strong><small>{money.format(item.documentCount)} belge · Ort. {formatEur(item.documentCount ? eur.netSales / item.documentCount : null)}</small></span></div>; })}{!data.topOwners?.some(isOfficialOwnerRankingCandidate) && <p className="empty-copy">Teyitli aktif ticari sorumlu verisi henüz yok.</p>}</div></article>
+      <article className="panel ranking-panel"><div className="panel-heading"><div><h2>En Çok Satılan Ürünler</h2><p>EUR net satış kanıtına göre ilk 10</p></div><IconPackage size={21} /></div><div className="ranking-list">{(data.topProducts || []).map((item, index) => { const eur = projectDepartmentEurMetric(item); return <div key={item.id}><span className="rank">{index + 1}</span><span className="ranking-name"><strong>{item.name}</strong><small>{item.code} · {item.brand || "Marka yok"}</small></span><span className="ranking-value"><strong>{formatEur(eur.netSales)}</strong><small>Kâr {formatEur(eur.profit)}</small></span></div>; })}{!data.topProducts?.length && <p className="empty-copy">Ürün verisi henüz yok.</p>}</div></article>
+      <article className="panel ranking-panel"><div className="panel-heading"><div><h2>En Yüksek Hacimli Müşteriler</h2><p>EUR net satış kanıtına göre ilk 10</p></div><IconChartBar size={21} /></div><div className="ranking-list">{(data.topCustomers || []).map((item, index) => { const eur = projectDepartmentEurMetric(item); return <div key={item.id}><span className="rank">{index + 1}</span><span className="ranking-name"><strong>{item.name}</strong><small>{item.code}</small></span><span className="ranking-value"><strong>{formatEur(eur.netSales)}</strong><small>{money.format(item.documentCount)} belge</small></span></div>; })}{!data.topCustomers?.length && <p className="empty-copy">Müşteri verisi henüz yok.</p>}</div></article>
     </section>}
 
     {tab === "ledger" && <section className="panel department-ledger">
@@ -289,6 +297,7 @@ const ATTRIBUTION_LABELS = {
   "b2b-candidate-hint": "Yakın B2B belge aday ipucu",
   "depot-fallback": "Yalnız depo ipucu, inceleme gerekli",
   "original-sale-owner": "Bağlı ilk satışın ticari sahibi",
+  review: "review-required · ticari sahiplik kanıtı yok",
   "review-required": "Ticari sahiplik kanıtı bulunamadı",
   "macro-conflict": "Kaynak sipariş atıfları çelişkili",
 };
@@ -326,6 +335,12 @@ function actorName(code, row) {
   return actorDisplayName(code, preferredName);
 }
 
+function EvidenceTags({ row }) {
+  return <div className="evidence-tag-list" aria-label={attributionStatusLabel(row.attributionStatus)}>
+    {buildEvidenceTags(row).map((tag) => <span key={tag.id} className={`evidence-pill evidence-pill--${tag.tone}`}>{tag.label}</span>)}
+  </div>;
+}
+
 function documentIdentity(document) {
   return document.headerId
     || document.lineageId
@@ -353,10 +368,12 @@ function orderedActors(row) {
 }
 
 function FragmentRow({ row, expanded, onToggle }) {
-  const margin = row.eurEquivalent?.margin;
+  const eur = projectDepartmentEurMetric(row);
+  // className={profitTone(row.eurEquivalent?.profit)} is intentionally replaced by the gated EUR projection.
   const documents = orderedDocuments(row);
   const actors = orderedActors(row);
   const excludedActors = row.ownershipEvidence?.excludedActors || [];
+  const batchEvidence = getBatchDocumentEvidence(row);
 
   return <>
     <tr className={expanded ? "expanded" : ""}>
@@ -381,27 +398,24 @@ function FragmentRow({ row, expanded, onToggle }) {
       <td>
         <strong>{row.commercialOwnerName || "Belirsiz"}</strong>
         <small>{row.commercialOwner || "Kod yok"}</small>
+        <small>{actorActivityLabel(row.ownerActive)}</small>
       </td>
       <td><strong>{row.customerName}</strong><small>{row.customerCode}</small></td>
       <td><strong>{row.productName}</strong><small>{row.productCode}</small></td>
-      <td><strong>{formatEur(row.eurEquivalent?.netSales)}</strong></td>
-      <td>{row.eurEquivalent?.cost != null
-        ? formatEur(row.eurEquivalent.cost)
+      <td><strong>{formatEur(eur.netSales)}</strong></td>
+      <td>{eur.cost != null
+        ? formatEur(eur.cost)
         : <span className="negative">Eksik</span>}
       </td>
-      <td className={profitTone(row.eurEquivalent?.profit)}>
-        <strong>{formatEur(row.eurEquivalent?.profit)}</strong><small>{percent(margin)}</small>
+      <td className={profitTone(eur.profit)}>
+        <strong>{formatEur(eur.profit)}</strong><small>{percent(eur.margin)}</small>
       </td>
       <td>
         <strong>{row.fulfillmentDepotName}</strong>
         {row.crossDepot && <small className="cross-depot-label">Çapraz depo</small>}
       </td>
       <td>
-        <span className={`evidence-pill evidence-pill--${row.attributionStatus}`}>
-          {row.attributionStatus === "confirmed"
-            ? "Teyitli"
-            : row.attributionStatus === "inferred" ? "Eşleme" : "İncele"}
-        </span>
+        <EvidenceTags row={row} />
       </td>
     </tr>
     {expanded && (
@@ -422,6 +436,7 @@ function FragmentRow({ row, expanded, onToggle }) {
                 {row.commercialOwnerName || "Belirsiz"}
                 {row.commercialOwner ? ` (${row.commercialOwner})` : ""}
               </strong>
+              <small>{actorActivityLabel(row.ownerActive)}</small>
             </span>
             <span>
               <small>Kaynak sipariş</small>
@@ -442,7 +457,9 @@ function FragmentRow({ row, expanded, onToggle }) {
               <small>Kontrol</small>
               <strong>
                 {row.batchRisk
-                  ? "91→85 toplu işlem uyarısı"
+                  ? batchEvidence.status === "linked"
+                    ? "91→85 bağlı ekonomik vaka"
+                    : "BLOCKED · 91→85 bağlantı kanıtı eksik"
                   : row.candidateDocumentNo
                     ? `Aday ${row.candidateDocumentType}/${row.candidateDocumentNo}`
                     : "Standart akış"}
@@ -474,6 +491,13 @@ function FragmentRow({ row, expanded, onToggle }) {
                 {!documents.length && <p>Bağlı evrak kanıtı bulunamadı.</p>}
               </div>
             </section>
+
+            {row.batchRisk && <section>
+              <h3>91→85 kanıt bağlantısı</h3>
+              {batchEvidence.status === "linked"
+                ? <p>{documentTypeLabel(batchEvidence.source.documentType)} <strong>{batchEvidence.source.documentNo}</strong> → {documentTypeLabel(batchEvidence.result.documentType)} <strong>{batchEvidence.result.documentNo}</strong></p>
+                : <p>BLOCKED · 91→85 bağlantısının iki evrakı mevcut payload’da doğrulanamadı.</p>}
+            </section>}
 
             <section>
               <h3>Aktör geçmişi</h3>
