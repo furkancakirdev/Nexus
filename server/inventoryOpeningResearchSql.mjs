@@ -274,12 +274,21 @@ SELECT
 FROM sym s
 OUTER APPLY (
   SELECT
-    COUNT_BIG(*) sameBaseCount,
-    SUM(CASE WHEN h.quantity = s.quantity THEN 1 ELSE 0 END) sameQuantityCount,
-    COUNT(DISTINCT h.directionCode) directionCount
-  FROM har h
-  WHERE h.productCode = s.productCode
-    AND h.depotCode = s.depotCode
-    AND h.movementDate = s.sourceDate
+    (SELECT COUNT_BIG(*)
+     FROM har h
+     WHERE h.productCode = s.productCode
+       AND h.depotCode = s.depotCode
+       AND h.movementDate = s.sourceDate) sameBaseCount,
+    (SELECT COUNT_BIG(*)
+     FROM har h
+     WHERE h.productCode = s.productCode
+       AND h.depotCode = s.depotCode
+       AND h.movementDate = s.sourceDate
+       AND h.quantity = s.quantity) sameQuantityCount,
+    (SELECT COUNT(DISTINCT h.directionCode)
+     FROM har h
+     WHERE h.productCode = s.productCode
+       AND h.depotCode = s.depotCode
+       AND h.movementDate = s.sourceDate) directionCount
 ) matches;
 `;

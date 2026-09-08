@@ -22,6 +22,7 @@ test("inventory opening research SQL is bounded, parameterized, and read-only", 
   assert.match(stksymStkhArMatchSummarySql, /h\.depotCode\s*=\s*s\.depotCode/i);
   assert.match(stksymStkhArMatchSummarySql, /h\.GIRISCIKIS\s+directionCode/i);
   assert.match(stksymStkhArMatchSummarySql, /@sourceKind/i);
+  assert.doesNotMatch(stksymStkhArMatchSummarySql, /SUM\s*\(\s*CASE\s+WHEN\s+h\.quantity\s*=\s*s\.quantity/i);
 });
 
 test("CPM hareket aday sorgusu WAC kaynağı için sabit alanları ve belge türlerini taşır", () => {
