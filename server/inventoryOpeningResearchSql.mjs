@@ -383,3 +383,98 @@ OUTER APPLY (
        AND h.lineNumber = s.lineNumber) documentLineDirectionCount
 ) matches;
 `;
+
+/**
+ * STKSYM DEVIR satırlarının STKHAR tip-81/tip-82 adaylarıyla hangi anahtar
+ * basamağında ayrıldığını yalnız tanı özeti olarak ölçer. Bu sorgu satış,
+ * tahsilat veya resmi WAC kararı üretmez.
+ */
+export const stksymStkhArMatchReasonSummarySql = `
+SET NOCOUNT ON;
+WITH sym AS (
+  SELECT
+    NULLIF(LTRIM(RTRIM(s.MALKOD)), '') productCode,
+    NULLIF(LTRIM(RTRIM(s.DEPOKOD)), '') depotCode,
+    CONVERT(date, s.EVRAKTARIH) sourceDate,
+    s.EVRAKTIP documentType,
+    NULLIF(LTRIM(RTRIM(s.EVRAKNO)), '') documentNumber,
+    NULLIF(s.SIRANO, 0) lineNumber,
+    CAST(s.MIKTAR AS decimal(28, 6)) quantity
+  FROM STKSYM s
+  WHERE s.SIRKETNO = @company
+    AND s.MKOD4 = @sourceKind
+    AND s.EVRAKTARIH >= @startDate
+    AND s.EVRAKTARIH < @endDate
+), har82 AS (
+  SELECT
+    NULLIF(LTRIM(RTRIM(h.MALKOD)), '') productCode,
+    NULLIF(LTRIM(RTRIM(h.DEPOKOD)), '') depotCode,
+    CONVERT(date, h.EVRAKTARIH) movementDate,
+    h.EVRAKTIP documentType,
+    NULLIF(LTRIM(RTRIM(h.EVRAKNO)), '') documentNumber,
+    NULLIF(h.SIRANO, 0) lineNumber,
+    CAST(h.MIKTAR AS decimal(28, 6)) quantity
+  FROM STKHAR h
+  WHERE h.SIRKETNO = @company
+    AND h.KAYITDURUM = 1
+    AND h.EVRAKTIP = @documentType
+    AND h.EVRAKTARIH >= @startDate
+    AND h.EVRAKTARIH < @endDate
+), har81 AS (
+  SELECT
+    NULLIF(LTRIM(RTRIM(h.MALKOD)), '') productCode,
+    NULLIF(LTRIM(RTRIM(h.DEPOKOD)), '') depotCode,
+    CONVERT(date, h.EVRAKTARIH) movementDate,
+    h.EVRAKTIP documentType,
+    NULLIF(LTRIM(RTRIM(h.EVRAKNO)), '') documentNumber,
+    NULLIF(h.SIRANO, 0) lineNumber,
+    CAST(h.MIKTAR AS decimal(28, 6)) quantity
+  FROM STKHAR h
+  WHERE h.SIRKETNO = @company
+    AND h.KAYITDURUM = 1
+    AND h.EVRAKTIP = @documentType81
+    AND h.EVRAKTARIH < @endDate
+)
+SELECT
+  COUNT_BIG(*) symRowCount,
+  COALESCE(SUM(CASE WHEN s.productCode IS NULL THEN 1 ELSE 0 END), 0) missingProductCount,
+  COALESCE(SUM(CASE WHEN s.depotCode IS NULL THEN 1 ELSE 0 END), 0) missingDepotCount,
+  COALESCE(SUM(CASE WHEN s.sourceDate IS NULL THEN 1 ELSE 0 END), 0) missingDateCount,
+  COALESCE(SUM(CASE WHEN s.documentType IS NULL THEN 1 ELSE 0 END), 0) missingDocumentTypeCount,
+  COALESCE(SUM(CASE WHEN s.documentNumber IS NULL THEN 1 ELSE 0 END), 0) missingDocumentNumberCount,
+  COALESCE(SUM(CASE WHEN s.lineNumber IS NULL THEN 1 ELSE 0 END), 0) missingLineNumberCount,
+  COALESCE(SUM(CASE WHEN s.documentType = @documentType THEN 1 ELSE 0 END), 0) sourceType82Count,
+  COALESCE(SUM(CASE WHEN s.documentType = @documentType81 THEN 1 ELSE 0 END), 0) sourceType81Count,
+  COALESCE(SUM(CASE WHEN s.documentType IS NOT NULL AND s.documentType NOT IN (@documentType, @documentType81) THEN 1 ELSE 0 END), 0) sourceOtherDocumentTypeCount,
+  COALESCE(SUM(CASE WHEN matches.type82ProductCount > 0 THEN 1 ELSE 0 END), 0) type82ProductMatchCount,
+  COALESCE(SUM(CASE WHEN matches.type82ProductDepotCount > 0 THEN 1 ELSE 0 END), 0) type82ProductDepotMatchCount,
+  COALESCE(SUM(CASE WHEN matches.type82ProductDepotDateCount > 0 THEN 1 ELSE 0 END), 0) type82ProductDepotDateMatchCount,
+  COALESCE(SUM(CASE WHEN matches.type82DocumentLineAnyDateCount > 0 THEN 1 ELSE 0 END), 0) type82DocumentLineAnyDateMatchCount,
+  COALESCE(SUM(CASE WHEN matches.type82DocumentLineDateCount > 0 THEN 1 ELSE 0 END), 0) type82DocumentLineDateMatchCount,
+  COALESCE(SUM(CASE WHEN matches.type82DocumentLineDateQuantityCount > 0 THEN 1 ELSE 0 END), 0) type82DocumentLineDateQuantityMatchCount,
+  COALESCE(SUM(CASE WHEN matches.type81ProductCount > 0 THEN 1 ELSE 0 END), 0) type81ProductMatchCount,
+  COALESCE(SUM(CASE WHEN matches.type81ProductDepotCount > 0 THEN 1 ELSE 0 END), 0) type81ProductDepotMatchCount,
+  COALESCE(SUM(CASE WHEN matches.type81ProductDepotDateCount > 0 THEN 1 ELSE 0 END), 0) type81ProductDepotDateMatchCount,
+  COALESCE(SUM(CASE WHEN matches.type81DocumentLineAnyDateCount > 0 THEN 1 ELSE 0 END), 0) type81DocumentLineAnyDateMatchCount,
+  COALESCE(SUM(CASE WHEN matches.type81DocumentLineDateQuantityCount > 0 THEN 1 ELSE 0 END), 0) type81DocumentLineDateQuantityMatchCount,
+  COALESCE(SUM(CASE WHEN s.productCode IS NOT NULL AND s.depotCode IS NOT NULL AND s.sourceDate IS NOT NULL AND matches.type82ProductCount = 0 THEN 1 ELSE 0 END), 0) type82ReasonNoProductMatchCount,
+  COALESCE(SUM(CASE WHEN s.productCode IS NOT NULL AND s.depotCode IS NOT NULL AND s.sourceDate IS NOT NULL AND matches.type82ProductCount > 0 AND matches.type82ProductDepotCount = 0 THEN 1 ELSE 0 END), 0) type82ReasonDepotMismatchCount,
+  COALESCE(SUM(CASE WHEN s.productCode IS NOT NULL AND s.depotCode IS NOT NULL AND s.sourceDate IS NOT NULL AND matches.type82ProductDepotCount > 0 AND matches.type82ProductDepotDateCount = 0 THEN 1 ELSE 0 END), 0) type82ReasonDateMismatchCount,
+  COALESCE(SUM(CASE WHEN matches.type82ProductDepotDateCount > 0 AND matches.type82DocumentLineDateCount = 0 THEN 1 ELSE 0 END), 0) type82ReasonDocumentLineMismatchCount,
+  COALESCE(SUM(CASE WHEN matches.type82DocumentLineDateCount > 0 AND matches.type82DocumentLineDateQuantityCount = 0 THEN 1 ELSE 0 END), 0) type82ReasonQuantityMismatchCount
+FROM sym s
+OUTER APPLY (
+  SELECT
+    (SELECT COUNT_BIG(*) FROM har82 h WHERE h.productCode = s.productCode) type82ProductCount,
+    (SELECT COUNT_BIG(*) FROM har82 h WHERE h.productCode = s.productCode AND h.depotCode = s.depotCode) type82ProductDepotCount,
+    (SELECT COUNT_BIG(*) FROM har82 h WHERE h.productCode = s.productCode AND h.depotCode = s.depotCode AND h.movementDate = s.sourceDate) type82ProductDepotDateCount,
+    (SELECT COUNT_BIG(*) FROM har82 h WHERE h.productCode = s.productCode AND h.depotCode = s.depotCode AND s.documentNumber IS NOT NULL AND s.lineNumber IS NOT NULL AND h.documentNumber = s.documentNumber AND h.lineNumber = s.lineNumber) type82DocumentLineAnyDateCount,
+    (SELECT COUNT_BIG(*) FROM har82 h WHERE h.productCode = s.productCode AND h.depotCode = s.depotCode AND h.movementDate = s.sourceDate AND s.documentNumber IS NOT NULL AND s.lineNumber IS NOT NULL AND h.documentNumber = s.documentNumber AND h.lineNumber = s.lineNumber) type82DocumentLineDateCount,
+    (SELECT COUNT_BIG(*) FROM har82 h WHERE h.productCode = s.productCode AND h.depotCode = s.depotCode AND h.movementDate = s.sourceDate AND s.documentNumber IS NOT NULL AND s.lineNumber IS NOT NULL AND h.documentNumber = s.documentNumber AND h.lineNumber = s.lineNumber AND h.quantity = s.quantity) type82DocumentLineDateQuantityCount,
+    (SELECT COUNT_BIG(*) FROM har81 h WHERE h.productCode = s.productCode) type81ProductCount,
+    (SELECT COUNT_BIG(*) FROM har81 h WHERE h.productCode = s.productCode AND h.depotCode = s.depotCode) type81ProductDepotCount,
+    (SELECT COUNT_BIG(*) FROM har81 h WHERE h.productCode = s.productCode AND h.depotCode = s.depotCode AND h.movementDate = s.sourceDate) type81ProductDepotDateCount,
+    (SELECT COUNT_BIG(*) FROM har81 h WHERE h.productCode = s.productCode AND h.depotCode = s.depotCode AND s.documentNumber IS NOT NULL AND s.lineNumber IS NOT NULL AND h.documentNumber = s.documentNumber AND h.lineNumber = s.lineNumber) type81DocumentLineAnyDateCount,
+    (SELECT COUNT_BIG(*) FROM har81 h WHERE h.productCode = s.productCode AND h.depotCode = s.depotCode AND h.movementDate = s.sourceDate AND s.documentNumber IS NOT NULL AND s.lineNumber IS NOT NULL AND h.documentNumber = s.documentNumber AND h.lineNumber = s.lineNumber AND h.quantity = s.quantity) type81DocumentLineDateQuantityCount
+) matches;
+`;

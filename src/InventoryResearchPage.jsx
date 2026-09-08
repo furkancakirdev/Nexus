@@ -430,6 +430,14 @@ export function InventoryResearchPage({ year, mode = "live", refreshToken = 0 })
                   belge anahtarı eksik <b>{integer.format(data.openingEvidenceDiagnostics.sourceDocumentMatchSummary.missingDocumentKeyRowCount || 0)}</b>.
                 </span>
               )}
+              {data.openingEvidenceDiagnostics.sourceMatchReasonSummary && (
+                <span>
+                  Tip 82’de ürün bulunamadı <b>{integer.format(data.openingEvidenceDiagnostics.sourceMatchReasonSummary.type82ReasonNoProductMatchCount || 0)}</b>;
+                  depo uyuşmazlığı <b>{integer.format(data.openingEvidenceDiagnostics.sourceMatchReasonSummary.type82ReasonDepotMismatchCount || 0)}</b>;
+                  tarih uyuşmazlığı <b>{integer.format(data.openingEvidenceDiagnostics.sourceMatchReasonSummary.type82ReasonDateMismatchCount || 0)}</b>;
+                  tip 81 ürün eşleşmesi <b>{integer.format(data.openingEvidenceDiagnostics.sourceMatchReasonSummary.type81ProductMatchCount || 0)}</b>.
+                </span>
+              )}
               <small>Bu özet yalnızca kanıt karşılaştırmasıdır; yön, soy zinciri ve maliyet anlamı doğrulanmadan hiçbir satır resmi WAC’a alınmaz.</small>
             </div>
           )}

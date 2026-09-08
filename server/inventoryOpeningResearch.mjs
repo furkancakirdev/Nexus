@@ -119,7 +119,23 @@ function normalizeStksymStkhArDocumentMatchSummary(row) {
   return Object.fromEntries(fields.map((field) => [field, number(row[field]) ?? 0]));
 }
 
-export function buildInventoryOpeningResearchPayload({ year, stkhArRows = [], stkhArSummary = null, stkhArType81Rows = [], stkhArType81Summary = null, stksymRows = [], stksymSummary = null, stksymStkhArMatchSummary = null, stksymStkhArDocumentMatchSummary = null, sampleLimit } = {}) {
+function normalizeStksymStkhArMatchReasonSummary(row) {
+  if (!row || typeof row !== "object") return null;
+  const fields = [
+    "symRowCount", "missingProductCount", "missingDepotCount", "missingDateCount",
+    "missingDocumentTypeCount", "missingDocumentNumberCount", "missingLineNumberCount",
+    "sourceType82Count", "sourceType81Count", "sourceOtherDocumentTypeCount",
+    "type82ProductMatchCount", "type82ProductDepotMatchCount", "type82ProductDepotDateMatchCount",
+    "type82DocumentLineAnyDateMatchCount", "type82DocumentLineDateMatchCount", "type82DocumentLineDateQuantityMatchCount",
+    "type81ProductMatchCount", "type81ProductDepotMatchCount", "type81ProductDepotDateMatchCount",
+    "type81DocumentLineAnyDateMatchCount", "type81DocumentLineDateQuantityMatchCount",
+    "type82ReasonNoProductMatchCount", "type82ReasonDepotMismatchCount", "type82ReasonDateMismatchCount",
+    "type82ReasonDocumentLineMismatchCount", "type82ReasonQuantityMismatchCount",
+  ];
+  return Object.fromEntries(fields.map((field) => [field, number(row[field]) ?? 0]));
+}
+
+export function buildInventoryOpeningResearchPayload({ year, stkhArRows = [], stkhArSummary = null, stkhArType81Rows = [], stkhArType81Summary = null, stksymRows = [], stksymSummary = null, stksymStkhArMatchSummary = null, stksymStkhArDocumentMatchSummary = null, stksymStkhArMatchReasonSummary = null, sampleLimit } = {}) {
   if (!Number.isInteger(year) || year < 2000 || year > 2100) throw new TypeError("Geçerli bir araştırma yılı zorunludur.");
   if (!Array.isArray(stkhArRows) || !Array.isArray(stkhArType81Rows) || !Array.isArray(stksymRows)) throw new TypeError("Araştırma satırları dizi olmalıdır.");
   const limit = limitValue(sampleLimit);
@@ -146,6 +162,7 @@ export function buildInventoryOpeningResearchPayload({ year, stkhArRows = [], st
       stkhArDocumentTypeCounts: { "81": har81.length, "82": har82.length },
       sourceMatchSummary: normalizeStksymStkhArMatchSummary(stksymStkhArMatchSummary),
       sourceDocumentMatchSummary: normalizeStksymStkhArDocumentMatchSummary(stksymStkhArDocumentMatchSummary),
+      sourceMatchReasonSummary: normalizeStksymStkhArMatchReasonSummary(stksymStkhArMatchReasonSummary),
     },
     officialEligibleCount: 0,
   };

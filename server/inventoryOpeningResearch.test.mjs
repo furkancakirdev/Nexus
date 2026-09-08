@@ -153,6 +153,46 @@ test("inventory opening diagnostics keeps document lineage matching separate fro
   assert.equal(payload.eligibleForOfficialWac, false);
 });
 
+test("inventory opening diagnostics preserves field-level match reasons without treating them as sales evidence", () => {
+  const payload = buildInventoryOpeningResearchPayload({
+    year: 2026,
+    stkhArRows: [],
+    stksymRows: [],
+    stksymStkhArMatchReasonSummary: {
+      symRowCount: 6465,
+      missingProductCount: 1,
+      missingDepotCount: 2,
+      missingDateCount: 3,
+      missingDocumentTypeCount: 4,
+      missingDocumentNumberCount: 5,
+      missingLineNumberCount: 6,
+      sourceType82Count: 6460,
+      sourceType81Count: 0,
+      sourceOtherDocumentTypeCount: 1,
+      type82ProductMatchCount: 100,
+      type82ProductDepotMatchCount: 90,
+      type82ProductDepotDateMatchCount: 6,
+      type82DocumentLineAnyDateMatchCount: 2,
+      type82DocumentLineDateMatchCount: 1,
+      type82DocumentLineDateQuantityMatchCount: 1,
+      type81ProductMatchCount: 6465,
+      type81ProductDepotMatchCount: 6400,
+      type81ProductDepotDateMatchCount: 0,
+      type81DocumentLineAnyDateMatchCount: 0,
+      type81DocumentLineDateQuantityMatchCount: 0,
+      type82ReasonNoProductMatchCount: 6365,
+      type82ReasonDepotMismatchCount: 10,
+      type82ReasonDateMismatchCount: 84,
+      type82ReasonDocumentLineMismatchCount: 5,
+      type82ReasonQuantityMismatchCount: 1,
+    },
+  });
+  assert.equal(payload.openingEvidenceDiagnostics.sourceMatchReasonSummary.type82ReasonNoProductMatchCount, 6365);
+  assert.equal(payload.openingEvidenceDiagnostics.sourceMatchReasonSummary.type81ProductMatchCount, 6465);
+  assert.equal(payload.officialEligibleCount, 0);
+  assert.equal(payload.eligibleForOfficialWac, false);
+});
+
 test("inventory opening diagnostics preserves normalized fields and classifies matching rows", () => {
   const payload = buildInventoryOpeningResearchPayload({
     year: 2026,
