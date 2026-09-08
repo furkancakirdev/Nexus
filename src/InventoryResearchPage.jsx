@@ -414,6 +414,18 @@ export function InventoryResearchPage({ year, mode = "live", refreshToken = 0 })
               <span>Eşleşmeyen <strong>{integer.format(data.openingEvidenceDiagnostics.unmatchedCount || 0)}</strong></span>
             </div>
           )}
+          {data.openingEvidenceDiagnostics.sourceMatchSummary && (
+            <div className="inventory-source-match-summary" role="status">
+              <strong>Kaynak nüfusu eşleşme özeti</strong>
+              <span>
+                STKSYM devir <b>{integer.format(data.openingEvidenceDiagnostics.sourceMatchSummary.symRowCount || 0)}</b> satır;
+                aynı ürün + depo + tarih <b>{integer.format(data.openingEvidenceDiagnostics.sourceMatchSummary.sameProductDepotDateRowCount || 0)}</b>;
+                aynı miktar <b>{integer.format(data.openingEvidenceDiagnostics.sourceMatchSummary.sameProductDepotDateQuantityRowCount || 0)}</b>;
+                benzersiz miktar <b>{integer.format(data.openingEvidenceDiagnostics.sourceMatchSummary.uniqueQuantityMatchRowCount || 0)}</b>.
+              </span>
+              <small>Bu özet yalnızca kanıt karşılaştırmasıdır; yön, soy zinciri ve maliyet anlamı doğrulanmadan hiçbir satır resmi WAC’a alınmaz.</small>
+            </div>
+          )}
         </section>
       )}
 

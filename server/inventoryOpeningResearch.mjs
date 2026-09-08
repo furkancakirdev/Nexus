@@ -91,7 +91,20 @@ function orderedSample(rows, limit, dateField) {
     )).slice(0, limit);
 }
 
-export function buildInventoryOpeningResearchPayload({ year, stkhArRows = [], stkhArSummary = null, stkhArType81Rows = [], stkhArType81Summary = null, stksymRows = [], stksymSummary = null, sampleLimit } = {}) {
+function normalizeStksymStkhArMatchSummary(row) {
+  if (!row || typeof row !== "object") return null;
+  const fields = [
+    "symRowCount",
+    "sameProductDepotDateRowCount",
+    "sameProductDepotDateQuantityRowCount",
+    "uniqueQuantityMatchRowCount",
+    "multiDirectionMatchRowCount",
+    "unmatchedRowCount",
+  ];
+  return Object.fromEntries(fields.map((field) => [field, number(row[field]) ?? 0]));
+}
+
+export function buildInventoryOpeningResearchPayload({ year, stkhArRows = [], stkhArSummary = null, stkhArType81Rows = [], stkhArType81Summary = null, stksymRows = [], stksymSummary = null, stksymStkhArMatchSummary = null, sampleLimit } = {}) {
   if (!Number.isInteger(year) || year < 2000 || year > 2100) throw new TypeError("Geçerli bir araştırma yılı zorunludur.");
   if (!Array.isArray(stkhArRows) || !Array.isArray(stkhArType81Rows) || !Array.isArray(stksymRows)) throw new TypeError("Araştırma satırları dizi olmalıdır.");
   const limit = limitValue(sampleLimit);
@@ -116,6 +129,7 @@ export function buildInventoryOpeningResearchPayload({ year, stkhArRows = [], st
       sampleLimit: limit,
       sampleRowCount: har.length + sym.length,
       stkhArDocumentTypeCounts: { "81": har81.length, "82": har82.length },
+      sourceMatchSummary: normalizeStksymStkhArMatchSummary(stksymStkhArMatchSummary),
     },
     officialEligibleCount: 0,
   };

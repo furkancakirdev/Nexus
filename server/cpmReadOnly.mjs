@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { sourceProvenanceByCanonicalIdsSql, sourceProvenanceSql } from "./sourceProvenanceSql.mjs";
-import { cpmMovementCandidateSql, dvzharRateCandidateSql, stkhArType81SampleSql, stkhArType81SummarySql, stkhArType82SampleSql, stkhArType82SummarySql, stkkrtPriceCandidateSql, stksymDevirSampleSql } from "./inventoryOpeningResearchSql.mjs";
+import { cpmMovementCandidateSql, dvzharRateCandidateSql, stkhArType81SampleSql, stkhArType81SummarySql, stkhArType82SampleSql, stkhArType82SummarySql, stkkrtPriceCandidateSql, stksymDevirSampleSql, stksymStkhArMatchSummarySql } from "./inventoryOpeningResearchSql.mjs";
 
 const PROHIBITED = new Set([
   "UPDATE", "DELETE", "MERGE", "TRUNCATE", "ALTER", "EXEC", "EXECUTE",
@@ -19,6 +19,7 @@ const PRODUCTION_FINGERPRINTS = Object.freeze({
   "inventory-opening-stkhar-type81-summary-v1": "02e1124711f7dc659f80095b62ada366153163dbfbb374bb7dbf2eb754b84227",
   "inventory-opening-stksym-sample-v1": "e49d14e69871a3014b2d91228129578f350c73d8eef54135149495c517614cdd",
   "inventory-opening-stksym-summary-v1": "63d7153af44591c834d6937ebda05f9a85051be749fdb106282a72fba0bf064b",
+  "inventory-opening-stksym-stkhar-match-summary-v1": "f79eb062e7fdd823e21a0b8cad70d452547c51502106c1957eef55a4ccc68ea9",
   "inventory-movement-candidate-v1": "3378d2d2669dfb6e7982c6b98e9370b8c5672ef77f044b45bb76d0b6a068a1cd",
   "exchange-rate-candidate-v1": "c95d7d6c082fb056811120210db8e1ed92c60d68854ff7cceae3714557a09ad6",
   "historical-price-candidate-v1": "6acc76d5749cd93dbc3e36e9458c913423cabafe8db85560de89c36d6fcca1e0",

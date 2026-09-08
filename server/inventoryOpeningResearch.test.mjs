@@ -97,6 +97,32 @@ test("inventory opening diagnostics declare that counts are sample-scoped", () =
   assert.equal(payload.openingEvidenceDiagnostics.sampleRowCount, 1);
 });
 
+test("inventory opening diagnostics keeps full-source match summary separate from official eligibility", () => {
+  const payload = buildInventoryOpeningResearchPayload({
+    year: 2026,
+    stkhArRows: [],
+    stksymRows: [],
+    stksymStkhArMatchSummary: {
+      symRowCount: 6465,
+      sameProductDepotDateRowCount: 6,
+      sameProductDepotDateQuantityRowCount: 1,
+      uniqueQuantityMatchRowCount: 1,
+      multiDirectionMatchRowCount: 0,
+      unmatchedRowCount: 6459,
+    },
+  });
+  assert.deepEqual(payload.openingEvidenceDiagnostics.sourceMatchSummary, {
+    symRowCount: 6465,
+    sameProductDepotDateRowCount: 6,
+    sameProductDepotDateQuantityRowCount: 1,
+    uniqueQuantityMatchRowCount: 1,
+    multiDirectionMatchRowCount: 0,
+    unmatchedRowCount: 6459,
+  });
+  assert.equal(payload.officialEligibleCount, 0);
+  assert.equal(payload.eligibleForOfficialWac, false);
+});
+
 test("inventory opening diagnostics preserves normalized fields and classifies matching rows", () => {
   const payload = buildInventoryOpeningResearchPayload({
     year: 2026,

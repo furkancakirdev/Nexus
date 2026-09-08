@@ -11,12 +11,12 @@ import { salesCaseSql } from "./salesCases.mjs";
 import { sourceProvenanceSql } from "./sourceProvenanceSql.mjs";
 import { sourceProvenanceByCanonicalIdsSql } from "./sourceProvenanceSql.mjs";
 import { cpmMovementCandidateSql, dvzharRateCandidateSql, stkhArType81SampleSql, stkhArType81SummarySql, stkhArType82SampleSql, stkhArType82SummarySql, stkkrtPriceCandidateSql, stksymDevirSampleSql } from "./inventoryOpeningResearchSql.mjs";
-import { stksymDevirSummarySql } from "./inventoryOpeningResearchSql.mjs";
+import { stksymDevirSummarySql, stksymStkhArMatchSummarySql } from "./inventoryOpeningResearchSql.mjs";
 
 const healthSql = "SELECT DB_NAME() AS databaseName";
 
 test("production CPM queries pass the local-temp-only structural guard", () => {
-  for (const query of [healthSql, salesCaseSql, finalInvoiceLedgerSql, sourceProvenanceSql, cpmMovementCandidateSql, dvzharRateCandidateSql, stkkrtPriceCandidateSql, stkhArType81SampleSql, stkhArType81SummarySql, stkhArType82SampleSql, stkhArType82SummarySql, stksymDevirSampleSql, stksymDevirSummarySql]) {
+  for (const query of [healthSql, salesCaseSql, finalInvoiceLedgerSql, sourceProvenanceSql, cpmMovementCandidateSql, dvzharRateCandidateSql, stkkrtPriceCandidateSql, stkhArType81SampleSql, stkhArType81SummarySql, stkhArType82SampleSql, stkhArType82SummarySql, stksymDevirSampleSql, stksymDevirSummarySql, stksymStkhArMatchSummarySql]) {
     assert.equal(assertCpmReadOnlySql(query), query);
   }
 });
@@ -115,5 +115,6 @@ test("production fingerprint registry executes the approved queries", async () =
   await executeCpmReadOnlyQuery({ request, queryId: "inventory-opening-stkhar-type81-summary-v1", query: stkhArType81SummarySql });
   await executeCpmReadOnlyQuery({ request, queryId: "inventory-opening-stksym-sample-v1", query: stksymDevirSampleSql });
   await executeCpmReadOnlyQuery({ request, queryId: "inventory-opening-stksym-summary-v1", query: stksymDevirSummarySql });
-  assert.deepEqual(received, [healthSql, salesCaseSql, finalInvoiceLedgerSql, sourceProvenanceSql, sourceProvenanceByCanonicalIdsSql, cpmMovementCandidateSql, dvzharRateCandidateSql, stkkrtPriceCandidateSql, stkhArType82SampleSql, stkhArType82SummarySql, stkhArType81SampleSql, stkhArType81SummarySql, stksymDevirSampleSql, stksymDevirSummarySql]);
+  await executeCpmReadOnlyQuery({ request, queryId: "inventory-opening-stksym-stkhar-match-summary-v1", query: stksymStkhArMatchSummarySql });
+  assert.deepEqual(received, [healthSql, salesCaseSql, finalInvoiceLedgerSql, sourceProvenanceSql, sourceProvenanceByCanonicalIdsSql, cpmMovementCandidateSql, dvzharRateCandidateSql, stkkrtPriceCandidateSql, stkhArType82SampleSql, stkhArType82SummarySql, stkhArType81SampleSql, stkhArType81SummarySql, stksymDevirSampleSql, stksymDevirSummarySql, stksymStkhArMatchSummarySql]);
 });

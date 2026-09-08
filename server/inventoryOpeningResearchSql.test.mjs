@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cpmMovementCandidateSql, dvzharRateCandidateSql, stkhArType81SampleSql, stkhArType81SummarySql, stkhArType82SampleSql, stkhArType82SummarySql, stkkrtPriceCandidateSql, stksymDevirSampleSql, stksymDevirSummarySql } from "./inventoryOpeningResearchSql.mjs";
+import { cpmMovementCandidateSql, dvzharRateCandidateSql, stkhArType81SampleSql, stkhArType81SummarySql, stkhArType82SampleSql, stkhArType82SummarySql, stkkrtPriceCandidateSql, stksymDevirSampleSql, stksymDevirSummarySql, stksymStkhArMatchSummarySql } from "./inventoryOpeningResearchSql.mjs";
 
 test("inventory opening research SQL is bounded, parameterized, and read-only", () => {
-  for (const query of [stkhArType81SampleSql, stkhArType81SummarySql, stkhArType82SampleSql, stkhArType82SummarySql, stksymDevirSampleSql, stksymDevirSummarySql]) {
+  for (const query of [stkhArType81SampleSql, stkhArType81SummarySql, stkhArType82SampleSql, stkhArType82SummarySql, stksymDevirSampleSql, stksymDevirSummarySql, stksymStkhArMatchSummarySql]) {
     assert.match(query, /SELECT/i);
     assert.doesNotMatch(query, /OPENJSON|STRING_AGG|UPDATE|DELETE|INSERT|MERGE|EXEC/i);
     assert.match(query, /@company/);
@@ -17,6 +17,11 @@ test("inventory opening research SQL is bounded, parameterized, and read-only", 
   assert.match(stkhArType81SummarySql, /EVRAKTIP\s*=\s*@documentType81/i);
   assert.match(stksymDevirSampleSql, /MKOD4\s*=\s*@sourceKind/i);
   assert.match(stksymDevirSummarySql, /COUNT_BIG\(\*\)\s+AS\s+\[rowCount\]/i);
+  assert.match(stksymStkhArMatchSummarySql, /WITH\s+sym\s+AS/i);
+  assert.match(stksymStkhArMatchSummarySql, /h\.productCode\s*=\s*s\.productCode/i);
+  assert.match(stksymStkhArMatchSummarySql, /h\.depotCode\s*=\s*s\.depotCode/i);
+  assert.match(stksymStkhArMatchSummarySql, /h\.GIRISCIKIS\s+directionCode/i);
+  assert.match(stksymStkhArMatchSummarySql, /@sourceKind/i);
 });
 
 test("CPM hareket aday sorgusu WAC kaynağı için sabit alanları ve belge türlerini taşır", () => {

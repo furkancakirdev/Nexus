@@ -232,3 +232,54 @@ WHERE s.SIRKETNO = @company
   AND s.EVRAKTARIH >= @startDate
   AND s.EVRAKTARIH < @endDate;
 `;
+
+/**
+ * STKSYM DEVIR ile STKHAR tip-82 arasındaki doğal anahtar yakınlığını yalnız
+ * tanı özeti olarak ölçer. Bu sorgu resmi açılış/WAC kararı üretmez.
+ */
+export const stksymStkhArMatchSummarySql = `
+SET NOCOUNT ON;
+WITH sym AS (
+  SELECT
+    s.MALKOD productCode,
+    s.DEPOKOD depotCode,
+    CONVERT(date, s.EVRAKTARIH) sourceDate,
+    CAST(s.MIKTAR AS decimal(28, 6)) quantity
+  FROM STKSYM s
+  WHERE s.SIRKETNO = @company
+    AND s.MKOD4 = @sourceKind
+    AND s.EVRAKTARIH >= @startDate
+    AND s.EVRAKTARIH < @endDate
+), har AS (
+  SELECT
+    h.MALKOD productCode,
+    h.DEPOKOD depotCode,
+    CONVERT(date, h.EVRAKTARIH) movementDate,
+    CAST(h.MIKTAR AS decimal(28, 6)) quantity,
+    h.GIRISCIKIS directionCode
+  FROM STKHAR h
+  WHERE h.SIRKETNO = @company
+    AND h.KAYITDURUM = 1
+    AND h.EVRAKTIP = @documentType
+    AND h.EVRAKTARIH >= @startDate
+    AND h.EVRAKTARIH < @endDate
+)
+SELECT
+  COUNT_BIG(*) symRowCount,
+  COALESCE(SUM(CASE WHEN matches.sameBaseCount > 0 THEN 1 ELSE 0 END), 0) sameProductDepotDateRowCount,
+  COALESCE(SUM(CASE WHEN matches.sameQuantityCount > 0 THEN 1 ELSE 0 END), 0) sameProductDepotDateQuantityRowCount,
+  COALESCE(SUM(CASE WHEN matches.sameQuantityCount = 1 THEN 1 ELSE 0 END), 0) uniqueQuantityMatchRowCount,
+  COALESCE(SUM(CASE WHEN matches.directionCount > 1 THEN 1 ELSE 0 END), 0) multiDirectionMatchRowCount,
+  COALESCE(SUM(CASE WHEN matches.sameBaseCount = 0 THEN 1 ELSE 0 END), 0) unmatchedRowCount
+FROM sym s
+OUTER APPLY (
+  SELECT
+    COUNT_BIG(*) sameBaseCount,
+    SUM(CASE WHEN h.quantity = s.quantity THEN 1 ELSE 0 END) sameQuantityCount,
+    COUNT(DISTINCT h.directionCode) directionCount
+  FROM har h
+  WHERE h.productCode = s.productCode
+    AND h.depotCode = s.depotCode
+    AND h.movementDate = s.sourceDate
+) matches;
+`;

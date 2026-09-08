@@ -2056,6 +2056,32 @@ tfoot { font-weight: 700; background: #f7f9fc; }
   font-size: 0.76rem;
 }
 
+.inventory-source-match-summary {
+  display: grid;
+  gap: 5px;
+  margin-top: 14px;
+  padding: 11px 13px;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.inventory-source-match-summary strong {
+  color: var(--text);
+}
+
+.inventory-source-match-summary b {
+  color: var(--text);
+}
+
+.inventory-source-match-summary small {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
 .inventory-evidence-reasons {
   display: grid;
   gap: 6px;

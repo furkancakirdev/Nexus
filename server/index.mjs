@@ -41,7 +41,7 @@ import {
 } from "./tcmbRateSource.mjs";
 import { resolveOfficialRateRows } from "./officialRateResolver.mjs";
 import { buildHistoricalFinancialEvidence } from "../shared/historicalFinancialEvidence.mjs";
-import { cpmMovementCandidateSql, dvzharRateCandidateSql, stkhArType81SampleSql, stkhArType81SummarySql, stkhArType82SampleSql, stkhArType82SummarySql, stkkrtPriceCandidateSql, stksymDevirSampleSql, stksymDevirSummarySql } from "./inventoryOpeningResearchSql.mjs";
+import { cpmMovementCandidateSql, dvzharRateCandidateSql, stkhArType81SampleSql, stkhArType81SummarySql, stkhArType82SampleSql, stkhArType82SummarySql, stkkrtPriceCandidateSql, stksymDevirSampleSql, stksymDevirSummarySql, stksymStkhArMatchSummarySql } from "./inventoryOpeningResearchSql.mjs";
 
 export function normalizeStoredAppState(state) {
   const prototype = state !== null && typeof state === "object"
@@ -410,6 +410,7 @@ async function loadInventoryOpeningResearch(year, sampleLimit) {
       const type81Samples = await execute({ queryId: "inventory-opening-stkhar-type81-sample-v1", query: stkhArType81SampleSql });
       const symSummary = await execute({ queryId: "inventory-opening-stksym-summary-v1", query: stksymDevirSummarySql });
       const symSamples = await execute({ queryId: "inventory-opening-stksym-sample-v1", query: stksymDevirSampleSql });
+      const symHarMatchSummary = await execute({ queryId: "inventory-opening-stksym-stkhar-match-summary-v1", query: stksymStkhArMatchSummarySql });
       return {
         stkhArSummary: summary.recordsets?.[0]?.[0] || null,
         stkhArRows: samples.recordsets?.[0] || [],
@@ -417,6 +418,7 @@ async function loadInventoryOpeningResearch(year, sampleLimit) {
         stkhArType81Rows: type81Samples.recordsets?.[0] || [],
         stksymSummary: symSummary.recordsets?.[0]?.[0] || null,
         stksymRows: symSamples.recordsets?.[0] || [],
+        stksymStkhArMatchSummary: symHarMatchSummary.recordsets?.[0]?.[0] || null,
       };
     },
   });
