@@ -518,43 +518,34 @@ WITH sym AS (
     AND h.EVRAKTARIH < @endDate
     AND h.EVRAKTIP = 18
     AND h.MIKTAR > 0
+), symGroups AS (
+  SELECT productCode, depotCode, sourceDate, COUNT_BIG(*) symGroupRowCount
+  FROM sym
+  GROUP BY productCode, depotCode, sourceDate
+), groupOverlap AS (
+  SELECT
+    g.symGroupRowCount,
+    CASE WHEN MAX(CASE WHEN m.productCode IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN 1 ELSE 0 END productSaleFlag,
+    CASE WHEN MAX(CASE WHEN m.productCode IS NOT NULL AND m.depotCode = g.depotCode THEN 1 ELSE 0 END) = 1 THEN 1 ELSE 0 END productDepotSaleFlag,
+    CASE WHEN MAX(CASE WHEN m.productCode IS NOT NULL AND m.depotCode = g.depotCode AND m.saleDate = g.sourceDate THEN 1 ELSE 0 END) = 1 THEN 1 ELSE 0 END sameDayProductDepotSaleFlag,
+    CASE WHEN MAX(CASE WHEN m.productCode IS NOT NULL AND m.saleDate > g.sourceDate THEN 1 ELSE 0 END) = 1 THEN 1 ELSE 0 END laterProductSaleFlag,
+    CASE WHEN MAX(CASE WHEN m.productCode IS NOT NULL AND m.depotCode = g.depotCode AND m.saleDate > g.sourceDate THEN 1 ELSE 0 END) = 1 THEN 1 ELSE 0 END laterProductDepotSaleFlag
+  FROM symGroups g
+  LEFT JOIN saleMovements m ON m.productCode = g.productCode
+  GROUP BY g.productCode, g.depotCode, g.sourceDate, g.symGroupRowCount
 )
 SELECT
-  COUNT_BIG(*) symRowCount,
-  COALESCE(SUM(CASE WHEN overlap.productSaleMovementCount > 0 THEN 1 ELSE 0 END), 0) productSaleOverlapRowCount,
-  COALESCE(SUM(CASE WHEN overlap.productDepotSaleMovementCount > 0 THEN 1 ELSE 0 END), 0) productDepotSaleOverlapRowCount,
-  COALESCE(SUM(CASE WHEN overlap.sameDayProductDepotSaleMovementCount > 0 THEN 1 ELSE 0 END), 0) sameDayProductDepotSaleOverlapRowCount,
-  COALESCE(SUM(CASE WHEN overlap.laterProductSaleMovementCount > 0 THEN 1 ELSE 0 END), 0) laterProductSaleOverlapRowCount,
-  COALESCE(SUM(CASE WHEN overlap.laterProductDepotSaleMovementCount > 0 THEN 1 ELSE 0 END), 0) laterProductDepotSaleOverlapRowCount,
-  COALESCE(SUM(CASE WHEN overlap.laterProductSaleMovementCount = 0 THEN 1 ELSE 0 END), 0) noLaterProductSaleOverlapRowCount,
+  COALESCE(SUM(symGroupRowCount), 0) symRowCount,
+  COALESCE(SUM(symGroupRowCount * productSaleFlag), 0) productSaleOverlapRowCount,
+  COALESCE(SUM(symGroupRowCount * productDepotSaleFlag), 0) productDepotSaleOverlapRowCount,
+  COALESCE(SUM(symGroupRowCount * sameDayProductDepotSaleFlag), 0) sameDayProductDepotSaleOverlapRowCount,
+  COALESCE(SUM(symGroupRowCount * laterProductSaleFlag), 0) laterProductSaleOverlapRowCount,
+  COALESCE(SUM(symGroupRowCount * laterProductDepotSaleFlag), 0) laterProductDepotSaleOverlapRowCount,
+  COALESCE(SUM(symGroupRowCount * CASE WHEN laterProductSaleFlag = 0 THEN 1 ELSE 0 END), 0) noLaterProductSaleOverlapRowCount,
   (SELECT COUNT_BIG(*) FROM saleMovements) saleMovementRowCount,
   (SELECT COUNT_BIG(*) FROM saleMovements WHERE documentType = 17) saleType17MovementRowCount,
   (SELECT COUNT_BIG(*) FROM saleMovements WHERE documentType = 85) saleType85MovementRowCount,
   (SELECT COUNT_BIG(*) FROM saleMovements WHERE documentType = 91) saleType91MovementRowCount,
   (SELECT COUNT_BIG(*) FROM returnMovements) returnMovementRowCount
-FROM sym s
-OUTER APPLY (
-  SELECT
-    (SELECT COUNT_BIG(*)
-     FROM saleMovements m
-     WHERE m.productCode = s.productCode) productSaleMovementCount,
-    (SELECT COUNT_BIG(*)
-     FROM saleMovements m
-     WHERE m.productCode = s.productCode
-       AND m.depotCode = s.depotCode) productDepotSaleMovementCount,
-    (SELECT COUNT_BIG(*)
-     FROM saleMovements m
-     WHERE m.productCode = s.productCode
-       AND m.depotCode = s.depotCode
-       AND m.saleDate = s.sourceDate) sameDayProductDepotSaleMovementCount,
-    (SELECT COUNT_BIG(*)
-     FROM saleMovements m
-     WHERE m.productCode = s.productCode
-       AND m.saleDate > s.sourceDate) laterProductSaleMovementCount,
-    (SELECT COUNT_BIG(*)
-     FROM saleMovements m
-     WHERE m.productCode = s.productCode
-       AND m.depotCode = s.depotCode
-       AND m.saleDate > s.sourceDate) laterProductDepotSaleMovementCount
-) overlap;
+FROM groupOverlap;
 `;
