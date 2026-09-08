@@ -27,6 +27,7 @@ import {
 } from "recharts";
 import { SettingsPage } from "./SettingsPage";
 import { ReportsPage } from "./ReportsPage";
+import { PILOT_EMPLOYEES } from "./GoalsPage";
 import { apiFetch } from "./api.js";
 import {
   NAV_ITEMS,
