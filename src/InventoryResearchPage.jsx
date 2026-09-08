@@ -423,6 +423,13 @@ export function InventoryResearchPage({ year, mode = "live", refreshToken = 0 })
                 aynı miktar <b>{integer.format(data.openingEvidenceDiagnostics.sourceMatchSummary.sameProductDepotDateQuantityRowCount || 0)}</b>;
                 benzersiz miktar <b>{integer.format(data.openingEvidenceDiagnostics.sourceMatchSummary.uniqueQuantityMatchRowCount || 0)}</b>.
               </span>
+              {data.openingEvidenceDiagnostics.sourceDocumentMatchSummary && (
+                <span>
+                  aynı belge + satır <b>{integer.format(data.openingEvidenceDiagnostics.sourceDocumentMatchSummary.sameDocumentLineRowCount || 0)}</b>;
+                  benzersiz belge + satır <b>{integer.format(data.openingEvidenceDiagnostics.sourceDocumentMatchSummary.uniqueDocumentLineMatchRowCount || 0)}</b>;
+                  belge anahtarı eksik <b>{integer.format(data.openingEvidenceDiagnostics.sourceDocumentMatchSummary.missingDocumentKeyRowCount || 0)}</b>.
+                </span>
+              )}
               <small>Bu özet yalnızca kanıt karşılaştırmasıdır; yön, soy zinciri ve maliyet anlamı doğrulanmadan hiçbir satır resmi WAC’a alınmaz.</small>
             </div>
           )}

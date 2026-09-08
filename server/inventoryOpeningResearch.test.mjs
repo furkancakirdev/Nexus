@@ -123,6 +123,36 @@ test("inventory opening diagnostics keeps full-source match summary separate fro
   assert.equal(payload.eligibleForOfficialWac, false);
 });
 
+test("inventory opening diagnostics keeps document lineage matching separate from official eligibility", () => {
+  const payload = buildInventoryOpeningResearchPayload({
+    year: 2026,
+    stkhArRows: [],
+    stksymRows: [],
+    stksymStkhArDocumentMatchSummary: {
+      symRowCount: 6465,
+      missingDocumentKeyRowCount: 12,
+      sameDocumentNumberRowCount: 9,
+      sameDocumentLineRowCount: 4,
+      uniqueDocumentLineMatchRowCount: 3,
+      sameDocumentLineQuantityRowCount: 2,
+      documentLineDirectionConflictRowCount: 1,
+      documentLineUnmatchedRowCount: 6449,
+    },
+  });
+  assert.deepEqual(payload.openingEvidenceDiagnostics.sourceDocumentMatchSummary, {
+    symRowCount: 6465,
+    missingDocumentKeyRowCount: 12,
+    sameDocumentNumberRowCount: 9,
+    sameDocumentLineRowCount: 4,
+    uniqueDocumentLineMatchRowCount: 3,
+    sameDocumentLineQuantityRowCount: 2,
+    documentLineDirectionConflictRowCount: 1,
+    documentLineUnmatchedRowCount: 6449,
+  });
+  assert.equal(payload.officialEligibleCount, 0);
+  assert.equal(payload.eligibleForOfficialWac, false);
+});
+
 test("inventory opening diagnostics preserves normalized fields and classifies matching rows", () => {
   const payload = buildInventoryOpeningResearchPayload({
     year: 2026,

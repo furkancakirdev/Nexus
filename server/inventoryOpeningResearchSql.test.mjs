@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cpmMovementCandidateSql, dvzharRateCandidateSql, stkhArType81SampleSql, stkhArType81SummarySql, stkhArType82SampleSql, stkhArType82SummarySql, stkkrtPriceCandidateSql, stksymDevirSampleSql, stksymDevirSummarySql, stksymStkhArMatchSummarySql } from "./inventoryOpeningResearchSql.mjs";
+import { cpmMovementCandidateSql, dvzharRateCandidateSql, stkhArType81SampleSql, stkhArType81SummarySql, stkhArType82SampleSql, stkhArType82SummarySql, stkkrtPriceCandidateSql, stksymDevirSampleSql, stksymDevirSummarySql, stksymStkhArDocumentMatchSummarySql, stksymStkhArMatchSummarySql } from "./inventoryOpeningResearchSql.mjs";
 
 test("inventory opening research SQL is bounded, parameterized, and read-only", () => {
-  for (const query of [stkhArType81SampleSql, stkhArType81SummarySql, stkhArType82SampleSql, stkhArType82SummarySql, stksymDevirSampleSql, stksymDevirSummarySql, stksymStkhArMatchSummarySql]) {
+  for (const query of [stkhArType81SampleSql, stkhArType81SummarySql, stkhArType82SampleSql, stkhArType82SummarySql, stksymDevirSampleSql, stksymDevirSummarySql, stksymStkhArMatchSummarySql, stksymStkhArDocumentMatchSummarySql]) {
     assert.match(query, /SELECT/i);
     assert.doesNotMatch(query, /OPENJSON|STRING_AGG|UPDATE|DELETE|INSERT|MERGE|EXEC/i);
     assert.match(query, /@company/);
@@ -23,6 +23,11 @@ test("inventory opening research SQL is bounded, parameterized, and read-only", 
   assert.match(stksymStkhArMatchSummarySql, /h\.GIRISCIKIS\s+directionCode/i);
   assert.match(stksymStkhArMatchSummarySql, /@sourceKind/i);
   assert.doesNotMatch(stksymStkhArMatchSummarySql, /SUM\s*\(\s*CASE\s+WHEN\s+h\.quantity\s*=\s*s\.quantity/i);
+  assert.match(stksymStkhArDocumentMatchSummarySql, /h\.documentType\s*=\s*s\.documentType/i);
+  assert.match(stksymStkhArDocumentMatchSummarySql, /h\.documentNumber\s*=\s*s\.documentNumber/i);
+  assert.match(stksymStkhArDocumentMatchSummarySql, /h\.lineNumber\s*=\s*s\.lineNumber/i);
+  assert.match(stksymStkhArDocumentMatchSummarySql, /@documentType/i);
+  assert.match(stksymStkhArDocumentMatchSummarySql, /@sourceKind/i);
 });
 
 test("CPM hareket aday sorgusu WAC kaynağı için sabit alanları ve belge türlerini taşır", () => {

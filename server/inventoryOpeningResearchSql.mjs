@@ -292,3 +292,94 @@ OUTER APPLY (
        AND h.movementDate = s.sourceDate) directionCount
 ) matches;
 `;
+
+/**
+ * STKSYM DEVIR ile STKHAR tip-82 arasındaki belge kimliği yakınlığını yalnız
+ * tanı özeti olarak ölçer. Bu sorgu resmi açılış/WAC kararı üretmez.
+ */
+export const stksymStkhArDocumentMatchSummarySql = `
+SET NOCOUNT ON;
+WITH sym AS (
+  SELECT
+    s.MALKOD productCode,
+    s.DEPOKOD depotCode,
+    CONVERT(date, s.EVRAKTARIH) sourceDate,
+    s.EVRAKTIP documentType,
+    NULLIF(LTRIM(RTRIM(s.EVRAKNO)), '') documentNumber,
+    NULLIF(s.SIRANO, 0) lineNumber,
+    CAST(s.MIKTAR AS decimal(28, 6)) quantity
+  FROM STKSYM s
+  WHERE s.SIRKETNO = @company
+    AND s.MKOD4 = @sourceKind
+    AND s.EVRAKTARIH >= @startDate
+    AND s.EVRAKTARIH < @endDate
+), har AS (
+  SELECT
+    h.MALKOD productCode,
+    h.DEPOKOD depotCode,
+    CONVERT(date, h.EVRAKTARIH) movementDate,
+    h.EVRAKTIP documentType,
+    NULLIF(LTRIM(RTRIM(h.EVRAKNO)), '') documentNumber,
+    NULLIF(h.SIRANO, 0) lineNumber,
+    CAST(h.MIKTAR AS decimal(28, 6)) quantity,
+    h.GIRISCIKIS directionCode
+  FROM STKHAR h
+  WHERE h.SIRKETNO = @company
+    AND h.KAYITDURUM = 1
+    AND h.EVRAKTIP = @documentType
+    AND h.EVRAKTARIH >= @startDate
+    AND h.EVRAKTARIH < @endDate
+)
+SELECT
+  COUNT_BIG(*) symRowCount,
+  COALESCE(SUM(CASE WHEN s.documentNumber IS NULL OR s.lineNumber IS NULL THEN 1 ELSE 0 END), 0) missingDocumentKeyRowCount,
+  COALESCE(SUM(CASE WHEN matches.sameDocumentCount > 0 THEN 1 ELSE 0 END), 0) sameDocumentNumberRowCount,
+  COALESCE(SUM(CASE WHEN matches.sameDocumentLineCount > 0 THEN 1 ELSE 0 END), 0) sameDocumentLineRowCount,
+  COALESCE(SUM(CASE WHEN matches.sameDocumentLineCount = 1 THEN 1 ELSE 0 END), 0) uniqueDocumentLineMatchRowCount,
+  COALESCE(SUM(CASE WHEN matches.sameDocumentLineQuantityCount > 0 THEN 1 ELSE 0 END), 0) sameDocumentLineQuantityRowCount,
+  COALESCE(SUM(CASE WHEN matches.documentLineDirectionCount > 1 THEN 1 ELSE 0 END), 0) documentLineDirectionConflictRowCount,
+  COALESCE(SUM(CASE WHEN s.documentNumber IS NOT NULL AND s.lineNumber IS NOT NULL AND matches.sameDocumentLineCount = 0 THEN 1 ELSE 0 END), 0) documentLineUnmatchedRowCount
+FROM sym s
+OUTER APPLY (
+  SELECT
+    (SELECT COUNT_BIG(*)
+     FROM har h
+     WHERE h.productCode = s.productCode
+       AND h.depotCode = s.depotCode
+       AND h.movementDate = s.sourceDate
+       AND h.documentType = s.documentType
+       AND s.documentNumber IS NOT NULL
+       AND h.documentNumber = s.documentNumber) sameDocumentCount,
+    (SELECT COUNT_BIG(*)
+     FROM har h
+     WHERE h.productCode = s.productCode
+       AND h.depotCode = s.depotCode
+       AND h.movementDate = s.sourceDate
+       AND h.documentType = s.documentType
+       AND s.documentNumber IS NOT NULL
+       AND s.lineNumber IS NOT NULL
+       AND h.documentNumber = s.documentNumber
+       AND h.lineNumber = s.lineNumber) sameDocumentLineCount,
+    (SELECT COUNT_BIG(*)
+     FROM har h
+     WHERE h.productCode = s.productCode
+       AND h.depotCode = s.depotCode
+       AND h.movementDate = s.sourceDate
+       AND h.documentType = s.documentType
+       AND s.documentNumber IS NOT NULL
+       AND s.lineNumber IS NOT NULL
+       AND h.documentNumber = s.documentNumber
+       AND h.lineNumber = s.lineNumber
+       AND h.quantity = s.quantity) sameDocumentLineQuantityCount,
+    (SELECT COUNT(DISTINCT h.directionCode)
+     FROM har h
+     WHERE h.productCode = s.productCode
+       AND h.depotCode = s.depotCode
+       AND h.movementDate = s.sourceDate
+       AND h.documentType = s.documentType
+       AND s.documentNumber IS NOT NULL
+       AND s.lineNumber IS NOT NULL
+       AND h.documentNumber = s.documentNumber
+       AND h.lineNumber = s.lineNumber) documentLineDirectionCount
+) matches;
+`;
