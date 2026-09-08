@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cpmMovementCandidateSql, dvzharRateCandidateSql, stkhArType81SampleSql, stkhArType81SummarySql, stkhArType82SampleSql, stkhArType82SummarySql, stkkrtPriceCandidateSql, stksymDevirSampleSql, stksymDevirSummarySql, stksymStkhArDocumentMatchSummarySql, stksymStkhArMatchReasonSummarySql, stksymStkhArMatchSummarySql } from "./inventoryOpeningResearchSql.mjs";
+import { cpmMovementCandidateSql, dvzharRateCandidateSql, stkhArType81SampleSql, stkhArType81SummarySql, stkhArType82SampleSql, stkhArType82SummarySql, stkkrtPriceCandidateSql, stksymDevirSampleSql, stksymDevirSummarySql, stksymSalesOverlapSummarySql, stksymStkhArDocumentMatchSummarySql, stksymStkhArMatchReasonSummarySql, stksymStkhArMatchSummarySql } from "./inventoryOpeningResearchSql.mjs";
 
 test("inventory opening research SQL is bounded, parameterized, and read-only", () => {
-  for (const query of [stkhArType81SampleSql, stkhArType81SummarySql, stkhArType82SampleSql, stkhArType82SummarySql, stksymDevirSampleSql, stksymDevirSummarySql, stksymStkhArMatchSummarySql, stksymStkhArDocumentMatchSummarySql, stksymStkhArMatchReasonSummarySql]) {
+  for (const query of [stkhArType81SampleSql, stkhArType81SummarySql, stkhArType82SampleSql, stkhArType82SummarySql, stksymDevirSampleSql, stksymDevirSummarySql, stksymStkhArMatchSummarySql, stksymStkhArDocumentMatchSummarySql, stksymStkhArMatchReasonSummarySql, stksymSalesOverlapSummarySql]) {
     assert.match(query, /SELECT/i);
     assert.doesNotMatch(query, /OPENJSON|STRING_AGG|UPDATE|DELETE|INSERT|MERGE|EXEC/i);
     assert.match(query, /@company/);
@@ -32,6 +32,10 @@ test("inventory opening research SQL is bounded, parameterized, and read-only", 
   assert.match(stksymStkhArMatchReasonSummarySql, /har81\s+AS/i);
   assert.match(stksymStkhArMatchReasonSummarySql, /type82ReasonNoProductMatchCount/i);
   assert.match(stksymStkhArMatchReasonSummarySql, /type81DocumentLineAnyDateMatchCount/i);
+  assert.match(stksymSalesOverlapSummarySql, /saleMovements\s+AS/i);
+  assert.match(stksymSalesOverlapSummarySql, /laterProductDepotSaleOverlapRowCount/i);
+  assert.match(stksymSalesOverlapSummarySql, /EVRAKTIP\s+IN\s*\(17,\s*85,\s*91\)/i);
+  assert.match(stksymSalesOverlapSummarySql, /EVRAKTIP\s*=\s*18/i);
 });
 
 test("CPM hareket aday sorgusu WAC kaynağı için sabit alanları ve belge türlerini taşır", () => {

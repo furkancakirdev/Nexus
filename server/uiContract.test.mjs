@@ -187,6 +187,7 @@ test("doğrulanmamış stok kaynağı araştırma verisini resmi WAC'tan ayırı
   assert.match(await readFile(resolve(process.cwd(), "src/InventoryResearchPage.jsx"), "utf8"), /current\.openingEvidenceDiagnostics/);
   assert.match(await readFile(resolve(process.cwd(), "src/InventoryResearchPage.jsx"), "utf8"), /Aday CPM kaynak nüfusu/);
   assert.match(await readFile(resolve(process.cwd(), "src/InventoryResearchPage.jsx"), "utf8"), /Kaynak nüfusu eşleşme özeti/);
+  assert.match(await readFile(resolve(process.cwd(), "src/InventoryResearchPage.jsx"), "utf8"), /Satış örtüşmesi/);
   assert.match(await readFile(resolve(process.cwd(), "src/InventoryResearchPage.jsx"), "utf8"), /Aday araştırma durumu/);
   assert.match(await readFile(resolve(process.cwd(), "src/styles.css"), "utf8"), /\.inventory-diagnostics-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(auto-fit/);
 });

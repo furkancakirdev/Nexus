@@ -478,3 +478,83 @@ OUTER APPLY (
     (SELECT COUNT_BIG(*) FROM har81 h WHERE h.productCode = s.productCode AND h.depotCode = s.depotCode AND h.movementDate = s.sourceDate AND s.documentNumber IS NOT NULL AND s.lineNumber IS NOT NULL AND h.documentNumber = s.documentNumber AND h.lineNumber = s.lineNumber AND h.quantity = s.quantity) type81DocumentLineDateQuantityCount
 ) matches;
 `;
+
+/**
+ * STKSYM devir satırlarının aynı ürün/depo ve sonraki STKHAR satış hareketleriyle
+ * örtüşmesini araştırır. Bu sorgu satış tutarı, tahsilat veya resmi WAC üretmez;
+ * tip 91 -> 17/85 dönüşümünü de ekonomik toplam olarak tekilleştirmez.
+ */
+export const stksymSalesOverlapSummarySql = `
+SET NOCOUNT ON;
+WITH sym AS (
+  SELECT
+    NULLIF(LTRIM(RTRIM(s.MALKOD)), '') productCode,
+    NULLIF(LTRIM(RTRIM(s.DEPOKOD)), '') depotCode,
+    CONVERT(date, s.EVRAKTARIH) sourceDate
+  FROM STKSYM s
+  WHERE s.SIRKETNO = @company
+    AND s.MKOD4 = @sourceKind
+    AND s.EVRAKTARIH >= @startDate
+    AND s.EVRAKTARIH < @endDate
+), saleMovements AS (
+  SELECT
+    h.EVRAKTIP documentType,
+    NULLIF(LTRIM(RTRIM(h.MALKOD)), '') productCode,
+    NULLIF(LTRIM(RTRIM(h.DEPOKOD)), '') depotCode,
+    CONVERT(date, h.EVRAKTARIH) saleDate
+  FROM STKHAR h
+  WHERE h.SIRKETNO = @company
+    AND h.KAYITDURUM = 1
+    AND h.EVRAKTARIH >= @startDate
+    AND h.EVRAKTARIH < @endDate
+    AND h.EVRAKTIP IN (17, 85, 91)
+    AND h.MIKTAR > 0
+), returnMovements AS (
+  SELECT 1 marker
+  FROM STKHAR h
+  WHERE h.SIRKETNO = @company
+    AND h.KAYITDURUM = 1
+    AND h.EVRAKTARIH >= @startDate
+    AND h.EVRAKTARIH < @endDate
+    AND h.EVRAKTIP = 18
+    AND h.MIKTAR > 0
+)
+SELECT
+  COUNT_BIG(*) symRowCount,
+  COALESCE(SUM(CASE WHEN overlap.productSaleMovementCount > 0 THEN 1 ELSE 0 END), 0) productSaleOverlapRowCount,
+  COALESCE(SUM(CASE WHEN overlap.productDepotSaleMovementCount > 0 THEN 1 ELSE 0 END), 0) productDepotSaleOverlapRowCount,
+  COALESCE(SUM(CASE WHEN overlap.sameDayProductDepotSaleMovementCount > 0 THEN 1 ELSE 0 END), 0) sameDayProductDepotSaleOverlapRowCount,
+  COALESCE(SUM(CASE WHEN overlap.laterProductSaleMovementCount > 0 THEN 1 ELSE 0 END), 0) laterProductSaleOverlapRowCount,
+  COALESCE(SUM(CASE WHEN overlap.laterProductDepotSaleMovementCount > 0 THEN 1 ELSE 0 END), 0) laterProductDepotSaleOverlapRowCount,
+  COALESCE(SUM(CASE WHEN overlap.laterProductSaleMovementCount = 0 THEN 1 ELSE 0 END), 0) noLaterProductSaleOverlapRowCount,
+  (SELECT COUNT_BIG(*) FROM saleMovements) saleMovementRowCount,
+  (SELECT COUNT_BIG(*) FROM saleMovements WHERE documentType = 17) saleType17MovementRowCount,
+  (SELECT COUNT_BIG(*) FROM saleMovements WHERE documentType = 85) saleType85MovementRowCount,
+  (SELECT COUNT_BIG(*) FROM saleMovements WHERE documentType = 91) saleType91MovementRowCount,
+  (SELECT COUNT_BIG(*) FROM returnMovements) returnMovementRowCount
+FROM sym s
+OUTER APPLY (
+  SELECT
+    (SELECT COUNT_BIG(*)
+     FROM saleMovements m
+     WHERE m.productCode = s.productCode) productSaleMovementCount,
+    (SELECT COUNT_BIG(*)
+     FROM saleMovements m
+     WHERE m.productCode = s.productCode
+       AND m.depotCode = s.depotCode) productDepotSaleMovementCount,
+    (SELECT COUNT_BIG(*)
+     FROM saleMovements m
+     WHERE m.productCode = s.productCode
+       AND m.depotCode = s.depotCode
+       AND m.saleDate = s.sourceDate) sameDayProductDepotSaleMovementCount,
+    (SELECT COUNT_BIG(*)
+     FROM saleMovements m
+     WHERE m.productCode = s.productCode
+       AND m.saleDate > s.sourceDate) laterProductSaleMovementCount,
+    (SELECT COUNT_BIG(*)
+     FROM saleMovements m
+     WHERE m.productCode = s.productCode
+       AND m.depotCode = s.depotCode
+       AND m.saleDate > s.sourceDate) laterProductDepotSaleMovementCount
+) overlap;
+`;

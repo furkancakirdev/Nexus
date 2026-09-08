@@ -135,7 +135,19 @@ function normalizeStksymStkhArMatchReasonSummary(row) {
   return Object.fromEntries(fields.map((field) => [field, number(row[field]) ?? 0]));
 }
 
-export function buildInventoryOpeningResearchPayload({ year, stkhArRows = [], stkhArSummary = null, stkhArType81Rows = [], stkhArType81Summary = null, stksymRows = [], stksymSummary = null, stksymStkhArMatchSummary = null, stksymStkhArDocumentMatchSummary = null, stksymStkhArMatchReasonSummary = null, sampleLimit } = {}) {
+function normalizeStksymSalesOverlapSummary(row) {
+  if (!row || typeof row !== "object") return null;
+  const fields = [
+    "symRowCount", "productSaleOverlapRowCount", "productDepotSaleOverlapRowCount",
+    "sameDayProductDepotSaleOverlapRowCount", "laterProductSaleOverlapRowCount",
+    "laterProductDepotSaleOverlapRowCount", "noLaterProductSaleOverlapRowCount",
+    "saleMovementRowCount", "saleType17MovementRowCount", "saleType85MovementRowCount",
+    "saleType91MovementRowCount", "returnMovementRowCount",
+  ];
+  return Object.fromEntries(fields.map((field) => [field, number(row[field]) ?? 0]));
+}
+
+export function buildInventoryOpeningResearchPayload({ year, stkhArRows = [], stkhArSummary = null, stkhArType81Rows = [], stkhArType81Summary = null, stksymRows = [], stksymSummary = null, stksymStkhArMatchSummary = null, stksymStkhArDocumentMatchSummary = null, stksymStkhArMatchReasonSummary = null, stksymSalesOverlapSummary = null, sampleLimit } = {}) {
   if (!Number.isInteger(year) || year < 2000 || year > 2100) throw new TypeError("Geçerli bir araştırma yılı zorunludur.");
   if (!Array.isArray(stkhArRows) || !Array.isArray(stkhArType81Rows) || !Array.isArray(stksymRows)) throw new TypeError("Araştırma satırları dizi olmalıdır.");
   const limit = limitValue(sampleLimit);
@@ -163,6 +175,7 @@ export function buildInventoryOpeningResearchPayload({ year, stkhArRows = [], st
       sourceMatchSummary: normalizeStksymStkhArMatchSummary(stksymStkhArMatchSummary),
       sourceDocumentMatchSummary: normalizeStksymStkhArDocumentMatchSummary(stksymStkhArDocumentMatchSummary),
       sourceMatchReasonSummary: normalizeStksymStkhArMatchReasonSummary(stksymStkhArMatchReasonSummary),
+      salesOverlapSummary: normalizeStksymSalesOverlapSummary(stksymSalesOverlapSummary),
     },
     officialEligibleCount: 0,
   };

@@ -193,6 +193,32 @@ test("inventory opening diagnostics preserves field-level match reasons without 
   assert.equal(payload.eligibleForOfficialWac, false);
 });
 
+test("inventory opening diagnostics keeps sales overlap as separate candidate evidence", () => {
+  const payload = buildInventoryOpeningResearchPayload({
+    year: 2026,
+    stkhArRows: [],
+    stksymRows: [],
+    stksymSalesOverlapSummary: {
+      symRowCount: 6439,
+      productSaleOverlapRowCount: 5000,
+      productDepotSaleOverlapRowCount: 4200,
+      sameDayProductDepotSaleOverlapRowCount: 100,
+      laterProductSaleOverlapRowCount: 4700,
+      laterProductDepotSaleOverlapRowCount: 3900,
+      noLaterProductSaleOverlapRowCount: 1739,
+      saleMovementRowCount: 25000,
+      saleType17MovementRowCount: 12000,
+      saleType85MovementRowCount: 9000,
+      saleType91MovementRowCount: 4000,
+      returnMovementRowCount: 300,
+    },
+  });
+  assert.equal(payload.openingEvidenceDiagnostics.salesOverlapSummary.symRowCount, 6439);
+  assert.equal(payload.openingEvidenceDiagnostics.salesOverlapSummary.laterProductDepotSaleOverlapRowCount, 3900);
+  assert.equal(payload.officialEligibleCount, 0);
+  assert.equal(payload.eligibleForOfficialWac, false);
+});
+
 test("inventory opening diagnostics preserves normalized fields and classifies matching rows", () => {
   const payload = buildInventoryOpeningResearchPayload({
     year: 2026,

@@ -438,7 +438,17 @@ export function InventoryResearchPage({ year, mode = "live", refreshToken = 0 })
                   tip 81 ürün eşleşmesi <b>{integer.format(data.openingEvidenceDiagnostics.sourceMatchReasonSummary.type81ProductMatchCount || 0)}</b>.
                 </span>
               )}
+              {data.openingEvidenceDiagnostics.salesOverlapSummary && (
+                <span>
+                  Aynı ürünle satış hareketi örtüşmesi <b>{integer.format(data.openingEvidenceDiagnostics.salesOverlapSummary.productSaleOverlapRowCount || 0)}</b>;
+                  aynı ürün + depo <b>{integer.format(data.openingEvidenceDiagnostics.salesOverlapSummary.productDepotSaleOverlapRowCount || 0)}</b>;
+                  devir tarihinden sonra ürün + depo satışı <b>{integer.format(data.openingEvidenceDiagnostics.salesOverlapSummary.laterProductDepotSaleOverlapRowCount || 0)}</b>.
+                </span>
+              )}
               <small>Bu özet yalnızca kanıt karşılaştırmasıdır. Birebir bağ kurulamaması satışın veya tahsilatın olmadığı anlamına gelmez; STKSYM devir satırının STKHAR hareket satırına bağlanamadığını gösterir. Yön, soy zinciri ve maliyet anlamı doğrulanmadan hiçbir satır Ağırlıklı Ortalama Maliyet (WAC) hesabına alınmaz.</small>
+              {data.openingEvidenceDiagnostics.salesOverlapSummary && (
+                <small>Satış örtüşmesi, STKHAR tip 17/85/91 hareket adayıyla ürün/depo/tarih düzeyinde karşılaştırmadır. Tip 91’in tip 17 veya 85’e dönüşümü burada ekonomik toplam olarak yeniden hesaplanmaz; tahsilat kanıtı ise ayrı cari/kasa/banka kaynağından doğrulanmalıdır.</small>
+              )}
             </div>
           )}
         </section>

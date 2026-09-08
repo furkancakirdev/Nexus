@@ -41,7 +41,7 @@ import {
 } from "./tcmbRateSource.mjs";
 import { resolveOfficialRateRows } from "./officialRateResolver.mjs";
 import { buildHistoricalFinancialEvidence } from "../shared/historicalFinancialEvidence.mjs";
-import { cpmMovementCandidateSql, dvzharRateCandidateSql, stkhArType81SampleSql, stkhArType81SummarySql, stkhArType82SampleSql, stkhArType82SummarySql, stkkrtPriceCandidateSql, stksymDevirSampleSql, stksymDevirSummarySql, stksymStkhArDocumentMatchSummarySql, stksymStkhArMatchReasonSummarySql, stksymStkhArMatchSummarySql } from "./inventoryOpeningResearchSql.mjs";
+import { cpmMovementCandidateSql, dvzharRateCandidateSql, stkhArType81SampleSql, stkhArType81SummarySql, stkhArType82SampleSql, stkhArType82SummarySql, stkkrtPriceCandidateSql, stksymDevirSampleSql, stksymDevirSummarySql, stksymSalesOverlapSummarySql, stksymStkhArDocumentMatchSummarySql, stksymStkhArMatchReasonSummarySql, stksymStkhArMatchSummarySql } from "./inventoryOpeningResearchSql.mjs";
 
 export function normalizeStoredAppState(state) {
   const prototype = state !== null && typeof state === "object"
@@ -413,6 +413,7 @@ async function loadInventoryOpeningResearch(year, sampleLimit) {
       const symHarMatchSummary = await execute({ queryId: "inventory-opening-stksym-stkhar-match-summary-v1", query: stksymStkhArMatchSummarySql });
       const symHarDocumentMatchSummary = await execute({ queryId: "inventory-opening-stksym-stkhar-document-match-summary-v1", query: stksymStkhArDocumentMatchSummarySql });
       const symHarMatchReasonSummary = await execute({ queryId: "inventory-opening-stksym-stkhar-match-reason-summary-v1", query: stksymStkhArMatchReasonSummarySql });
+      const symSalesOverlapSummary = await execute({ queryId: "inventory-opening-stksym-sales-overlap-summary-v1", query: stksymSalesOverlapSummarySql });
       return {
         stkhArSummary: summary.recordsets?.[0]?.[0] || null,
         stkhArRows: samples.recordsets?.[0] || [],
@@ -423,6 +424,7 @@ async function loadInventoryOpeningResearch(year, sampleLimit) {
         stksymStkhArMatchSummary: symHarMatchSummary.recordsets?.[0]?.[0] || null,
         stksymStkhArDocumentMatchSummary: symHarDocumentMatchSummary.recordsets?.[0]?.[0] || null,
         stksymStkhArMatchReasonSummary: symHarMatchReasonSummary.recordsets?.[0]?.[0] || null,
+        stksymSalesOverlapSummary: symSalesOverlapSummary.recordsets?.[0]?.[0] || null,
       };
     },
   });
