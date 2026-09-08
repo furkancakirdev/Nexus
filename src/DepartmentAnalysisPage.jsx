@@ -40,9 +40,9 @@ const DEPARTMENTS = {
 };
 
 export const DELIVERY_DEPOT_CHART_SERIES = [
-  { name: "Merkez Depo", dataKey: "merkez", color: "var(--chart-service)" },
-  { name: "Yatmarin Depo", dataKey: "yatmarin", color: "var(--chart-parts)" },
-  { name: "Belirsiz", dataKey: "belirsiz", color: "var(--chart-review)" },
+  { name: "Merkez Depo", dataKey: "merkezEur", color: "var(--chart-service)" },
+  { name: "Yatmarin Depo", dataKey: "yatmarinEur", color: "var(--chart-parts)" },
+  { name: "Belirsiz", dataKey: "belirsizEur", color: "var(--chart-review)" },
 ];
 
 export function getDepartmentChartSeries(department) {
@@ -66,8 +66,7 @@ const emptyMetric = {
 
 function DepartmentTooltip({ active, payload, label, moneyFormatter = formatMoney }) {
   if (!active || !payload?.length) return null;
-  const sourceValues = payload.some((item) => ["merkez", "yatmarin", "belirsiz"].includes(item.dataKey));
-  const formatter = sourceValues ? formatMoney : formatEur;
+  const formatter = formatEur;
   return <div className="department-tooltip"><strong>{label}</strong>{payload.filter((item) => item.value != null).map((item) => <span key={item.dataKey}><i style={{ background: item.color }} />{item.name}<b>{formatter(item.value)}</b></span>)}</div>;
 }
 
@@ -172,9 +171,9 @@ export function DepartmentAnalysisPage({ year, mode: appMode, consolidatedRows =
     const rows = (data.depotMatrix || []).filter((item) => item.department === id);
     return {
       name: DEPARTMENTS[id].name,
-      merkez: rows.find((item) => item.depot === "MRK")?.netSales || 0,
-      yatmarin: rows.find((item) => item.depot === "YTM")?.netSales || 0,
-      belirsiz: rows.find((item) => item.depot === "—")?.netSales || 0,
+      merkezEur: rows.find((item) => item.depot === "MRK")?.eurEquivalent?.netSales ?? null,
+      yatmarinEur: rows.find((item) => item.depot === "YTM")?.eurEquivalent?.netSales ?? null,
+      belirsizEur: rows.find((item) => item.depot === "—")?.eurEquivalent?.netSales ?? null,
     };
   }), [data.depotMatrix]);
 
@@ -246,21 +245,21 @@ export function DepartmentAnalysisPage({ year, mode: appMode, consolidatedRows =
 
       <section className="department-overview-grid department-overview-grid--balanced">
         <article className="panel department-compare"><div className="panel-heading"><div><h2>Departman Karşılaştırması</h2><p>Ciro, kârlılık ve operasyonel bağlam · EUR ana görünüm</p></div></div><div className="department-compare__rows">{visibleDepartments.map((item) => <div className="department-compare__row" key={item.id}><div className="department-identity"><i style={{ background: DEPARTMENTS[item.id]?.color }} /><span><strong>{item.name}</strong><small>{DEPARTMENTS[item.id]?.center}</small></span></div><div><small>Net satış · EUR</small><strong>{metricValue(item, "netSales")}</strong></div><div><small>Brüt kâr · EUR</small><strong className={item.profit == null ? "" : item.profit >= 0 ? "positive" : "negative"}>{metricValue(item, "profit")}</strong></div><div><small>Marj</small><strong>{percent(item.eurMargin)}</strong></div><div><small>Çapraz depo · kaynak TRY</small><strong>{percent(item.netSales ? item.crossDepotSales / item.netSales * 100 : 0)}</strong></div><div><small>Maliyet kapsamı</small><strong>{percent(item.costCoveragePct)}</strong></div></div>)}</div></article>
-        <article className="panel department-depot"><div className="panel-heading"><div><h2>Departman × Teslimat Deposu</h2><p>Depo ciro sahibi değildir; teslimat desenini gösterir</p></div><IconBuildingWarehouse size={22} /></div>{hasFinancialData ? <ResponsiveContainer width="100%" height={240}><BarChart data={depotRows} layout="vertical" margin={{ left: 12, right: 14 }}><CartesianGrid horizontal={false} stroke="var(--chart-grid)" /><XAxis type="number" tickFormatter={(value) => compact.format(value)} tick={{ fontSize: 10, fill: "var(--muted)" }} /><YAxis type="category" dataKey="name" width={104} tick={{ fontSize: 11, fill: "var(--muted)" }} /><Tooltip content={<DepartmentTooltip />} /><Legend iconType="square" wrapperStyle={{ fontSize: 11 }} />{DELIVERY_DEPOT_CHART_SERIES.map((item) => <Bar key={item.dataKey} dataKey={item.dataKey} name={item.name} stackId="depot" fill={item.color} />)}</BarChart></ResponsiveContainer> : <div className="department-chart-empty department-chart-empty--small"><IconBuildingWarehouse size={26} /><strong>Depo deseni için veri bekleniyor</strong><span>Depo, ticari sorumluluğu değiştirmeden burada karşılaştırılacak.</span></div>}</article>
+        <article className="panel department-depot"><div className="panel-heading"><div><h2>Departman × Teslimat Deposu</h2><p>Depo ciro sahibi değildir; EUR kanıtı olan teslimat desenini gösterir</p></div><IconBuildingWarehouse size={22} /></div>{hasFinancialData ? <ResponsiveContainer width="100%" height={240}><BarChart data={depotRows} layout="vertical" margin={{ left: 12, right: 14 }}><CartesianGrid horizontal={false} stroke="var(--chart-grid)" /><XAxis type="number" tickFormatter={(value) => compact.format(value)} tick={{ fontSize: 10, fill: "var(--muted)" }} /><YAxis type="category" dataKey="name" width={104} tick={{ fontSize: 11, fill: "var(--muted)" }} /><Tooltip content={<DepartmentTooltip />} /><Legend iconType="square" wrapperStyle={{ fontSize: 11 }} />{DELIVERY_DEPOT_CHART_SERIES.map((item) => <Bar key={item.dataKey} dataKey={item.dataKey} name={item.name} stackId="depot" fill={item.color} />)}</BarChart></ResponsiveContainer> : <div className="department-chart-empty department-chart-empty--small"><IconBuildingWarehouse size={26} /><strong>Depo deseni için veri bekleniyor</strong><span>Depo, ticari sorumluluğu değiştirmeden burada karşılaştırılacak.</span></div>}</article>
       </section>
 
       <section className="panel department-table-panel"><div className="panel-heading"><div><h2>Yönetim Karşılaştırma Tablosu</h2><p>Finansal ana göstergeler EUR; kaynak uzlaşma tutarları kanıt durumuna göre gösterilir.</p></div></div><div className="table-scroll"><table className="department-summary-table"><thead><tr><th>Departman</th><th>Brüt satış · EUR</th><th>İade · EUR</th><th>İskonto · EUR</th><th>Net satış · EUR</th><th>Maliyet · EUR</th><th>Brüt kâr · EUR</th><th>Marj</th><th>Belge</th><th>Cari</th></tr></thead><tbody>{visibleDepartments.map((item) => <tr key={item.id}><th><DepartmentBadge department={item.id} /></th><td>{formatEur(item.eurEquivalent?.grossSales)}</td><td className="negative">-{formatEur(item.eurEquivalent?.returns)}</td><td className="negative">-{formatEur(item.eurEquivalent?.discounts)}</td><td><strong>{metricValue(item, "netSales")}</strong></td><td>{metricValue(item, "cost")}</td><td className={item.profit == null ? "" : item.profit >= 0 ? "positive" : "negative"}>{metricValue(item, "profit")}</td><td>{percent(item.eurMargin)}</td><td>{money.format(item.documentCount)}</td><td>{money.format(item.customerCount)}</td></tr>)}</tbody></table></div></section>
     </>}
 
     {tab === "rankings" && <section className="ranking-grid">
-      <article className="panel ranking-panel"><div className="panel-heading"><div><h2>Ticari Sorumlular</h2><p>91→85 riskli toplu işler kişi sıralamasına alınmaz · Tıklayarak defterde inceleyin</p></div><IconUsers size={21} /></div><div className="ranking-list">{(data.topOwners || []).filter((item) => department === "all" || item.department === department).map((item, index) => <div key={item.id} style={{ cursor: "pointer" }} onClick={() => { setTab("ledger"); setSearch(item.code || item.name); }} title={`${item.name} belgelerini filtrele`}><span className="rank">{index + 1}</span><span className="ranking-name"><strong title={item.name} aria-label={item.name}>{item.name}</strong><small>{item.code || "—"} · {item.location}{item.active === false ? " · Ayrılmış" : ""}</small></span><DepartmentBadge department={item.department} /><span className="ranking-value"><strong>{formatMoney(item.netSales)}</strong><small>{money.format(item.documentCount)} belge · Ort. {formatMoney(item.documentCount ? item.netSales / item.documentCount : 0)}</small></span></div>)}{!data.topOwners?.length && <p className="empty-copy">Teyitli ticari sorumlu verisi henüz yok.</p>}</div></article>
-      <article className="panel ranking-panel"><div className="panel-heading"><div><h2>En Çok Satılan Ürünler</h2><p>Net satış değerine göre ilk 10</p></div><IconPackage size={21} /></div><div className="ranking-list">{(data.topProducts || []).map((item, index) => <div key={item.id}><span className="rank">{index + 1}</span><span className="ranking-name"><strong>{item.name}</strong><small>{item.code} · {item.brand || "Marka yok"}</small></span><span className="ranking-value"><strong>{formatMoney(item.netSales)}</strong><small>Kâr {formatMoney(item.profit)}</small></span></div>)}{!data.topProducts?.length && <p className="empty-copy">Ürün verisi henüz yok.</p>}</div></article>
-      <article className="panel ranking-panel"><div className="panel-heading"><div><h2>En Yüksek Hacimli Müşteriler</h2><p>Net satış değerine göre ilk 10</p></div><IconChartBar size={21} /></div><div className="ranking-list">{(data.topCustomers || []).map((item, index) => <div key={item.id}><span className="rank">{index + 1}</span><span className="ranking-name"><strong>{item.name}</strong><small>{item.code}</small></span><span className="ranking-value"><strong>{formatMoney(item.netSales)}</strong><small>{money.format(item.documentCount)} belge</small></span></div>)}{!data.topCustomers?.length && <p className="empty-copy">Müşteri verisi henüz yok.</p>}</div></article>
+      <article className="panel ranking-panel"><div className="panel-heading"><div><h2>Ticari Sorumlular</h2><p>EUR net satış kanıtına göre · 91→85 riskli toplu işler kişi sıralamasına alınmaz</p></div><IconUsers size={21} /></div><div className="ranking-list">{(data.topOwners || []).filter((item) => department === "all" || item.department === department).map((item, index) => <div key={item.id} style={{ cursor: "pointer" }} onClick={() => { setTab("ledger"); setSearch(item.code || item.name); }} title={`${item.name} belgelerini filtrele`}><span className="rank">{index + 1}</span><span className="ranking-name"><strong title={item.name} aria-label={item.name}>{item.name}</strong><small>{item.code || "—"} · {item.location}{item.active === false ? " · Ayrılmış" : ""}</small></span><DepartmentBadge department={item.department} /><span className="ranking-value"><strong>{formatEur(item.eurEquivalent?.netSales)}</strong><small>{money.format(item.documentCount)} belge · Ort. {formatEur(item.documentCount ? item.eurEquivalent?.netSales / item.documentCount : null)}</small></span></div>)}{!data.topOwners?.length && <p className="empty-copy">Teyitli ticari sorumlu verisi henüz yok.</p>}</div></article>
+      <article className="panel ranking-panel"><div className="panel-heading"><div><h2>En Çok Satılan Ürünler</h2><p>EUR net satış kanıtına göre ilk 10</p></div><IconPackage size={21} /></div><div className="ranking-list">{(data.topProducts || []).map((item, index) => <div key={item.id}><span className="rank">{index + 1}</span><span className="ranking-name"><strong>{item.name}</strong><small>{item.code} · {item.brand || "Marka yok"}</small></span><span className="ranking-value"><strong>{formatEur(item.eurEquivalent?.netSales)}</strong><small>Kâr {formatEur(item.eurEquivalent?.profit)}</small></span></div>)}{!data.topProducts?.length && <p className="empty-copy">Ürün verisi henüz yok.</p>}</div></article>
+      <article className="panel ranking-panel"><div className="panel-heading"><div><h2>En Yüksek Hacimli Müşteriler</h2><p>EUR net satış kanıtına göre ilk 10</p></div><IconChartBar size={21} /></div><div className="ranking-list">{(data.topCustomers || []).map((item, index) => <div key={item.id}><span className="rank">{index + 1}</span><span className="ranking-name"><strong>{item.name}</strong><small>{item.code}</small></span><span className="ranking-value"><strong>{formatEur(item.eurEquivalent?.netSales)}</strong><small>{money.format(item.documentCount)} belge</small></span></div>)}{!data.topCustomers?.length && <p className="empty-copy">Müşteri verisi henüz yok.</p>}</div></article>
     </section>}
 
     {tab === "ledger" && <section className="panel department-ledger">
       <div className="department-ledger__head"><div><p className="eyebrow">İzlenebilir ekonomik satırlar</p><h2>Departman Belge Defteri</h2><p>{money.format(detailRows.length)} / {money.format(detailPagination.totalRows)} satır gösteriliyor · seçili yılın tamamı aranır</p></div><div className="ledger-filters"><label className="search-control"><IconSearch size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Belge, müşteri, ürün veya sorumlu ara" /></label><label><IconFilter size={16} /><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">Tüm atıflar</option><option value="confirmed">Teyitli</option><option value="inferred">Kullanıcı eşlemesi</option><option value="review">İnceleme gerekli</option></select></label><select value={depotFilter} onChange={(event) => setDepotFilter(event.target.value)}><option value="all">Tüm depolar</option><option value="MRK">Merkez Depo</option><option value="YTM">Yatmarin Depo</option><option value="—">Belirsiz depo</option></select></div></div>
-      <div className="table-scroll"><table className="department-ledger-table"><thead><tr><th aria-label="Detay" /><th>Belge / tarih</th><th>Departman</th><th>Ticari sorumlu</th><th>Müşteri</th><th>Ürün</th><th>Net satış</th><th>Maliyet</th><th>Brüt kâr</th><th>Teslimat</th><th>Kanıt</th></tr></thead><tbody>{detailRows.map((row) => <FragmentRow key={row.id} row={row} expanded={expandedRow === row.id} onToggle={() => setExpandedRow(expandedRow === row.id ? null : row.id)} />)}{!detailRows.length && <tr><td colSpan="11" className="empty-cell">Filtrelere uyan ekonomik satır bulunamadı.</td></tr>}</tbody></table></div>
+      <div className="table-scroll"><table className="department-ledger-table"><thead><tr><th aria-label="Detay" /><th>Belge / tarih</th><th>Departman</th><th>Ticari sorumlu</th><th>Müşteri</th><th>Ürün</th><th>Net satış · EUR</th><th>Maliyet · EUR</th><th>Brüt kâr · EUR</th><th>Teslimat</th><th>Kanıt</th></tr></thead><tbody>{detailRows.map((row) => <FragmentRow key={row.id} row={row} expanded={expandedRow === row.id} onToggle={() => setExpandedRow(expandedRow === row.id ? null : row.id)} />)}{!detailRows.length && <tr><td colSpan="11" className="empty-cell">Filtrelere uyan ekonomik satır bulunamadı.</td></tr>}</tbody></table></div>
       {detailPagination.totalPages > 1 && <nav className="table-pagination" aria-label="Belge defteri sayfaları"><button type="button" className="secondary-button" disabled={detailPage <= 1} onClick={() => setDetailPage((page) => page - 1)}>Önceki</button><span>Sayfa {detailPage} / {detailPagination.totalPages}</span><button type="button" className="secondary-button" disabled={detailPage >= detailPagination.totalPages} onClick={() => setDetailPage((page) => page + 1)}>Sonraki</button></nav>}
     </section>}
 
@@ -354,7 +353,7 @@ function orderedActors(row) {
 }
 
 function FragmentRow({ row, expanded, onToggle }) {
-  const margin = row.margin;
+  const margin = row.eurEquivalent?.margin;
   const documents = orderedDocuments(row);
   const actors = orderedActors(row);
   const excludedActors = row.ownershipEvidence?.excludedActors || [];
@@ -385,13 +384,13 @@ function FragmentRow({ row, expanded, onToggle }) {
       </td>
       <td><strong>{row.customerName}</strong><small>{row.customerCode}</small></td>
       <td><strong>{row.productName}</strong><small>{row.productCode}</small></td>
-      <td><strong>{formatMoney(row.netSales)}</strong></td>
-      <td>{row.costCovered
-        ? formatMoney(row.cost)
+      <td><strong>{formatEur(row.eurEquivalent?.netSales)}</strong></td>
+      <td>{row.eurEquivalent?.cost != null
+        ? formatEur(row.eurEquivalent.cost)
         : <span className="negative">Eksik</span>}
       </td>
-      <td className={profitTone(row.profit)}>
-        <strong>{formatMoney(row.profit)}</strong><small>{percent(margin)}</small>
+      <td className={profitTone(row.eurEquivalent?.profit)}>
+        <strong>{formatEur(row.eurEquivalent?.profit)}</strong><small>{percent(margin)}</small>
       </td>
       <td>
         <strong>{row.fulfillmentDepotName}</strong>

@@ -244,7 +244,7 @@ test("finansal UI eksik kanıtı tahmini maliyet veya ham kârla doldurmaz", asy
   assert.match(departmentSource, /selectedCanonicalMetric = projectCanonicalMetric\(selectedMetric\?\.canonicalMetric/);
   assert.match(departmentSource, /selectedProfit != null/);
   assert.match(departmentSource, /item\.profit == null \? ""/);
-  assert.match(departmentSource, /className=\{profitTone\(row\.profit\)\}/);
+  assert.match(departmentSource, /className=\{profitTone\(row\.eurEquivalent\?\.profit\)\}/);
 });
 
 test("finansal UI mixed CPM/TCMB kur kaynağını Halkbank-only diye göstermemeli", async () => {
@@ -511,6 +511,19 @@ test("Department delivery-depot chart and semantic legend share theme tokens", a
     label: "Teslimat deposu serileri", items: depotSeries,
   }));
   for (const item of depotSeries) assert.match(markup, new RegExp(`background:${item.color.replace(/[()]/g, "\\$&")}`));
+});
+
+test("Department financial subviews render only canonical EUR projections", async () => {
+  const departmentSource = await source("src/DepartmentAnalysisPage.jsx");
+  const reportsSource = await source("src/ReportsPage.jsx");
+
+  assert.match(departmentSource, /formatEur\(item\.eurEquivalent\?\.netSales\)/);
+  assert.match(departmentSource, /formatEur\(row\.eurEquivalent\?\.netSales\)/);
+  assert.match(departmentSource, /dataKey: "merkezEur"/);
+  assert.doesNotMatch(departmentSource, /formatMoney\(item\.netSales\)/);
+  assert.doesNotMatch(departmentSource, /formatMoney\(row\.(netSales|cost|profit)\)/);
+  assert.match(reportsSource, /Bağımsız EUR havuz kanıtı bekleniyor/);
+  assert.doesNotMatch(reportsSource, /active === "pool" \? `\$\{money\.format\(item\.(netSales|cost|profit)\)\} TL`/);
 });
 
 test("Reports brand semantic legend follows the active visible chart", async (t) => {

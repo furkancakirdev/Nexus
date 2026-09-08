@@ -1461,6 +1461,22 @@ export function createUnifiedLedgerRouter({
           eurFrozen: resolved.frozen,
         };
       };
+      const decorateAggregateEur = (item) => {
+        if (!item || typeof item !== "object") return item;
+        const canonicalMetric = aggregateFinancialMetric(item[FINANCIAL_ROWS] || [], {
+          rateSets: periodRateSets,
+          basisId: `department-aggregate:${item.id || item.department || item.name || "row"}`,
+        });
+        return {
+          ...item,
+          canonicalMetric,
+          eurEquivalent: canonicalEurEquivalent(canonicalMetric),
+          eurMargin: canonicalMetric.eurMargin,
+          eurComplete: canonicalMetric.eur.complete === true && canonicalMetric.status === "TAMAM",
+          eurRevenueComplete: canonicalMetric.eurRevenue?.complete === true,
+          eurStatus: canonicalMetric.status,
+        };
+      };
       analysis.eurRateSet = buildRateSet(rateIndex, reportDate);
       analysis.totals = decorateMetricEur({ ...analysis.totals, month: null });
       analysis.departments = (analysis.departments || []).map(decorateMetricEur);
@@ -1471,10 +1487,17 @@ export function createUnifiedLedgerRouter({
         review: decorateMetricEur(item.review),
         all: decorateMetricEur(item.all),
       }));
+      analysis.topOwners = (analysis.topOwners || []).map(decorateAggregateEur);
+      analysis.ownerTotals = (analysis.ownerTotals || []).map(decorateAggregateEur);
+      analysis.ownerEvidenceTotals = (analysis.ownerEvidenceTotals || []).map(decorateAggregateEur);
+      analysis.topProducts = (analysis.topProducts || []).map(decorateAggregateEur);
+      analysis.topCustomers = (analysis.topCustomers || []).map(decorateAggregateEur);
+      analysis.depotMatrix = (analysis.depotMatrix || []).map(decorateAggregateEur);
+      const decoratedDetailRows = detailPage.rows.map(decorateAggregateEur);
       response.setHeader("Cache-Control", "no-store");
       return response.json({
         ...analysis,
-        detailRows: detailPage.rows,
+        detailRows: decoratedDetailRows,
         detailPagination: {
           page: detailPage.page,
           pageSize: detailPage.pageSize,

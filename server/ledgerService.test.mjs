@@ -606,6 +606,11 @@ test("eşzamanlı overview departman ve audit istekleri tek ledger sürümünü 
       { rootId: 99, quarantineReason: "fixture-review" },
     ]);
     assert.equal(departments.detailRows[0].ownershipEvidence !== undefined, true);
+    assert.equal(departments.topOwners[0].eurEquivalent !== undefined, true);
+    assert.equal(departments.topProducts[0].eurEquivalent !== undefined, true);
+    assert.equal(departments.topCustomers[0].eurEquivalent !== undefined, true);
+    assert.equal(departments.depotMatrix[0].eurEquivalent !== undefined, true);
+    assert.equal(departments.detailRows[0].eurEquivalent !== undefined, true);
   });
 });
 

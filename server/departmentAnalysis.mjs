@@ -294,11 +294,19 @@ function topGroups(rows, selector, limit = 8) {
   for (const row of rows) {
     const selected = selector(row);
     if (!selected?.id) continue;
-    const item = grouped.get(selected.id) || { ...selected, netSales: 0, profit: 0, documentKeys: new Set(), crossDepotSales: 0 };
+    const item = grouped.get(selected.id) || {
+      ...selected,
+      netSales: 0,
+      profit: 0,
+      documentKeys: new Set(),
+      crossDepotSales: 0,
+      [FINANCIAL_ROWS]: [],
+    };
     item.netSales += row.netSales;
     item.profit += row.profit;
     item.crossDepotSales += row.crossDepot ? row.netSales : 0;
     item.documentKeys.add(row.documentKey);
+    item[FINANCIAL_ROWS].push(row[FINANCIAL_ROWS]);
     grouped.set(selected.id, item);
   }
   return [...grouped.values()]
@@ -500,9 +508,14 @@ export function buildDepartmentAnalysis({
     if (row.batchRisk) batchRiskAmount += row.netSales;
     if (row.attributionMethod === "b2b-candidate-hint") hintedReviewAmount += row.netSales;
     const depotKey = `${row.department}|${row.fulfillmentDepotCode}`;
-    const depot = depotMetrics.get(depotKey) || { netSales: 0, documents: new Set() };
+    const depot = depotMetrics.get(depotKey) || {
+      netSales: 0,
+      documents: new Set(),
+      [FINANCIAL_ROWS]: [],
+    };
     depot.netSales += row.netSales;
     depot.documents.add(row.documentKey);
+    depot[FINANCIAL_ROWS].push(row[FINANCIAL_ROWS]);
     depotMetrics.set(depotKey, depot);
   }
 
@@ -611,6 +624,7 @@ export function buildDepartmentAnalysis({
         depotName: normalizeDepot(depot).name,
         netSales: metric?.netSales || 0,
         documentCount: metric?.documents.size || 0,
+        [FINANCIAL_ROWS]: metric?.[FINANCIAL_ROWS] || [],
       };
     })),
     detailRows: normalized

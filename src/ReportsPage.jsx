@@ -53,9 +53,12 @@ export function ReportsPage({settings,employees,targetRows,annualPool,year,rows,
   const pool=distributionResult.departments.map((department)=>({
     name:department.departmentName,
     lines:department.eligibleEmployeeCount,
-    netSales:department.pool,
-    cost:department.unallocatedPool,
-    profit:department.allocatedPool,
+    // targetPolicy produces TRY allocation values. There is no independent
+    // EUR evidence contract for the pool, so the financial display fails closed.
+    netSales:null,
+    cost:null,
+    profit:null,
+    margin:null,
     discount:0,
     returns:0,
   }));
@@ -85,7 +88,7 @@ export function ReportsPage({settings,employees,targetRows,annualPool,year,rows,
     </div>
   </>}
   {active === "discount" && <section className="panel distribution-report"><div className="panel-heading"><div><h2>İskonto ve İade Özeti</h2><p>EUR karşılığı · kur kanıtı eksikse değer gösterilmez</p></div></div><div className="report-kpis"><article><span><IconDiscount/></span><div><small>İskonto · EUR</small><strong>{eurDiscounts == null ? "—" : eurFormat.format(eurDiscounts)}</strong></div></article><article><span><IconChartBar/></span><div><small>İade · EUR</small><strong>{eurReturns == null ? "—" : eurFormat.format(eurReturns)}</strong></div></article></div></section>}
-  {active !== "summary" && active !== "discount" && <section className="panel distribution-report"><div className="distribution-report__head"><div><h2>{tabs.find(([id])=>id===active)?.[1]}</h2><p>{filtered.length} analiz satırı · {active === "pool" ? "kaynak TRY" : "EUR karşılığı"}</p></div><label className="goal-search"><IconSearch size={17}/><input value={query} onChange={(event)=>setQuery(event.target.value)} placeholder="Ara"/></label></div><div className="table-scroll"><table className="report-table"><thead><tr><th>Boyut</th><th>Satır</th><th>{active==="pool"?"Toplam havuz · kaynak TRY":"Net satış · EUR"}</th><th>{active==="pool"?"Dağıtılamayan · kaynak TRY":"Maliyet · EUR"}</th><th>{active==="pool"?"Dağıtılan · kaynak TRY":"Kâr · EUR"}</th><th>{active==="pool"?"Dağıtım oranı":"Marj"}</th></tr></thead><tbody>{filtered.map((item)=><tr key={item.name}><th>{item.name}</th><td>{money.format(item.lines)}</td><td>{active === "pool" ? `${money.format(item.netSales)} TL` : (item.netSales == null ? "—" : eurFormat.format(item.netSales))}</td><td>{active === "pool" ? `${money.format(item.cost)} TL` : (item.cost == null ? "—" : eurFormat.format(item.cost))}</td><td className={item.profit>=0?"positive":"negative"}>{active === "pool" ? `${money.format(item.profit)} TL` : (item.profit == null ? "—" : eurFormat.format(item.profit))}</td><td>%{item.margin === null || item.margin === undefined ? "—" : Number(item.margin).toFixed(1)}</td></tr>)}{!filtered.length&&<tr><td colSpan="6" className="empty-state">Veri bulunamadı.</td></tr>}</tbody></table></div></section>}
+  {active !== "summary" && active !== "discount" && <section className="panel distribution-report"><div className="distribution-report__head"><div><h2>{tabs.find(([id])=>id===active)?.[1]}</h2><p>{filtered.length} analiz satırı · {active === "pool" ? "Bağımsız EUR havuz kanıtı bekleniyor; kaynak TRY resmi EUR yerine gösterilmez" : "EUR karşılığı"}</p></div><label className="goal-search"><IconSearch size={17}/><input value={query} onChange={(event)=>setQuery(event.target.value)} placeholder="Ara"/></label></div><div className="table-scroll"><table className="report-table"><thead><tr><th>Boyut</th><th>Satır</th><th>Net satış · EUR</th><th>Maliyet · EUR</th><th>Kâr · EUR</th><th>Marj</th></tr></thead><tbody>{filtered.map((item)=><tr key={item.name}><th>{item.name}</th><td>{money.format(item.lines)}</td><td>{item.netSales == null ? "—" : eurFormat.format(item.netSales)}</td><td>{item.cost == null ? "—" : eurFormat.format(item.cost)}</td><td className={item.profit == null ? "" : item.profit >= 0 ? "positive" : "negative"}>{item.profit == null ? "—" : eurFormat.format(item.profit)}</td><td>%{item.margin === null || item.margin === undefined ? "—" : Number(item.margin).toFixed(1)}</td></tr>)}{!filtered.length&&<tr><td colSpan="6" className="empty-state">Veri bulunamadı.</td></tr>}</tbody></table></div></section>}
   {isBrandChartVisible({ active, loading, error, brand }) && <AccessibleChartLegend label="Marka satış ve kâr serileri" items={[{ name: "Net satış", color: REPORT_CHART_COLORS.sales }, { name: "Kâr", color: REPORT_CHART_COLORS.profit }]} />}
   </main>;
 }
