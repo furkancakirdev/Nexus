@@ -411,7 +411,7 @@ export function InventoryResearchPage({ year, mode = "live", refreshToken = 0 })
               <span>Yalnız miktar <strong>{integer.format(data.openingEvidenceDiagnostics.quantityOnlyCount || 0)}</strong></span>
               <span>Çatışma <strong>{integer.format(data.openingEvidenceDiagnostics.conflictCount || 0)}</strong></span>
               <span>Maliyet eksik <strong>{integer.format(data.openingEvidenceDiagnostics.missingCostCount || 0)}</strong></span>
-              <span>Eşleşmeyen <strong>{integer.format(data.openingEvidenceDiagnostics.unmatchedCount || 0)}</strong></span>
+              <span>STKHAR tip 82 ile birebir bağlanamayan <strong>{integer.format(data.openingEvidenceDiagnostics.unmatchedCount || 0)}</strong></span>
             </div>
           )}
           {data.openingEvidenceDiagnostics.sourceMatchSummary && (
@@ -438,7 +438,7 @@ export function InventoryResearchPage({ year, mode = "live", refreshToken = 0 })
                   tip 81 ürün eşleşmesi <b>{integer.format(data.openingEvidenceDiagnostics.sourceMatchReasonSummary.type81ProductMatchCount || 0)}</b>.
                 </span>
               )}
-              <small>Bu özet yalnızca kanıt karşılaştırmasıdır; yön, soy zinciri ve maliyet anlamı doğrulanmadan hiçbir satır resmi WAC’a alınmaz.</small>
+              <small>Bu özet yalnızca kanıt karşılaştırmasıdır. Birebir bağ kurulamaması satışın veya tahsilatın olmadığı anlamına gelmez; STKSYM devir satırının STKHAR hareket satırına bağlanamadığını gösterir. Yön, soy zinciri ve maliyet anlamı doğrulanmadan hiçbir satır Ağırlıklı Ortalama Maliyet (WAC) hesabına alınmaz.</small>
             </div>
           )}
         </section>
