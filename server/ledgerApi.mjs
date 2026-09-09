@@ -916,19 +916,25 @@ function economicScopeNetSales(ledger) {
     .reduce((sum, row) => sum + number(row.signedNetSales), 0);
 }
 
-function reconciliation(
+export function reconciliation(
   ledgerNetSales,
   responseNetSales,
   scopeNetSales = ledgerNetSales,
   excludedNetSales = 0,
 ) {
+  const responseMinorUnits = minorUnits(responseNetSales);
+  const scopeMinorUnits = minorUnits(scopeNetSales);
+  const balanced = responseMinorUnits === scopeMinorUnits;
+  const difference = balanced
+    ? 0
+    : normalizedDifference(number(responseNetSales) - number(scopeNetSales));
   return {
     ledgerNetSales: number(ledgerNetSales),
     scopeNetSales: number(scopeNetSales),
     excludedNetSales: number(excludedNetSales),
     responseNetSales: number(responseNetSales),
-    difference: normalizedDifference(number(responseNetSales) - number(scopeNetSales)),
-    balanced: Math.abs(number(responseNetSales) - number(scopeNetSales)) < 0.000001,
+    difference,
+    balanced,
   };
 }
 
