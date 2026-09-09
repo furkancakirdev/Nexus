@@ -1,8 +1,7 @@
 import { currencyCode, dateKey } from "../shared/eurReporting.mjs";
 
-/** 01-Döviz Kart modülünde görünen 03-Halk Bankası banka kodu. */
-export const DEFAULT_HALK_BANK_CODE = 3;
-export const DEFAULT_HALK_MODULE_BANK_NAME = "03-HALK BANKASI";
+/** Canlı CPM kanıtında BNKKRT.ID=6 olarak gözlenen Halkbank kimliği. */
+export const DEFAULT_HALK_BANK_CODE = 6;
 
 function text(value) {
   return value === null || value === undefined ? "" : String(value).trim();
@@ -26,7 +25,6 @@ function normalizedBankName(value) {
 export function buildCpmExchangeRateCandidates({
   rows = [],
   bankCode = DEFAULT_HALK_BANK_CODE,
-  moduleBankName = DEFAULT_HALK_MODULE_BANK_NAME,
   buyingRateType = 0,
   sellingRateType = 1,
   semanticsVerified = false,
@@ -40,11 +38,12 @@ export function buildCpmExchangeRateCandidates({
     return { status: "candidate", exchangeRates: [], reviewReason: "rate-source-contract-unverified", rowCount: rows.length };
   }
 
-  const configuredModuleBankName = normalizedBankName(moduleBankName);
   const usableRows = rows.map((row) => ({
     sourceId: text(row?.rateSourceId),
     bankCode: number(row?.bankCode),
-    bankName: normalizedBankName(row?.moduleBankName || configuredModuleBankName || row?.bankName),
+    // Banka kimliği yalnızca CPM BNKKRT master kaydından alınır. Environment
+    // etiketi veya UI modül adı gerçek source identity kanıtının yerine geçemez.
+    bankName: normalizedBankName(row?.bankName),
     rateType: number(row?.rateType),
     rateDate: dateKey(row?.rateDate),
     rateCurrency: currencyCode(row?.rateCurrency),

@@ -6,22 +6,22 @@ import {
 } from "./cpmRateSource.mjs";
 
 test("CPM Halkbank varsayılanı canlı banka kimliğini kullanır", () => {
-  assert.equal(DEFAULT_HALK_BANK_CODE, 3);
+  assert.equal(DEFAULT_HALK_BANK_CODE, 6);
 });
 
-test("Döviz Kart modülü 03-Halk Bankası etiketini CPM banka master adından bağımsız kanıtlar", () => {
+test("CPM banka master adı modül etiketini geçersiz kılar", () => {
   const result = buildCpmExchangeRateCandidates({
     rows: [
       { rateSourceId: 11, bankCode: 3, bankName: "İLLER BANKASI", rateType: 0, rateDate: "2026-09-03", rateCurrency: "EUR", rateValue: 55.5364 },
       { rateSourceId: 12, bankCode: 3, bankName: "İLLER BANKASI", rateType: 1, rateDate: "2026-09-03", rateCurrency: "EUR", rateValue: 56.673 },
     ],
     bankCode: 3,
-    moduleBankName: "03-Halk Bankası",
     semanticsVerified: true,
   });
 
-  assert.equal(result.status, "verified");
-  assert.equal(result.exchangeRates[0].halkbankSellingRate, 56.673);
+  assert.equal(result.status, "candidate");
+  assert.equal(result.exchangeRates.length, 0);
+  assert.equal(result.reviewReason, "rate-bank-identity-mismatch");
 });
 
 test("DVZHAR adayları aynı gün alış ve satış kurlarını tek kayıt sözleşmesine bağlar", () => {
