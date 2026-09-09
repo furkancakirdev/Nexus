@@ -25,6 +25,7 @@ import {
 import { calculateDepartmentDistribution } from "./distribution";
 import { MetricCard } from "./components/ui/MetricCard.jsx";
 import { FinancialVisibilityPanel } from "./components/FinancialVisibilityPanel.jsx";
+import { buildFinancialVisibility } from "./financialVisibility.mjs";
 import {
   formatEur,
   formatInteger,
@@ -201,6 +202,7 @@ export function SummaryPage({
     ? rawCostReviewLines
     : null;
   const isCostReviewPending = !canonicalReady || costReviewLines === null || costReviewLines > 0;
+  const financialVisibility = buildFinancialVisibility(canonicalMetric);
   const canonicalProfit = canonicalReady ? canonicalMetric?.try?.profit : null;
   const totalProfitTry = canonicalProfit ?? null;
   const grossMarginPct = !isCostReviewPending && Number.isFinite(canonicalMetric?.try?.margin)
@@ -357,8 +359,8 @@ export function SummaryPage({
             />
             <MetricCard
               title={isCostReviewPending ? "Geçici Brüt Kâr · TRY" : "Brüt Kâr"}
-              value={<div className="label-value"><strong>{isCostReviewPending ? formatMoney(canonicalMetric?.try?.profit) : formatEur(totalProfitEur)}</strong></div>}
-              secondaryValue={isCostReviewPending ? "Eksik maliyetler hesaba katılmamıştır" : "Canonical EUR kâr"}
+              value={<div className="label-value"><strong>{isCostReviewPending ? formatMoney(financialVisibility.provisionalProfit) : formatEur(totalProfitEur)}</strong></div>}
+              secondaryValue={isCostReviewPending ? financialVisibility.hasKnownCostEvidence ? "Eksik maliyetler hesaba katılmamıştır" : "Maliyet kanıtı olmadan kâr hesaplanmaz" : "Canonical EUR kâr"}
               subtitle="Resmî maliyet kanıtı"
               icon={IconTrendingUp}
               badge={isCostReviewPending ? "Kapalı" : "WAC kanıtlı"}
@@ -367,7 +369,7 @@ export function SummaryPage({
             />
             <MetricCard
               title={isCostReviewPending ? "Geçici Brüt Marj" : "Ortalama Brüt Marj"}
-              value={<div className="label-value"><strong>{isCostReviewPending ? formatPercent(canonicalMetric?.try?.margin) : `%${Number(grossMarginPct).toFixed(1)}`}</strong></div>}
+              value={<div className="label-value"><strong>{isCostReviewPending ? formatPercent(financialVisibility.provisionalMargin) : `%${Number(grossMarginPct).toFixed(1)}`}</strong></div>}
               secondaryValue={totalProfitTry != null ? `${formatMoney(totalProfitTry)} kaynak TRY kâr` : "Canonical TRY kâr bekleniyor"}
               subtitle="Canonical TRY marjı"
               icon={IconReceipt2}

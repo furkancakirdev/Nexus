@@ -27,6 +27,38 @@ test("geçersiz veya bulunmayan finansal değerleri sıfır gibi göstermez", ()
   assert.equal(result.provisionalMargin, null);
 });
 
+test("tüm satırlar maliyet incelemesindeyse sıfır maliyetten yüzde yüz kâr üretmez", () => {
+  const result = buildFinancialVisibility({
+    status: "INCELEME",
+    try: { netSales: 1000, cost: 0, profit: 1000, margin: 100 },
+    scope: {
+      confirmed: { lines: 0, netSales: 0, cost: 0, profit: 0, margin: null },
+      costReview: { lines: 10, netSales: 1000, cost: 0, profit: 1000, margin: 100 },
+    },
+  });
+
+  assert.equal(result.knownCost, null);
+  assert.equal(result.provisionalProfit, null);
+  assert.equal(result.provisionalMargin, null);
+  assert.equal(result.hasKnownCostEvidence, false);
+});
+
+test("review-only satırlardaki sayısal maliyet doğrulanmış kanıt yerine geçmez", () => {
+  const result = buildFinancialVisibility({
+    status: "INCELEME",
+    try: { netSales: 1000, cost: 400, profit: 600, margin: 60 },
+    scope: {
+      confirmed: { lines: 0, netSales: 0, cost: 0, profit: 0, margin: null },
+      costReview: { lines: 10, netSales: 1000, cost: 400, profit: 600, margin: 60 },
+    },
+  });
+
+  assert.equal(result.knownCost, null);
+  assert.equal(result.provisionalProfit, null);
+  assert.equal(result.provisionalMargin, null);
+  assert.equal(result.hasKnownCostEvidence, false);
+});
+
 test("yalnız tamam ve eksik maliyetsiz metrik doğrulanmış sayılır", () => {
   const completeTry = { netSales: 100, cost: 60, profit: 40, margin: 40 };
   assert.equal(buildFinancialVisibility({ status: "TAMAM", try: completeTry, scope: { costReview: { lines: 0 } } }).complete, true);

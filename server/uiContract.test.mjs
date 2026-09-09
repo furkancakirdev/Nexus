@@ -382,12 +382,16 @@ test("kanıt engeline takılan TRY kâr ve marjı geçici etiketiyle görünür 
   assert.match(panelSource, /Geçici brüt kâr · kaynak TRY/);
   assert.match(panelSource, /Eksik maliyetler hesaba katılmamıştır/);
   assert.match(panelSource, /Kesin marj değildir/);
+  assert.match(panelSource, /Maliyet kanıtı olmadan kâr hesaplanmaz/);
+  assert.match(panelSource, /Maliyet kanıtı olmadan marj hesaplanmaz/);
   assert.match(panelSource, /Eksik maliyet kapsamı/);
   for (const sourceText of [summarySource, salesSource, reportsSource, departmentSource]) {
     assert.match(sourceText, /<FinancialVisibilityPanel/);
   }
   assert.match(summarySource, /Geçici Brüt Kâr · TRY/);
   assert.match(summarySource, /Geçici Brüt Marj/);
+  assert.match(summarySource, /financialVisibility\.provisionalProfit/);
+  assert.match(summarySource, /financialVisibility\.provisionalMargin/);
   assert.match(appSource, /<ReportsPage[^>]+canonicalMetric=\{canonicalMetric\}/);
 });
 

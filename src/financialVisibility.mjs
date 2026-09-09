@@ -5,10 +5,14 @@ export function buildFinancialVisibility(metric = null) {
   const confirmed = metric?.scope?.confirmed || {};
   const missing = metric?.scope?.costReview || {};
   const reviewLines = finite(missing.lines) ?? finite(metric?.evidence?.reviewLines);
+  const confirmedLines = finite(confirmed.lines) ?? 0;
   const netSales = finite(source.netSales);
-  const knownCost = finite(source.cost);
-  const provisionalProfit = finite(source.profit);
-  const provisionalMargin = finite(source.margin);
+  const rawKnownCost = finite(source.cost);
+  const hasKnownCostEvidence = metric?.status === "TAMAM"
+    || confirmedLines > 0;
+  const knownCost = hasKnownCostEvidence ? rawKnownCost : null;
+  const provisionalProfit = hasKnownCostEvidence ? finite(source.profit) : null;
+  const provisionalMargin = hasKnownCostEvidence ? finite(source.margin) : null;
   return {
     complete: metric?.status === "TAMAM"
       && reviewLines === 0
@@ -19,7 +23,8 @@ export function buildFinancialVisibility(metric = null) {
     knownCost,
     provisionalProfit,
     provisionalMargin,
-    confirmedLines: finite(confirmed.lines) ?? 0,
+    hasKnownCostEvidence,
+    confirmedLines,
     confirmedNetSales: finite(confirmed.netSales),
     confirmedCost: finite(confirmed.cost),
     confirmedProfit: finite(confirmed.profit),
