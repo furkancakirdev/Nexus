@@ -13,6 +13,12 @@ Son reconciliation düzeltmesi de canlıya alınmıştır: tutar karşılaştır
 ham IEEE-754 kayan nokta farkı yerine TL kuruş (minor-unit) eşitliğiyle yapılır.
 Gerçek kuruş farkları yine görünür kalır.
 
+EUR kök neden düzeltmesi de uygulanmıştır: önceki canlı yapılandırmasında
+`DVZHAR.BANKA=3` satırları modül etiketiyle Halkbank kabul ediliyordu. CPM
+`BNKKRT` master kanıtı ise `ID=3 = İLLER BANKASI`, `ID=6 = HALK BANKASI`
+göstermektedir. Modül/environment etiketi artık master banka adının yerine
+geçemez.
+
 Resmî WAC/kâr/havuz ve finansal canlıya hazır olma: **NO-GO / inceleme gerekli**.
 Bu karar; stok hareket kaynağı, maliyet kapsamı ve 132 soy zinciri kanıtlanamayan
 iade satırı kapanmadan değiştirilmemiştir.
@@ -21,11 +27,19 @@ iade satırı kapanmadan değiştirilmemiştir.
 
 Son canlı sürüm:
 
+- Git commit: `072dc83` (`fix: validate Halkbank source identity`)
+- Push: `origin/codex/UI` başarılı (`43c9d20..072dc83`)
+- Canlı build commit: `072dc83`
+- Canlı artifact SHA-256: `40f707d531c387470e6e4ec9cf85e84f4d0b30346af12f33c352722522cb71ea`
+- Canlı image digest: `sha256:2a2019c6e0aea7e51c7a96ff621452ffe06a927bc54bce8ac6110d1b7d7bcd6d`
+- Canlı kur kimliği: `CPM_RATE_BANK_CODE=6`, `CPM_RATE_SEMANTICS_VERIFIED=false`
+
+Bir önceki canlı sürüm:
+
 - Git commit: `3790df4` (`fix: compare reconciliation in minor units`)
 - Push: `origin/codex/UI` başarılı (`6bcac43..3790df4`)
-- Canlı build commit: `3790df4`
-- Canlı artifact SHA-256: `98e04463243fb9017adfced43f667aebbcd7f95c7e04ac617e446656b026b0f7`
-- Canlı image digest: `sha256:3108d544c16524c3b2698ec65bbd7d78bfa38c647c5a03118ce0f83d6c3fe00d`
+- Önceki canlı artifact SHA-256: `98e04463243fb9017adfced43f667aebbcd7f95c7e04ac617e446656b026b0f7`
+- Önceki canlı image digest: `sha256:3108d544c16524c3b2698ec65bbd7d78bfa38c647c5a03118ce0f83d6c3fe00d`
 
 Önceki rollback noktası korunmuştur:
 
@@ -40,37 +54,60 @@ Son canlı sürüm:
   `CapDrop=ALL`
 - HTTPS kök sayfa: HTTP 200
 
-## Aday ve canlı aynı-zamanlı parity
+## Aday ve canlı parity sınırı
 
-Önceki aday ekranında görülen `€4.413.235` değeri tekrar üretilemedi. Aynı
-commit/imaj, aynı CPM ve aynı rapor dönemindeki yeni izole aday çalışmasında
-canlı ile aynı değerleri verdi:
+Önceki aday ekranında görülen `€4.413.235` değeri, o ana ait rate payload’ı
+korunmadığı için aynı veri kesitiyle tekrar üretilemedi. `3790df4` sürümündeki
+aynı-commit aday/canlı parity `€8.586.030` olarak eşleşmişti; banka kimliği
+düzeltmesinden (`072dc83`) sonra canlı tekrar doğrulandı. Bu son düzeltme için
+ayrı aday koşusu değil, canlı UI ve CPM master/kur SELECT kanıtı kullanıldı:
 
 | Kanıt | İzole aday | Canlı | Durum |
 | --- | ---: | ---: | --- |
-| KDV hariç net ciro, kaynak TRY | 236.207.629 TL | 236.207.629 TL | Eşleşti |
-| EUR net ciro | €8.586.030 | €8.586.030 | Eşleşti |
-| İade soy zinciri incelemesi | 132 | 132 | Eşleşti |
-| Placeholder taraması | Yok | Yok | Geçti |
-| Browser console error/warning | 0 / 0 | 0 / 0 (son canlı smoke) | Geçti |
+| KDV hariç net ciro, kaynak TRY | — | 236.207.629 TL | Canlı doğrulandı |
+| EUR net ciro | — | €4.410.271 | Canlı; TCMB fallback görünür |
+| İade soy zinciri incelemesi | — | 132 | Canlı review-required |
+| Placeholder taraması | — | Yok | Canlı geçti |
+| Browser console error/warning | — | 0 / 0 (son canlı smoke) | Canlı geçti |
 
 Canlı `/api/overview?year=2026` payload kanıtı:
 
 - `canonicalMetric.try.netSales = 236207629.04000163`
-- `canonicalMetric.eurRevenue.netSales = 8586030.379638923`
-- EUR raporlama kuru: `54.8595`, tarih `2026-09-09`, kaynak kimliği
-  `DVZHAR-14744/14745`
-- 9 aylık dönemlerin tamamı aynı rapor-günü kur setini kullandı; bunun nedeni
-  açık dönemlerde `reportDate` ile dinamik kur seçen mevcut sözleşmedir.
+- Önceki `3790df4` response’ta `canonicalMetric.eurRevenue.netSales =
+  8586030.379638923` idi; bu alan yanlış banka kimliğiyle üretilmişti ve
+  resmi EUR kanıtı olarak kapatıldı.
+- Önceki canlı response’ta görünen `54.8595`, `DVZHAR-14744/14745` satırı
+  CPM `BNKKRT.ID=3` yani `İLLER BANKASI` kaynağına aittir; Halkbank olarak
+  kullanılması geçersizdir.
+- CPM master sorgusunda `BNKKRT.ID=6` `HALK BANKASI` olarak doğrulandı; aynı
+  dönem için bu banka kimliğinde rate çifti bulunmadı. `072dc83` bu nedenle
+  kaynağı doğrulanmamış kabul eder ve canlı yapılandırmada `TCMB fallback`
+  ifadesini görünür bırakır.
+- 9 aylık dönemlerin tamamı açık dönemlerde `reportDate` ile dinamik kur seçen
+  mevcut sözleşmeyi kullanır.
 - `reconciliation.scopeNetSales = 236207629.04000163`; eski ham float farkı
   yalnız IEEE-754 yuvarlama gürültüsüdür, muhasebe farkı değildir.
 - `3790df4` sonrası aynı tutarlar kuruş biriminde eşitlenir: `difference=0`,
   `balanced=true`. Gerçek bir kuruş farkı için regresyon testi `balanced=false`
   ve farkı görünür bırakır.
 
+EUR yanlış banka kimliği kanıtı:
+
+- CPM salt-okunur `BNKKRT` sonucu: `3 / İLLER BANKASI`, `6 / HALK BANKASI`.
+- CPM salt-okunur `DVZHAR` sonucu: `14744/14745`, `54.8595/57.999`, banka ID 3;
+  bu satırlar artık Halkbank kanıtı olarak kullanılmıyor.
+- Canlı son smoke: `236.207.629 TL` kaynak TRY, `€4.410.271` EUR net satış,
+  gross `€5.174.677`, iade `€43.449`, iskonto `€720.957`; EUR satırları
+  `CPM öncelikli · TCMB fallback karşılığı` olarak etiketleniyor.
+- Önceki `€4.413.235` kesitinin rate payload’ı saklanmadığı için bu değere
+  kalan `€2.964` fark için dönemsel bir neden atanmadı. Bu fark açık bir
+  tarihsel-provenance TODO’sudur; `€8.586.030` ise yanlış banka kimliğiyle
+  üretilen hatalı kesit olarak kapatılmıştır.
+
 Son canlı tarayıcı smoke kanıtı:
 
-- Genel Bakış: `236.207.629 TL`, `€8.586.030`, `132 iade bağlantısı incelenmeli`
+- Genel Bakış/Satış: `236.207.629 TL`, `€4.410.271`, `132 iade bağlantısı
+  incelenmeli`
 - Tema: `dark`, body arka planı `rgb(15, 23, 42)`
 - Loading: tamamlandı; placeholder (`undefined/null/NaN/lorem ipsum`): yok
 - Satış Analizi ve Ayarlar route smoke: açıldı, loading/placeholder yok
@@ -96,8 +133,8 @@ Kurtarma sırasında:
 - `commit-4aa608e` canlı imajı yeniden oluşturuldu ve canlı container başlatıldı.
 - Caddy ile uygulama ağı yeniden bağlandı; ilk 502 durumu bu ağ üyeliği
   düzeltmesiyle kapandı.
-- Son canlı container `release-commit-3790df4` olarak çalışıyor; `4aa608e`
-  sürümü durmuş rollback container ve imaj olarak korunuyor.
+- Son canlı container `release-072dc83` olarak çalışıyor; `3790df4` ve
+  `4aa608e` sürümleri rollback imaj/container noktaları olarak korunuyor.
 - Uygulama verisi silinmedi veya CPM'ye yazılmadı.
 
 ## Resmî finansal readiness sınırları
@@ -112,9 +149,9 @@ tutar:
   ancak kanıt gelmeden otomatik bağlanmaz.
 - Stok hareket kaynağı ve açılış/devir soy zinciri tamamlanmadan WAC, resmî kâr,
   marj ve havuz açılmaz.
-- EUR dönüşümü güncel aday-canlı parity içinde eşleşmiştir; geçmiş tarihli
-  kur setleri ayrı bir kanıt olarak korunmalı, dinamik rapor günü kuruyla
-  dondurulmuş dönem kurunun karıştırılmasına izin verilmemelidir.
+- EUR dönüşümü artık yanlış banka kimliğiyle açılmaz; mevcut canlı değer TCMB
+  fallback olarak etiketlidir. Halkbank rate çifti ve `DOVIZTIP=0/1` semantiği
+  bağımsız kaynakla doğrulanmadan EUR resmi rapor kanıtı sayılmamalıdır.
 
 ## Sonraki güvenli adımlar
 
