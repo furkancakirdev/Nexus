@@ -83,6 +83,24 @@ test("readiness blocks ambiguous opening evidence", () => {
   assert.ok(result.blockers.includes("inventory-opening-evidence-ambiguous"));
 });
 
+test("readiness fails closed when a verified-looking source still carries a review reason", () => {
+  const result = evaluateReleaseReadiness({
+    connected: true,
+    readOnly: true,
+    inventorySource: {
+      status: "verified",
+      financialStatus: "ready",
+      reviewReason: "movement-source-not-verified",
+    },
+    buildId: "2026.09.09-test",
+    buildVersion: "2.0.0",
+    buildCommit: "abc123",
+    imageDigest: "sha256:abc",
+  });
+  assert.equal(result.ready, false);
+  assert.ok(result.blockers.includes("inventory-source-review-required"));
+});
+
 test("readiness rejects writable or unidentified runtime", () => {
   const result = evaluateReleaseReadiness({
     connected: true,

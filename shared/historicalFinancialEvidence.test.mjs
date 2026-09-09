@@ -12,6 +12,20 @@ const purchase = {
   unitCostTryExVat: 700,
 };
 
+test("açılış/devir satırı tek başına WAC maliyet review'u üretmez", () => {
+  const result = buildHistoricalFinancialEvidence({
+    movements: [{
+      ...purchase,
+      id: "OPENING-ONLY",
+      kind: "opening",
+      unitCostTryExVat: undefined,
+    }],
+  });
+
+  assert.deepEqual(result.costReviewCounts, { review: 0, covered: 0 });
+  assert.equal(result.reviewReasons["missing-source-cost-conversion"] || 0, 0);
+});
+
 test("tarihsel fiyat ve satış kuru aynı alım hareketine ürün dövizi ve marj kanıtı bağlar", () => {
   const result = buildHistoricalFinancialEvidence({
     movements: [purchase],

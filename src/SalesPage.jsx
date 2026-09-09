@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { projectCanonicalMetric, selectCanonicalTopPeriod } from "../shared/financialMetric.mjs";
+import { FinancialVisibilityPanel } from "./components/FinancialVisibilityPanel.jsx";
 import {
   Bar,
   BarChart,
@@ -212,6 +213,13 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
     ? "CPM öncelikli · TCMB fallback"
     : "Halkbank alış kuru";
   const frozenMonths = normalizedRows.filter((row) => row.eurFrozen && row.eurAvailable).length;
+  const hasSalesTrendData = normalizedRows.some((row) => [
+    row.chartNetSales,
+    row.chartCost,
+    row.chartProfit,
+    row.netMargin,
+    row.productListMargin,
+  ].some((value) => Number.isFinite(Number(value))));
 
   const categoryBreakdownData = useMemo(() => {
     if (Array.isArray(canonicalMetric?.categoryBreakdown) && canonicalMetric.categoryBreakdown.length > 0) {
@@ -266,6 +274,8 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
       {weekendNote && (
         <p className="eur-rate-note" role="note">{weekendNote}</p>
       )}
+
+      <FinancialVisibilityPanel metric={canonicalMetric} title="Satış kârlılığı · tüm görünür kapsam" />
 
       {/* Ana KPI'lar; ikincil metrikler aşağıdaki açılır gruptadır. */}
       <section className="control-kpis sales-kpis">
@@ -359,7 +369,11 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
                <strong>{topSalesMonth?.monthName || "—"} · {formatEur(topSalesMonth?.eurNetSales)}</strong>
             </div>
           </div>
-          <div className="sales-chart" style={{ width: "100%", height: 340 }}>
+          {!hasSalesTrendData ? (
+            <div className="report-state report-state--empty" role="status">
+              Grafik gösterilemiyor: EUR kur, maliyet veya satış kanıtı bu dönem için tamamlanmadı.
+            </div>
+          ) : <div className="sales-chart" style={{ width: "100%", height: 340 }}>
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={normalizedRows} margin={{ top: 18, right: 24, left: 6, bottom: 4 }}>
                 <CartesianGrid vertical={false} stroke="var(--line)" strokeDasharray="3 3" />
@@ -386,7 +400,7 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
                 <Line yAxisId="percent" dataKey="productListMargin" name="Liste Brüt Marjı %" stroke="#f59e0b" strokeWidth={2} strokeDasharray="4 4" dot={{ r: 3, fill: "#f59e0b" }} />
               </ComposedChart>
             </ResponsiveContainer>
-          </div>
+          </div>}
         </article>
 
         <article className="panel sales-category-panel">
@@ -397,7 +411,7 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
             </div>
             <IconCoins size={20} style={{ color: "var(--accent)" }} />
           </div>
-          <div style={{ width: "100%", height: 340 }}>
+          {categoryBreakdownData.length === 0 ? <div className="report-state report-state--empty" role="status">Kategori grafiği için kaynak satış verisi bulunamadı.</div> : <div style={{ width: "100%", height: 340 }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={categoryBreakdownData} layout="vertical" margin={{ top: 12, right: 20, left: 10, bottom: 4 }}>
                 <CartesianGrid horizontal={false} stroke="var(--line)" strokeDasharray="3 3" />
@@ -411,7 +425,7 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
-          </div>
+          </div>}
         </article>
       </section>
 

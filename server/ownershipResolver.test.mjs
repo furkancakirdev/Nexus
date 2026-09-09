@@ -661,7 +661,7 @@ test("earliest upstream history event wins when commercial actors conflict", () 
   );
 });
 
-test("same-department actor consensus does not invent a person owner", () => {
+test("same-department preparer tie remains review without inventing a person owner", () => {
   const result = resolveCommercialOwnership(caseEvidence({
     economic: { depotCode: null },
     lineage: [
@@ -671,9 +671,34 @@ test("same-department actor consensus does not invent a person owner", () => {
   }));
 
   assert.equal(result.ownerCode, null);
-  assert.equal(result.department, "service");
-  assert.equal(result.method, "same-department-consensus");
+  assert.equal(result.department, "review");
+  assert.equal(result.method, "preparer-tie-review");
   assert.equal(result.confidence, "review");
+});
+
+test("preparer fallback infers a single commercial owner when seller is empty", () => {
+  const result = resolveCommercialOwnership(caseEvidence({
+    economic: { depotCode: null, netSales: 250 },
+    lineage: [document({ documentType: 13, depth: 3, preparerUser: "MKARA", netSales: 250 })],
+  }));
+
+  assert.equal(result.ownerCode, "MKARA");
+  assert.equal(result.method, "preparer-economic-weight");
+  assert.equal(result.confidence, "inferred");
+});
+
+test("preparer fallback chooses the higher economic weight", () => {
+  const result = resolveCommercialOwnership(caseEvidence({
+    economic: { depotCode: null },
+    lineage: [
+      document({ documentType: 13, documentNo: "LOW", depth: 3, preparerUser: "MKARA", netSales: 10 }),
+      document({ documentType: 14, documentNo: "HIGH", depth: 2, preparerUser: "FURKAN", netSales: 90 }),
+    ],
+  }));
+
+  assert.equal(result.ownerCode, "FURKAN");
+  assert.equal(result.method, "preparer-economic-weight");
+  assert.equal(result.confidence, "inferred");
 });
 
 test("no ownership evidence remains visibly review-required", () => {

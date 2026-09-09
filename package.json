@@ -25,6 +25,10 @@
     "concurrently": "10.0.4"
   },
   "overrides": {
-    "postcss": "8.5.18"
+    "baseline-browser-mapping": "2.11.21",
+    "browserslist": "4.28.9",
+    "nanoid": "3.3.18",
+    "postcss": "8.5.28",
+    "qs": "6.16.0"
   }
 }

@@ -233,8 +233,9 @@ function sourceSaleResolutionForReturn(row, rowsByDocumentKey, visited = new Set
  *
  * Bu fonksiyon kaynak sözleşmesini doğrulamaz ve resmi durumu açmaz. Net alış
  * maliyeti yalnızca pozitif miktar ve brüt-iskonto kanıtı varsa üretilir;
- * DVZHAR/STKKRT sözleşmesi doğrulanmadığı için yabancı kaynak maliyeti burada
- * TRY'ye çevrilmez. Ham kaynak/işlem dövizi kanıtı korunur; doğrulanmamış
+ * STKHAR.TUTAR/ISKONTO yerel para (TRY) alanlarıdır; FIYATDOVIZCINS
+ * birim fiyatın dövizini belirtir ve TL net tutara yeniden kur uygulatmaz.
+ * Ham fiyat/işlem dövizi kanıtı korunur; doğrulanmamış
  * satırlar review olarak kalır. Depo, ürün anahtarının parçası olarak yalnızca inceleme
  * sinyali taşır; WAC motoru depo transfer sözleşmesi doğrulanmadan ürünleri
  * depolar arasında birleştirmez.
@@ -259,7 +260,7 @@ export function buildCpmWacMovementCandidates({ rows = [], excludeUnlinkedReturn
 
   const movements = [];
   let invalidCostRows = 0;
-  let pendingForeignCostRows = 0;
+  const pendingForeignCostRows = 0;
   let invalidMovementRows = 0;
   let excludedNonMovementRows = 0;
   let unlinkedReturnRows = 0;
@@ -289,7 +290,7 @@ export function buildCpmWacMovementCandidates({ rows = [], excludeUnlinkedReturn
     const documentType = Number(row?.documentType ?? row?.EVRAKTIP);
     const kind = CPM_DOCUMENT_TYPE_KINDS[documentType];
     const movementDate = date(row?.movementDate ?? row?.documentDate ?? row?.date);
-    const quantity = Number(row?.quantity);
+    const quantity = finiteNumberOrNull(row?.quantity);
     if (CPM_LINEAGE_DOCUMENT_TYPES.has(documentType)) continue;
     if (productCode && text(row?.depotCode)) {
       if (!productsByDepot.has(productCode)) productsByDepot.set(productCode, new Set());
@@ -326,7 +327,7 @@ export function buildCpmWacMovementCandidates({ rows = [], excludeUnlinkedReturn
       },
     };
 
-    if (["opening", "purchase"].includes(kind)) {
+    if (kind === "purchase") {
       const gross = finiteNumberOrNull(row?.grossAmount);
       const discount = finiteNumberOrNull(row?.discountAmount);
       const net = gross - discount;
@@ -346,35 +347,25 @@ export function buildCpmWacMovementCandidates({ rows = [], excludeUnlinkedReturn
       const normalizedSourceRate = Number.isFinite(sourceRate) && sourceRate > 0 ? sourceRate : null;
       movement.costEvidence = {
         sourceAmount: net,
-        sourceUnitPrice: Number.isFinite(Number(row?.unitPrice)) ? Number(row.unitPrice) : null,
-        sourceCurrency,
-        sourceRate: normalizedSourceRate,
+        sourceUnitPrice: finiteNumberOrNull(row?.unitPrice),
+        sourceCurrency: "TRY",
+        sourceRate: 1,
+        amountBasis: "STKHAR.TUTAR-ISKONTO",
+        priceCurrency: sourceCurrency,
+        priceRate: normalizedSourceRate,
         transactionCurrency: currency(row?.transactionCurrency ?? row?.DOVIZCINS),
         transactionRate: Number.isFinite(Number(row?.transactionCurrencyRate ?? row?.DOVIZKUR))
           && Number(row?.transactionCurrencyRate ?? row?.DOVIZKUR) > 0
           ? Number(row.transactionCurrencyRate ?? row.DOVIZKUR) : null,
         documentDate: movementDate,
-        rateEvidence: null,
-      };
-      const tryParity = sourceCurrency === "TRY"
-        || (!sourceCurrency && normalizedSourceRate === 1);
-      if (tryParity) {
-        movement.unitCostTryExVat = net / quantity;
-        movement.costEvidence.rateEvidence = {
-          source: "FIYATDOVIZKUR",
+        rateEvidence: {
+          source: "STKHAR.TUTAR-ISKONTO",
           status: "verified",
-          method: "try-parity",
-        };
-      } else {
-        movement.unitCostTryExVat = null;
-        movement.costEvidence.rateEvidence = {
-          source: null,
-          status: "review_required",
-          reason: sourceCurrency ? "foreign-cost-awaiting-halkbank-rate" : "missing-source-currency",
-        };
-        if (sourceCurrency) pendingForeignCostRows += 1;
-        addReview(movement.costEvidence.rateEvidence.reason);
-      }
+          method: "cpm-local-currency-amount",
+        },
+      };
+      // Ürün dövizine dönüşüm tarihli Halkbank kuru ile sonraki katmanda yapılır.
+      movement.unitCostTryExVat = net / quantity;
     }
 
     if (kind === "sale") {

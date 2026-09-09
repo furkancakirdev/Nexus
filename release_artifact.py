@@ -7,7 +7,7 @@ import tarfile
 from pathlib import Path, PurePosixPath
 
 
-ALLOWED_DIRECTORIES = ("public", "server", "shared", "src")
+ALLOWED_DIRECTORIES = ("dist", "public", "server", "shared", "src")
 ALLOWED_FILES = (
     "Dockerfile",
     "compose.yaml",
@@ -16,7 +16,7 @@ ALLOWED_FILES = (
     "package.json",
     "vite.config.mjs",
 )
-FORBIDDEN_ROOTS = {".git", ".cache", "data", "dist", "node_modules", "secrets", "tmp"}
+FORBIDDEN_ROOTS = {".git", ".cache", "data", "node_modules", "secrets", "tmp"}
 SOURCE_COMMIT = re.compile(r"^[a-f0-9]{40}$", re.IGNORECASE)
 SHA256_HEX = re.compile(r"^[a-f0-9]{64}$", re.IGNORECASE)
 IMAGE_DIGEST = re.compile(r"^sha256:[a-f0-9]{64}$", re.IGNORECASE)

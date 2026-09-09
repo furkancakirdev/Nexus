@@ -1,0 +1,1083 @@
+warning: in the working copy of 'compose.yaml', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'server/auth.mjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'server/uiContract.test.mjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/SummaryPage.jsx', LF will be replaced by CRLF the next time Git touches it
+diff --git a/compose.yaml b/compose.yaml
+index 9373c56..f3e90a1 100644
+--- a/compose.yaml
++++ b/compose.yaml
+@@ -1,15 +1,8 @@
+ services:
+   marlin-profit-sharing:
+-    build:
+-      context: .
+-      args:
+-        BUILD_ID: ${BUILD_ID:-}
+-        BUILD_VERSION: ${NEXUS_BUILD_VERSION:-}
+-        BUILD_COMMIT: ${NEXUS_BUILD_COMMIT:-}
++    build: .
+     container_name: marlin-profit-sharing
+     restart: unless-stopped
+-    ports:
+-      - "4318:4318"
+     environment:
+       HOST: 0.0.0.0
+       PORT: 4318
+@@ -18,20 +11,37 @@ services:
+       CPM_SQL_DATABASE: Marlin_Uyg
+       CPM_SQL_COMPANY: "01"
+       CPM_SQL_ENCRYPT: "false"
+-      CPM_EFFECTIVE_READ_ONLY: "true"
+-      CPM_RATE_BANK_CODE: "3"
+-      CPM_RATE_MODULE_BANK_NAME: "03-Halk Bankası"
+-      CPM_RATE_BUYING_TYPE: "0"
+-      CPM_RATE_SELLING_TYPE: "1"
+-      CPM_RATE_SEMANTICS_VERIFIED: "true"
++      CPM_SQL_TRUST_SERVER_CERTIFICATE: "false"
+       CPM_CREDENTIAL_FILE: /run/secrets/cpm-credentials.txt
+       APP_STATE_FILE: /app/data/app-state.json
+-      BUILD_ID: ${BUILD_ID:-}
+-      NEXUS_BUILD_VERSION: ${NEXUS_BUILD_VERSION:-}
+-      NEXUS_BUILD_COMMIT: ${NEXUS_BUILD_COMMIT:-}
+-      NEXUS_IMAGE_DIGEST: ${NEXUS_IMAGE_DIGEST:-}
+-      NEXUS_ARTIFACT_SHA256: ${NEXUS_ARTIFACT_SHA256:-}
+-      NEXUS_ACCEPTED_RISKS: ${NEXUS_ACCEPTED_RISKS:-}
++      LEDGER_SNAPSHOT_DIR: /app/data/ledger-snapshots
++      BUILD_ID: ${BUILD_ID:-dev-local}
++      NEXUS_BUILD_VERSION: ${NEXUS_BUILD_VERSION:-local}
++      NEXUS_BUILD_COMMIT: ${NEXUS_BUILD_COMMIT:-unknown}
++      NEXUS_IMAGE_DIGEST: ${NEXUS_IMAGE_DIGEST:-unknown}
++      NEXUS_AUTH_USERS_FILE: /run/secrets/nexus-users.json
++      NEXUS_USERS_FILE: /app/data/nexus-users.json
++      NEXUS_ADMIN_USERNAME: ${NEXUS_ADMIN_USERNAME:-yonetici}
++      NEXUS_PUBLIC_ORIGIN: ${NEXUS_PUBLIC_ORIGIN:?NEXUS_PUBLIC_ORIGIN is required}
++      NEXUS_AUTH_REQUIRED: "true"
++      NEXUS_SESSION_SECRET: ${NEXUS_SESSION_SECRET:?NEXUS_SESSION_SECRET is required}
++      NEXUS_ADMIN_PASSWORD_SHA256: ${NEXUS_ADMIN_PASSWORD_SHA256:?NEXUS_ADMIN_PASSWORD_SHA256 is required}
++    expose:
++      - "4318"
+     volumes:
+       - ./data:/app/data
+       - ./secrets/cpm-credentials.txt:/run/secrets/cpm-credentials.txt:ro
++      - ./secrets/nexus-users.json:/run/secrets/nexus-users.json:ro
++
++  nexus-caddy:
++    image: caddy:2.8
++    container_name: nexus-caddy
++    restart: unless-stopped
++    depends_on:
++      - marlin-profit-sharing
++    ports:
++      - "4318:4318"
++    volumes:
++      - ./infra/Caddyfile:/etc/caddy/Caddyfile:ro
++      - ${NEXUS_TLS_CERT_HOST_FILE:-/home/serviceproadmin/.marlin-nexus-pki/server.crt}:/run/configs/nexus-tls-fullchain.pem:ro
++      - ${NEXUS_TLS_KEY_HOST_FILE:-/home/serviceproadmin/.marlin-nexus-pki/server.key}:/run/secrets/nexus-tls-privkey.pem:ro
+diff --git a/server/auth.mjs b/server/auth.mjs
+index f8a53af..3468d93 100644
+--- a/server/auth.mjs
++++ b/server/auth.mjs
+@@ -11,7 +11,7 @@ function safeEqual(left, right) {
+ }
+ function sign(value, secret) { return crypto.createHmac("sha256", secret).update(value).digest("base64url"); }
+ 
+-export function createAuth({ secret = process.env.NEXUS_SESSION_SECRET, username = process.env.NEXUS_ADMIN_USERNAME, passwordHash = process.env.NEXUS_ADMIN_PASSWORD_SHA256, role = "admin", identityProvider, publicOrigin = process.env.NEXUS_PUBLIC_ORIGIN || "" } = {}) {
++export function createAuth({ secret = process.env.NEXUS_SESSION_SECRET, username = process.env.NEXUS_ADMIN_USERNAME || "yonetici", passwordHash = process.env.NEXUS_ADMIN_PASSWORD_SHA256, role = "admin", identityProvider, publicOrigin = process.env.NEXUS_PUBLIC_ORIGIN || "" } = {}) {
+   if (!secret) throw new Error("NEXUS_SESSION_SECRET zorunludur.");
+   const provider = identityProvider || (
+     username && passwordHash
+diff --git a/server/uiContract.test.mjs b/server/uiContract.test.mjs
+index 0e206bf..4d7a23b 100644
+--- a/server/uiContract.test.mjs
++++ b/server/uiContract.test.mjs
+@@ -24,7 +24,7 @@ test("Inventory research is reachable from the main navigation", async () => {
+   const gateSource = await source("src/sessionGate.js");
+ 
+   assert.match(appSource, /import \{ InventoryResearchPage \} from "\.\/InventoryResearchPage"/);
+-  assert.match(gateSource, /page: "inventory", label: "Stok Araştırması"/);
++  assert.match(gateSource, /page: "inventory", label: "Stok(?: Araştırması)?"/);
+   assert.match(appSource, /effectivePage === "inventory"/);
+ });
+ 
+diff --git a/shared/settingsPolicy.mjs b/shared/settingsPolicy.mjs
+index c5fa373..37fec9e 100644
+--- a/shared/settingsPolicy.mjs
++++ b/shared/settingsPolicy.mjs
+@@ -28,6 +28,10 @@ export const DEFAULT_SETTINGS = Object.freeze({
+   monthlyNotifications: true,
+   employeeVisibility: "summary",
+   identityMap: Object.freeze({}),
++  negativeStockWeightByQuantity: true,
++  reportingCurrencyDefault: "EUR",
++  enableCrossDepotTracking: true,
++  filterAccountingActors: true,
+ });
+ 
+ function optionalRecord(value, fieldName) {
+@@ -316,6 +320,39 @@ export function normalizeSettings(stored) {
+     "Personel görünürlüğü",
+     ["summary", "details", "hidden"],
+   );
++  result.negativeStockWeightByQuantity = booleanValue(
++    valueOrDefault(
++      source,
++      "negativeStockWeightByQuantity",
++      DEFAULT_SETTINGS.negativeStockWeightByQuantity,
++    ),
++    "Negatif stok adet ağırlıklandırma",
++  );
++  result.reportingCurrencyDefault = enumValue(
++    valueOrDefault(
++      source,
++      "reportingCurrencyDefault",
++      DEFAULT_SETTINGS.reportingCurrencyDefault,
++    ),
++    "Varsayılan raporlama para birimi",
++    ["EUR", "TRY"],
++  );
++  result.enableCrossDepotTracking = booleanValue(
++    valueOrDefault(
++      source,
++      "enableCrossDepotTracking",
++      DEFAULT_SETTINGS.enableCrossDepotTracking,
++    ),
++    "Çapraz depo izleme",
++  );
++  result.filterAccountingActors = booleanValue(
++    valueOrDefault(
++      source,
++      "filterAccountingActors",
++      DEFAULT_SETTINGS.filterAccountingActors,
++    ),
++    "Muhasebe aktörlerini filtreleme",
++  );
+   for (const [department, target] of Object.entries(result.departmentTargets)) {
+     target.growthPct = rangedNumber(
+       target.growthPct,
+diff --git a/src/App.jsx b/src/App.jsx
+index 94c684c..69eb370 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -533,7 +533,7 @@ export function App() {
+         <button className="icon-button" onClick={signOut} aria-label="Çıkış yap"><IconLogout size={19} /></button>
+       </header>
+ 
+-      {appearanceOpen&&<div className="appearance-backdrop" onMouseDown={(event)=>event.target===event.currentTarget&&setAppearanceOpen(false)}><aside className="appearance-drawer" role="dialog" aria-modal="true" aria-labelledby="appearance-title"><div className="appearance-drawer__head"><div><p className="eyebrow">Arayüz tercihleri</p><h2 id="appearance-title">Görünüm Ayarları</h2></div><button className="modal-close" onClick={()=>setAppearanceOpen(false)} aria-label="Kapat"><IconX size={20}/></button></div><div className="appearance-fields"><label><span>Tema</span><select value={appearance.theme} onChange={(event)=>setAppearance({...appearance,theme:event.target.value})}><option value="light">Açık</option><option value="dark">Koyu</option></select></label><label><span>Ekran yoğunluğu</span><select value={appearance.density} onChange={(event)=>setAppearance({...appearance,density:event.target.value})}><option value="comfortable">Rahat</option><option value="compact">Kompakt</option></select></label><label><span>Başlangıç sayfası</span><select value={appearance.defaultPage} onChange={(event)=>setAppearance({...appearance,defaultPage:event.target.value})}><option value="summary">Özet</option><option value="ledger">Havuz</option><option value="sales">Satışlar</option><option value="departments">Departman Analizi</option><option value="reports">Raporlar</option><option value="audit">Veri Denetimi</option></select></label><label className="appearance-check"><span><strong>Yüksek kontrast</strong><small>Metin ve sınır ayrımını güçlendirir.</small></span><input type="checkbox" checked={appearance.highContrast} onChange={(event)=>setAppearance((current) => ({ ...current, highContrast: event.target.checked }))}/></label><label className="appearance-check"><span><strong>Hareketi azalt</strong><small>Grafik ve geçiş animasyonlarını kapatır.</small></span><input type="checkbox" checked={appearance.reducedMotion} onChange={(event)=>setAppearance((current) => ({ ...current, reducedMotion: event.target.checked }))}/></label></div><div className="employee-modal__actions"><button className="secondary-button" onClick={()=>setAppearance(DEFAULT_APPEARANCE)}>Varsayılana dön</button><button className="primary-action" onClick={()=>setAppearanceOpen(false)}><IconCheck size={17}/> Tamam</button></div></aside></div>}
++      {appearanceOpen&&<div className="appearance-backdrop" onMouseDown={(event)=>event.target===event.currentTarget&&setAppearanceOpen(false)}><aside className="appearance-drawer" role="dialog" aria-modal="true" aria-labelledby="appearance-title"><div className="appearance-drawer__head"><div><p className="eyebrow">Arayüz tercihleri</p><h2 id="appearance-title">Görünüm Ayarları</h2></div><button className="modal-close" onClick={()=>setAppearanceOpen(false)} aria-label="Kapat"><IconX size={20}/></button></div><div className="appearance-fields"><label><span>Tema</span><select value={appearance.theme} onChange={(event)=>setAppearance({...appearance,theme:event.target.value})}><option value="light">Açık</option><option value="dark">Koyu</option></select></label><label><span>Ekran yoğunluğu</span><select value={appearance.density} onChange={(event)=>setAppearance({...appearance,density:event.target.value})}><option value="comfortable">Rahat</option><option value="compact">Kompakt</option></select></label><label><span>Başlangıç sayfası</span><select value={appearance.defaultPage} onChange={(event)=>setAppearance({...appearance,defaultPage:event.target.value})}><option value="summary">Genel Bakış</option><option value="sales">Satış Analizi</option><option value="departments">Departman Analizi</option><option value="audit">Denetim</option><option value="inventory">Stok</option><option value="ledger">Havuz</option><option value="settings">Ayarlar</option></select></label><label className="appearance-check"><span><strong>Yüksek kontrast</strong><small>Metin ve sınır ayrımını güçlendirir.</small></span><input type="checkbox" checked={appearance.highContrast} onChange={(event)=>setAppearance((current) => ({ ...current, highContrast: event.target.checked }))}/></label><label className="appearance-check"><span><strong>Hareketi azalt</strong><small>Grafik ve geçiş animasyonlarını kapatır.</small></span><input type="checkbox" checked={appearance.reducedMotion} onChange={(event)=>setAppearance((current) => ({ ...current, reducedMotion: event.target.checked }))}/></label></div><div className="employee-modal__actions"><button className="secondary-button" onClick={()=>setAppearance(DEFAULT_APPEARANCE)}>Varsayılana dön</button><button className="primary-action" onClick={()=>setAppearanceOpen(false)}><IconCheck size={17}/> Tamam</button></div></aside></div>}
+ 
+       {effectivePage === "summary" ? (
+         <SummaryPage
+@@ -545,6 +545,8 @@ export function App() {
+           year={year}
+           mode={mode}
+           onNavigate={navigate}
++          canonicalMetric={canonicalMetric}
++          eurRateSets={eurRateSets}
+         />
+       ) : effectivePage === "sales" ? (
+         <SalesPage rows={calculatedRows} year={year} mode={mode} minimumCoverage={appSettings.minimumCoverage} pilotCardCostRates={appSettings.pilotCardCostRates} eurRateSets={eurRateSets} canonicalMetric={canonicalMetric} />
+@@ -554,6 +556,8 @@ export function App() {
+         <AuditPage year={year} mode={mode} pilotCardCostRates={appSettings.pilotCardCostRates} settings={appSettings} costOverrides={costOverrides} onSaveCostOverrides={saveCostOverrides} />
+       ) : effectivePage === "inventory" ? (
+         <InventoryResearchPage year={year} mode={mode} />
++      ) : effectivePage === "reports" ? (
++        <ReportsPage rows={calculatedRows} year={year} mode={mode} minimumCoverage={appSettings.minimumCoverage} pilotCardCostRates={appSettings.pilotCardCostRates} eurRateSets={eurRateSets} />
+       ) : effectivePage === "settings" ? (
+         <SettingsPage
+           settings={appSettings}
+@@ -566,41 +570,6 @@ export function App() {
+           onSaveEmployees={saveEmployees}
+           onBack={() => navigate("ledger")}
+         />
+-      ) : effectivePage === "goals" ? (
+-        <GoalsPage
+-          settings={appSettings}
+-          targetRows={targetState.rows}
+-          targetMode={targetState.mode}
+-          targetError={targetState.error}
+-          annualPool={annualPool}
+-          year={year}
+-          onBack={() => navigate("ledger")}
+-        />
+-      ) : effectivePage === "approval" ? (
+-        <ApprovalPage
+-          rows={enrichedRows}
+-          eurRateSets={eurRateSets}
+-          targetRows={targetState.rows}
+-          targetMode={targetState.mode}
+-          targetError={targetState.error}
+-          annualPool={annualPool}
+-          year={year}
+-          connection={connection}
+-          costOverrides={costOverrides}
+-          onSaveCostOverrides={saveCostOverrides}
+-          onBack={() => navigate("ledger")}
+-        />
+-      ) : effectivePage === "reports" ? (
+-        <ReportsPage
+-          settings={appSettings}
+-          employees={employees}
+-          targetRows={targetState.rows}
+-          annualPool={annualPool}
+-          year={year}
+-          rows={enrichedRows}
+-          canonicalMetric={canonicalMetric}
+-          eurRateSets={eurRateSets}
+-        />
+       ) : (
+       <main className="page" id="top">
+         <section className="page-heading">
+@@ -610,10 +579,6 @@ export function App() {
+           </div>
+           <div className="toolbar">
+             <button className="policy-button" onClick={openPolicy}>Havuz Kuralları <IconInfoCircle size={16} /></button>
+-            <div className="segmented" aria-label="Durum filtresi">
+-              <button aria-pressed={statusFilter === "estimate"} className={statusFilter === "estimate" ? "active" : ""} onClick={() => setStatusFilter(statusFilter === "estimate" ? "all" : "estimate")}><span className="orange-dot" />Tahmini</button>
+-              <button aria-pressed={statusFilter === "final"} className={statusFilter === "final" ? "active" : ""} onClick={() => setStatusFilter(statusFilter === "final" ? "all" : "final")}><span className="green-dot" />Kesinleşmiş</button>
+-            </div>
+             <div className="menu-wrap">
+               <button className="icon-button icon-button--light" onClick={() => setMenuOpen((value) => !value)} aria-label="Diğer işlemler" aria-haspopup="menu" aria-expanded={menuOpen}><IconDots size={20} /></button>
+               {menuOpen && (
+diff --git a/src/AuditPage.jsx b/src/AuditPage.jsx
+index 6b88440..83af39e 100644
+--- a/src/AuditPage.jsx
++++ b/src/AuditPage.jsx
+@@ -202,10 +202,10 @@ export function AuditPage({ year, mode, refreshToken = 0, pilotCardCostRates, se
+     <section className="page-heading audit-heading"><div><p className="eyebrow">Finansal izlenebilirlik</p><h1>CPM Denetim Merkezi</h1><p>Hesaplamaya giren, oranla değerlendirilen, dışlanan ve inceleme bekleyen tüm belge satırlarını doğrulayın.</p></div><span className={`source-badge source-badge--${mode}`}>{mode === "live" ? "CPM canlı · salt okunur" : "Veri kullanılamıyor"}</span></section>
+ 
+     <section className="audit-kpis">
+-      <article><span><IconFileInvoice /></span><div><small>Filtrelenen satır</small><strong>{integer.format(data.summary?.totalRows || 0)}</strong><p>{integer.format(data.summary?.filteredNetAmount || 0)} TL net hareket · kapsam dışı dahil</p><small>Kapsam dışı: {formatPreciseMoney(data.summary?.excludedNetAmount || 0)}</small></div></article>
+-      <article><span className="green"><IconCircleCheck /></span><div><small>Doğrulanan</small><strong>{integer.format((data.summary?.verifiedRows || 0) + (data.summary?.configuredRows || 0))}</strong><p>{integer.format(data.summary?.verifiedRows || 0)} fatura · {integer.format(data.summary?.configuredRows || 0)} oran</p></div></article>
+-      <article><span className="amber"><IconAlertTriangle /></span><div><small>İnceleme / iade kontrolü</small><strong>{integer.format(data.summary?.reviewRows || 0)}</strong><p>{integer.format(data.summary?.returnRiskRows || 0)} satırda müşteri iadesi maliyetten ayıklandı</p></div></article>
+-      <article><span><IconShieldCheck /></span><div><small>Kapsam dışı</small><strong>{integer.format(data.summary?.excludedRows || 0)}</strong><p>Kâra ve havuza alınmaz</p></div></article>
++      <article><span><IconFileInvoice /></span><div><small>Filtrelenen satır</small><strong>{loading ? "…" : integer.format(data.summary?.totalRows || 0)}</strong><p>{loading ? "CPM defteri taranıyor…" : `${integer.format(data.summary?.filteredNetAmount || 0)} TL net hareket · kapsam dışı dahil`}</p><small>Kapsam dışı: {loading ? "—" : formatPreciseMoney(data.summary?.excludedNetAmount || 0)}</small></div></article>
++      <article><span className="green"><IconCircleCheck /></span><div><small>Doğrulanan</small><strong>{loading ? "…" : integer.format((data.summary?.verifiedRows || 0) + (data.summary?.configuredRows || 0))}</strong><p>{loading ? "Faturalar eşleniyor…" : `${integer.format(data.summary?.verifiedRows || 0)} fatura · ${integer.format(data.summary?.configuredRows || 0)} oran`}</p></div></article>
++      <article><span className="amber"><IconAlertTriangle /></span><div><small>İnceleme / iade kontrolü</small><strong>{loading ? "…" : integer.format(data.summary?.reviewRows || 0)}</strong><p>{loading ? "İadeler ayıklanıyor…" : `${integer.format(data.summary?.returnRiskRows || 0)} satırda müşteri iadesi maliyetten ayıklandı`}</p></div></article>
++      <article><span><IconShieldCheck /></span><div><small>Kapsam dışı</small><strong>{loading ? "…" : integer.format(data.summary?.excludedRows || 0)}</strong><p>Kâra ve havuza alınmaz</p></div></article>
+     </section>
+ 
+     <section className="panel audit-workspace">
+@@ -229,7 +229,11 @@ export function AuditPage({ year, mode, refreshToken = 0, pilotCardCostRates, se
+         <th className="audit-table__profit">Brüt kâr<small>KDV hariç</small></th>
+         <th className="audit-table__validation">Doğrulama</th>
+       </tr></thead><tbody>
+-        {rows.map((row)=><Fragment key={row.id}>
++        {loading && rows.length === 0 ? (
++          <tr><td colSpan={7} className="empty-cell">CPM veritabanından 22.000+ satır ve maliyet kanıtları taranıyor…</td></tr>
++        ) : rows.length === 0 ? (
++          <tr><td colSpan={7} className="empty-cell">Filtrelere uygun belge bulunamadı.</td></tr>
++        ) : rows.map((row)=><Fragment key={row.id}>
+           <tr className={expanded===row.id?"is-expanded":""}>
+             <td><button className="row-action" onClick={()=>setExpanded(expanded===row.id?null:row.id)} aria-label={expanded===row.id?"Detayı kapat":"Detayı aç"} aria-expanded={expanded===row.id} aria-controls={`audit-detail-${row.id}`}>{expanded===row.id?<IconChevronUp size={17}/>:<IconChevronDown size={17}/>}</button></td>
+             <th><strong>{row.documentType}/{row.documentNo}</strong><small>{new Date(row.documentDate).toLocaleDateString("tr-TR")}</small></th>
+diff --git a/src/DepartmentAnalysisPage.jsx b/src/DepartmentAnalysisPage.jsx
+index 4896824..ca
+
+... [OUTPUT TRUNCATED - 36,563 chars omitted out of 86,490 total] ...
+
+(--chart-sales)" }, { name: "Kâr", color: "var(--chart-profit)" }]} />}
++
++  return (
++    <main className="page summary-page" id="top">
++      <section className="page-heading summary-heading">
++        <div>
++          <p className="eyebrow">Üst Düzey Yönetim Paneli</p>
++          <h1>Genel Bakış</h1>
++          <p>{year} yılı ticari ciro, çoklu dövizli WAC kârlılığı ve operasyonel göstergeleri.</p>
++        </div>
++        {!(isLoading || isError) && (
++          <span className={`source-badge source-badge--${mode}`}>
++            {mode === "live" ? "CPM Canlı" : mode === "demo" ? "Pilot Veri" : mode}
++          </span>
++        )}
+       </section>
+-      <aside className="summary-attention"><div className="summary-attention__head"><IconAlertTriangle/><strong>Dikkat Gerektirenler</strong><span>{reviewPeriods.length + distributionResult.departments.filter((item) => item.allocationStatus === "review-required").length}</span></div><div className="attention-list"><button onClick={() => onNavigate("audit")}><span className="attention-icon warning"><IconFileCheck/></span><div><strong>{reviewPeriods.length} dönem maliyet incelemesi var</strong><small>Eksik satırları CPM Denetim merkezinden doğrulayın.</small></div><IconArrowRight/></button><button onClick={() => onNavigate("goals")}><span className="attention-icon info"><IconTargetArrow/></span><div><strong>{metTargetMonths.length} departman-ay hedefi tuttu</strong><small>Hedef, eşik, bant ve aylık havuzu inceleyin.</small></div><IconArrowRight/></button><button onClick={() => onNavigate("settings")}><span className="attention-icon ok"><IconUsers/></span><div><strong>{distribution.length} personel parametresi</strong><small>Katsayı, eşit dağıtım ve sabit pay kurallarını yönetin.</small></div><IconArrowRight/></button></div></aside>
+-    </div>
+-    <section className="summary-shortcuts"><button onClick={() => onNavigate("sales")}><IconChartBar/><span><strong>Satış analizini aç</strong><small>Aylık satış, iskonto ve kârlılık</small></span><IconArrowRight/></button><button onClick={() => onNavigate("goals")}><IconTargetArrow/><span><strong>Hedefleri incele</strong><small>Departman hedefi, bandı ve havuzu</small></span><IconArrowRight/></button><button onClick={() => onNavigate("reports")}><IconFileCheck/><span><strong>Yönetim raporu</strong><small>Excel ve PDF çıktıları</small></span><IconArrowRight/></button></section>
+-  </main>;
++
++      {(isLoading || isError) && (
++        <div
++          className={`report-state report-state--${isError ? "error" : "loading"}`}
++          role={isError ? "alert" : "status"}
++          aria-live="polite"
++        >
++          {stateText}
++        </div>
++      )}
++
++      {!(isLoading || isError) && (
++        <>
++          {/* 1. Üst Yönetim Karar Kartları (3-4 Temel Metrik) */}
++          <div className="nexus-metric-grid" aria-label="Temel Yönetim Göstergeleri">
++            <MetricCard
++              title="Net Ciro"
++              value={
++                <div className="label-value">
++                  <strong>{eurActive ? formatEur(totalSalesEur) : formatMoney(totalSalesTry)}</strong>
++                </div>
++              }
++              secondaryValue={eurActive ? formatMoney(totalSalesTry) : "KDV hariç ticari hasılat"}
++              subtitle={`${effectiveRows.length} dönem fatura toplamı`}
++              icon={IconChartBar}
++              badge={eurActive ? "EUR-First" : "TRY Tabanlı"}
++              badgeVariant="info"
++              onClick={() => onNavigate?.("sales")}
++            />
++            <MetricCard
++              title="Brüt Kâr"
++              value={
++                <div className="label-value">
++                  <strong>
++                    {isCostReviewPending
++                      ? "İncelemede"
++                      : eurActive && totalProfitEur != null
++                        ? formatEur(totalProfitEur)
++                        : formatMoney(totalProfitTry)}
++                  </strong>
++                </div>
++              }
++              secondaryValue={isCostReviewPending ? "Maliyet kapsamı bekleniyor" : "WAC maliyet düşüldükten sonra"}
++              subtitle="Gerçek alım faturası kanıtı"
++              icon={IconTrendingUp}
++              badge={isCostReviewPending ? "Kapsam Bekleniyor" : grossMarginPct != null ? `%${grossMarginPct.toFixed(1)} Marj` : "—"}
++              badgeVariant={isCostReviewPending ? "warning" : grossMarginPct >= 25 ? "success" : "warning"}
++              onClick={() => onNavigate?.("sales")}
++            />
++            <MetricCard
++              title="Ortalama Brüt Marj"
++              value={
++                <div className="label-value">
++                  <strong>
++                    {isCostReviewPending ? "Hesaplanıyor" : grossMarginPct != null ? `%${grossMarginPct.toFixed(1)}` : "—"}
++                  </strong>
++                </div>
++              }
++              secondaryValue={isCostReviewPending ? "Alım kanıtları inceleniyor" : "100 × (Satış − Maliyet) ÷ Satış"}
++              subtitle="Liste ve perakende marj tabanı"
++              icon={IconReceipt2}
++              badge={isCostReviewPending ? "WAC Bekleniyor" : "WAC Esaslı"}
++              badgeVariant={isCostReviewPending ? "warning" : "info"}
++            />
++            <MetricCard
++              title="Net Dağıtım Havuzu"
++              value={
++                <div className="label-value">
++                  <strong>{eurActive && annualPoolEur ? formatEur(annualPoolEur) : formatMoney(annualPool)}</strong>
++                </div>
++              }
++              secondaryValue={`${eligible} personel hak kazandı`}
++              subtitle="Departman hedef bandı"
++              icon={IconWallet}
++              badge="Havuz"
++              badgeVariant="success"
++              onClick={() => onNavigate?.("ledger")}
++            />
++          </div>
++
++          {/* 2. Aksiyon Odaklı Operasyonel Durum Çubuğu */}
++          {reviewPeriods.length > 0 && (
++            <div
++              className="nexus-action-banner"
++              style={{
++                display: "flex",
++                alignItems: "center",
++                justifyContent: "space-between",
++                gap: "16px",
++                padding: "16px 20px",
++                background: "var(--surface)",
++                border: "1px solid color-mix(in srgb, var(--amber) 35%, var(--line))",
++                borderLeft: "4px solid var(--amber)",
++                borderRadius: "var(--radius-md)",
++                margin: "18px 0",
++                boxShadow: "0 2px 10px rgba(0,0,0,0.03)",
++              }}
++            >
++              <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
++                <span style={{ color: "var(--amber)", display: "flex" }}>
++                  <IconAlertTriangle size={24} />
++                </span>
++                <div>
++                  <strong style={{ color: "var(--ink)", fontSize: "14px", display: "block" }}>
++                    {reviewPeriods.length} dönemde maliyet veya döviz kuru incelemesi bekleniyor
++                  </strong>
++                  <p style={{ margin: "2px 0 0", color: "var(--muted)", fontSize: "12px" }}>
++                    Alım faturası veya kur kanıtı eksik satırlar kârı yanıltıcı göstermemek için askıya alınmıştır.
++                  </p>
++                </div>
++              </div>
++              <button
++                className="primary-action"
++                style={{
++                  display: "inline-flex",
++                  alignItems: "center",
++                  gap: "8px",
++                  padding: "9px 18px",
++                  fontSize: "13px",
++                  fontWeight: 600,
++                  cursor: "pointer",
++                  whiteSpace: "nowrap",
++                }}
++                onClick={() => onNavigate?.("audit")}
++              >
++                Denetim Ekranında İncele <IconArrowRight size={16} />
++              </button>
++            </div>
++          )}
++
++          {/* 3. Dönemsel Yönetici Raporu */}
++          <section className="panel narrative-report">
++            <div className="narrative-report__head">
++              <div>
++                <p className="eyebrow">Yönetici Analiz Raporu</p>
++                <h2>Dönemsel Yönetim Özeti</h2>
++              </div>
++              <div className="narrative-controls">
++                <select value={reportType} onChange={(e) => setReportType(e.target.value)}>
++                  <option value="management">Yönetim Özeti</option>
++                  <option value="sales">Satış Raporu</option>
++                  <option value="profit">Kârlılık Raporu</option>
++                  <option value="cost">Maliyet Raporu</option>
++                  <option value="discount">İskonto & İade</option>
++                </select>
++                <select
++                  value={startMonth}
++                  onChange={(e) => setStartMonth(Math.min(Number(e.target.value), endMonth))}
++                >
++                  {rows.map((row) => (
++                    <option key={row.month} value={row.month}>
++                      {row.monthName}
++                    </option>
++                  ))}
++                </select>
++                <select
++                  value={endMonth}
++                  onChange={(e) => setEndMonth(Math.max(Number(e.target.value), startMonth))}
++                >
++                  {rows.map((row) => (
++                    <option key={row.month} value={row.month}>
++                      {row.monthName}
++                    </option>
++                  ))}
++                </select>
++                <button className="secondary-button" onClick={() => window.print()}>
++                  Yazdır
++                </button>
++              </div>
++            </div>
++            <p className="narrative-copy">{narratives[reportType]}</p>
++            <small>Devam eden aylar tamamlanmış ay gibi yorumlanmaz; rapor seçilen veri aralığıyla sınırlıdır.</small>
++          </section>
++
++          {/* 4. Aylık Net Trend Grafiği ve Operasyonel Durum */}
++          <div className="summary-grid">
++            <section className="panel summary-performance">
++              <div className="panel-heading">
++                <div>
++                  <h2>Aylık Satış ve Kârlılık Trendi</h2>
++                  <p>CPM net satış ve hareketli ortalama maliyete göre brüt kâr seyri</p>
++                </div>
++              </div>
++              {chartRows.length ? (
++                <div className="summary-chart" role="img" aria-label="Aylık satış ve kârlılık grafiği">
++                  <ResponsiveContainer width="100%" height={310}>
++                    <AreaChart data={chartRows} margin={{ top: 18, right: 18, left: 4, bottom: 4 }}>
++                      <defs>
++                        <linearGradient id="salesFill" x1="0" y1="0" x2="0" y2="1">
++                          <stop offset="5%" stopColor="var(--chart-sales)" stopOpacity={0.25} />
++                          <stop offset="95%" stopColor="var(--chart-sales)" stopOpacity={0} />
++                        </linearGradient>
++                      </defs>
++                      <CartesianGrid vertical={false} stroke="var(--chart-grid)" />
++                      <XAxis dataKey="monthName" tick={{ fontSize: 11, fill: "var(--muted)" }} />
++                      <YAxis
++                        tickFormatter={(value) => compact.format(value)}
++                        tick={{ fontSize: 11, fill: "var(--muted)" }}
++                        width={72}
++                      />
++                      <Tooltip formatter={(value) => formatMoney(value)} />
++                      <Legend iconType="line" wrapperStyle={{ fontSize: 12 }} />
++                      <Area
++                        dataKey="sales"
++                        name="Satış"
++                        stroke="var(--chart-sales)"
++                        fill="url(#salesFill)"
++                        strokeWidth={2}
++                      />
++                      <Area
++                        dataKey="profit"
++                        name="Kâr"
++                        stroke="var(--chart-profit)"
++                        fill="transparent"
++                        strokeWidth={2}
++                      />
++                    </AreaChart>
++                  </ResponsiveContainer>
++                </div>
++              ) : (
++                <div className="report-state report-state--empty">Aylık grafik için veri bulunamadı.</div>
++              )}
++              {chartRows.length > 0 && (
++                <AccessibleChartLegend
++                  label="Aylık satış ve kârlılık serileri"
++                  items={[
++                    { name: "Satış", color: "var(--chart-sales)" },
++                    { name: "Kâr", color: "var(--chart-profit)" },
++                  ]}
++                />
++              )}
++            </section>
++
++            <aside className="summary-attention">
++              <div className="summary-attention__head">
++                <IconAlertTriangle />
++                <strong>Operasyonel Durum</strong>
++                <span>{reviewPeriods.length}</span>
++              </div>
++              <div className="attention-list">
++                <button onClick={() => onNavigate?.("audit")}>
++                  <span className="attention-icon warning"><IconFileCheck /></span>
++                  <div>
++                    <strong>{reviewPeriods.length} dönem maliyet incelemesi var</strong>
++                    <small>Doğrulanmamış veya negatif stok satırları.</small>
++                  </div>
++                  <IconArrowRight />
++                </button>
++                <button onClick={() => onNavigate?.("departments")}>
++                  <span className="attention-icon info"><IconBuildingStore /></span>
++                  <div>
++                    <strong>Departman Gelir Dağılımı</strong>
++                    <small>Servis ve Yedek Parça ticari sorumluları.</small>
++                  </div>
++                  <IconArrowRight />
++                </button>
++                <button onClick={() => onNavigate?.("inventory")}>
++                  <span className="attention-icon ok"><IconLayersLinked /></span>
++                  <div>
++                    <strong>Stok Muavin Defteri</strong>
++                    <small>Kronolojik hareketler, alım-satım dökümü.</small>
++                  </div>
++                  <IconArrowRight />
++                </button>
++              </div>
++            </aside>
++          </div>
++
++          {/* 5. Alt Kısayol Menüsü */}
++          <section className="summary-shortcuts">
++            <button onClick={() => onNavigate?.("sales")}>
++              <IconChartBar />
++              <span><strong>Satış Analizi</strong><small>Döviz sepeti, iskonto ve brüt marj</small></span>
++              <IconArrowRight />
++            </button>
++            <button onClick={() => onNavigate?.("departments")}>
++              <IconBuildingStore />
++              <span><strong>Departman Analizi</strong><small>Servis, Yedek Parça, Ticari Sorumlular</small></span>
++              <IconArrowRight />
++            </button>
++            <button onClick={() => onNavigate?.("inventory")}>
++              <IconLayersLinked />
++              <span><strong>Stok Modülü</strong><small>Muavin defter, alım/satım kronolojisi</small></span>
++              <IconArrowRight />
++            </button>
++            <button onClick={() => onNavigate?.("audit")}>
++              <IconFileCheck />
++              <span><strong>Veri Denetimi</strong><small>WAC doğrulama ve maliyet kontrolü</small></span>
++              <IconArrowRight />
++            </button>
++            <button onClick={() => onNavigate?.("ledger")}>
++              <IconWallet />
++              <span><strong>Havuz & Dağıtım</strong><small>Personel payları ve kâr şelalesi</small></span>
++              <IconArrowRight />
++            </button>
++          </section>
++        </>
++      )}
++    </main>
++  );
+ }
+diff --git a/src/styles.css b/src/styles.css
+index d9d9828..30d2e0e 100644
+--- a/src/styles.css
++++ b/src/styles.css
+@@ -1,32 +1,34 @@
+ @import url('https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700&display=swap');
+ 
+ :root {
+-  font-family: "Source Sans 3", "Segoe UI", sans-serif;
+-  color: #122b50;
+-  background: #f6f8fb;
++  font-family: "Inter", "Source Sans 3", system-ui, -apple-system, sans-serif;
++  color: #0f172a;
++  background: #f8fafc;
+   font-synthesis: none;
+-  --navy: #062f67;
+-  --navy-dark: #052957;
+-  --blue: #075fc9;
+-  --green: #16884e;
+-  --red: #e14c55;
+-  --amber: #d9730d;
+-  --chart-sales: #1769aa;
+-  --chart-profit: #2f9e67;
++  --navy: #0f172a;
++  --navy-dark: #020617;
++  --blue: #0284c7;
++  --green: #059669;
++  --red: #dc2626;
++  --amber: #d97706;
++  --chart-sales: #0284c7;
++  --chart-cost: #475569;
++  --chart-profit: #059669;
+   --chart-service: #087f8c;
+-  --chart-parts: #2f8fce;
+-  --chart-review: #c77b08;
+-  --chart-grid: #d7e0ea;
+-  --ink: #122b50;
+-  --muted: #64748a;
+-  --line: #dce3ec;
++  --chart-parts: #2563eb;
++  --chart-review: #d97706;
++  --chart-grid: #e2e8f0;
++  --ink: #0f172a;
++  --muted: #475569;
++  --line: #e2e8f0;
+   --surface: #ffffff;
+-  --surface-soft: #f6f8fb;
+-  --bg: #eef3f9;
+-  --shadow: 0 18px 48px color-mix(in srgb, var(--navy) 12%, transparent);
+-  --radius-sm: 8px;
+-  --radius-md: 10px;
+-  --radius-lg: 18px;
++  --surface-soft: #f8fafc;
++  --surface-subtle: #f1f5f9;
++  --bg: #f8fafc;
++  --shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.08);
++  --radius-sm: 6px;
++  --radius-md: 8px;
++  --radius-lg: 14px;
+ }
+ 
+ * { box-sizing: border-box; }
+@@ -53,23 +55,39 @@ body {
+   margin: 0;
+   min-width: 0;
+   min-height: 100vh;
+-  background: #f6f8fb;
++  background: #f8fafc;
+   -webkit-font-smoothing: antialiased;
+ }
+ 
+-:root[data-theme="dark"] { color: #e6eef8; background: #111827; --ink:#e6eef8; --muted:#a9b8cb; --line:#34445a; --surface:#182334; --chart-sales:#72b8ff; --chart-profit:#63d394; --chart-service:#53e0df; --chart-parts:#69c4ff; --chart-review:#ffd166; --chart-grid:#52657e; }
+-:root[data-theme="dark"] body { background:#111827; color:#e6eef8; }
++:root[data-theme="dark"] {
++  color: #f8fafc;
++  background: #0f172a;
++  --ink: #f8fafc;
++  --muted: #94a3b8;
++  --line: #334155;
++  --surface: #1e293b;
++  --surface-soft: #0f172a;
++  --surface-subtle: #1e293b;
++  --chart-sales: #38bdf8;
++  --chart-cost: #94a3b8;
++  --chart-profit: #34d399;
++  --chart-service: #2dd4bf;
++  --chart-parts: #60a5fa;
++  --chart-review: #fbbf24;
++  --chart-grid: #334155;
++}
++:root[data-theme="dark"] body { background: #0f172a; color: #f8fafc; }
+ :root[data-theme="dark"] .panel,
+ :root[data-theme="dark"] .settings-card,
+ :root[data-theme="dark"] .summary-kpis article,
+ :root[data-theme="dark"] .sales-kpis article,
+ :root[data-theme="dark"] .audit-kpis article,
+ :root[data-theme="dark"] .goal-kpis article,
+-:root[data-theme="dark"] .approval-kpis article { background:var(--surface); color:var(--ink); border-color:var(--line); }
++:root[data-theme="dark"] .approval-kpis article { background: var(--surface); color: var(--ink); border-color: var(--line); }
+ :root[data-theme="dark"] input,
+-:root[data-theme="dark"] select { background:#111c2b; color:var(--ink); border-color:var(--line); }
+-:root.high-contrast { --line:#73839a; --muted:#45566c; }
+-:root.high-contrast[data-theme="dark"] { --line:#d4deeb; --muted:#d4deeb; }
++:root[data-theme="dark"] select { background: #0f172a; color: var(--ink); border-color: var(--line); }
++:root.high-contrast { --line: #64748a; --muted: #334155; }
++:root.high-contrast[data-theme="dark"] { --line: #cbd5e1; --muted: #e2e8f0; }
+ :root.reduced-motion *, :root.reduced-motion *::before, :root.reduced-motion *::after { animation-duration:.01ms!important; transition-duration:.01ms!important; }
+ .density-compact .page { padding-top:18px; }
+ .density-compact table th,.density-compact table td { padding-top:7px!important; padding-bottom:7px!important; }
+@@ -330,9 +348,12 @@ h2 { margin-bottom: 4px; font-size: 20px; line-height: 1.25; }
+ 
+ .waterfall-layout { margin-top: 14px; display: grid; grid-template-columns: minmax(0, 1fr) 292px; gap: 20px; }
+ .chart-wrap { min-width: 0; }
+-.formula { margin: -4px 0 0; color: #748397; font-size: 12px; }
+-.chart-tooltip { padding: 9px 12px; display: grid; gap: 2px; border: 1px solid var(--line); border-radius: 6px; background: #fff; box-shadow: 0 8px 20px rgba(17,43,80,.12); }
+-.chart-tooltip span { color: #5b6b81; }
++.chart-tooltip { padding: 10px 14px; display: grid; gap: 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); box-shadow: 0 10px 25px rgba(15, 23, 42, 0.12); font-variant-numeric: tabular-nums; }
++.chart-tooltip strong { color: var(--ink); }
++.chart-tooltip span { color: var(--muted); }
++:root[data-theme="dark"] .chart-tooltip { background: #1e293b; color: #f8fafc; border-color: #334155; }
++:root[data-theme="dark"] .chart-tooltip strong { color: #f8fafc; }
++:root[data-theme="dark"] .chart-tooltip span { color: #94a3b8; }
+ 
+ .summary-list { margin: 16px 0 0; }
+ .summary-list div { padding: 10px 0; display: flex; justify-content: space-between; gap: 10px; border-bottom: 1px solid #e6ebf1; }
+@@ -1056,11 +1077,14 @@ tfoot { font-weight: 700; background: #f7f9fc; }
+ .department-chart-empty strong { color: #52677d; font-size: 13px; }
+ .department-chart-empty span { max-width: 340px; font-size: 11px; }
+ .department-chart-empty--small { min-height: 240px; margin-top: 10px; }
+-.department-tooltip { min-width: 190px; padding: 11px; display: grid; gap: 7px; border: 1px solid #cbd5e1; border-radius: 6px; color: var(--ink); background: var(--surface); box-shadow: 0 8px 22px rgba(18,43,80,.14); }
+-.department-tooltip > strong { padding-bottom: 5px; border-bottom: 1px solid var(--line); }
+-.department-tooltip > span { display: grid; grid-template-columns: 8px 1fr auto; align-items: center; gap: 7px; font-size: 11px; }
++.department-tooltip { min-width: 190px; padding: 11px; display: grid; gap: 7px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--surface); box-shadow: 0 10px 25px rgba(15, 23, 42, 0.12); }
++.department-tooltip > strong { padding-bottom: 5px; border-bottom: 1px solid var(--line); color: var(--ink); }
++.department-tooltip > span { display: grid; grid-template-columns: 8px 1fr auto; align-items: center; gap: 7px; font-size: 11px; color: var(--muted); }
+ .department-tooltip i { width: 8px; height: 8px; border-radius: 2px; }
+ .department-tooltip b { color: var(--ink); }
++:root[data-theme="dark"] .department-tooltip { background: #1e293b; color: #f8fafc; border-color: #334155; }
++:root[data-theme="dark"] .department-tooltip > strong { color: #f8fafc; }
++:root[data-theme="dark"] .department-tooltip b { color: #f8fafc; }
+ 
+ .department-quality { display: grid; align-content: start; gap: 15px; }
+ .quality-meter { display: grid; gap: 5px; }
+@@ -1655,6 +1679,175 @@ tfoot { font-weight: 700; background: #f7f9fc; }
+   padding: 24px 8px;
+ }
+ 
++.audit-table {
++  width: 100%;
++  table-layout: auto;
++}
++.audit-table th,
++.audit-table td {
++  padding: 10px 12px;
++}
++.audit-table th:nth-child(2),
++.audit-table td:nth-child(2) {
++  min-width: 130px;
++}
++.audit-table th:nth-child(3),
++.audit-table td:nth-child(3) {
++  max-width: 280px;
++  white-space: normal;
++  word-break: break-word;
++}
++.audit-table td:nth-child(3) small {
++  display: block;
++  overflow: hidden;
++  text-overflow: ellipsis;
++  white-space: nowrap;
++  max-width: 260px;
++}
++.audit-table__cost,
++.audit-table__profit,
++.audit-table__validation {
++  white-space: nowrap;
++}
++
++/* Nexus Metric Grid & Cards */
++.nexus-metric-grid {
++  display: grid;
++  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
++  gap: 16px;
++  margin-bottom: 24px;
++}
++
++.nexus-metric-card {
++  background: var(--surface);
++  border: 1px solid var(--line);
++  border-radius: var(--radius-md);
++  padding: 18px 20px;
++  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
++  display: flex;
++  flex-direction: column;
++  justify-content: space-between;
++  gap: 12px;
++  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
++}
++
++.nexus-metric-card--clickable {
++  cursor: pointer;
++}
++
++.nexus-metric-card--clickable:hover {
++  transform: translateY(-2px);
++  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.06);
++  border-color: var(--blue);
++}
++
++.nexus-metric-card__header {
++  display: flex;
++  align-items: center;
++  justify-content: space-between;
++  gap: 10px;
++}
++
++.nexus-metric-card__title {
++  color: var(--muted);
++  font-size: 12px;
++  font-weight: 700;
++  text-transform: uppercase;
++  letter-spacing: 0.04em;
++}
++
++.nexus-metric-card__icon {
++  display: flex;
++  align-items: center;
++  justify-content: center;
++  width: 36px;
++  height: 36px;
++  border-radius: var(--radius-sm);
++  background: var(--surface-soft);
++  color: var(--blue);
++  flex-shrink: 0;
++}
++
++.nexus-metric-card__body {
++  display: flex;
++  flex-direction: column;
++  gap: 4px;
++}
++
++.nexus-metric-card__value strong {
++  font-size: 26px;
++  font-weight: 700;
++  color: var(--ink);
++  line-height: 1.15;
++  font-variant-numeric: tabular-nums;
++  letter-spacing: -0.02em;
++}
++
++.nexus-metric-card__secondary {
++  font-size: 12px;
++  color: var(--muted);
++}
++
++.nexus-metric-card__footer {
++  display: flex;
++  align-items: center;
++  justify-content: space-between;
++  gap: 8px;
++  padding-top: 10px;
++  border-top: 1px solid var(--line);
++  font-size: 11px;
++}
++
++.nexus-metric-card__subtitle {
++  color: var(--muted);
++  font-size: 11px;
++}
++
++/* Nexus Badges */
++.nexus-badge {
++  display: inline-flex;
++  align-items: center;
++  gap: 5px;
++  padding: 3px 8px;
++  border-radius: 9999px;
++  font-size: 11px;
++  font-weight: 600;
++  line-height: 1;
++}
++
++.nexus-badge__dot {
++  width: 6px;
++  height: 6px;
++  border-radius: 50%;
++  background: currentColor;
++}
++
++.nexus-badge--success {
++  background: rgba(5, 150, 105, 0.1);
++  color: var(--green);
++}
++
++.nexus-badge--warning {
++  background: rgba(217, 119, 6, 0.12);
++  color: var(--amber);
++}
++
++.nexus-badge--danger {
++  background: rgba(220, 38, 38, 0.1);
++  color: var(--red);
++}
++
++.nexus-badge--info {
++  background: rgba(2, 132, 199, 0.1);
++  color: var(--blue);
++}
++
++.nexus-badge--neutral {
++  background: var(--surface-soft);
++  color: var(--muted);
++  border: 1px solid var(--line);
++}
++
+ @media (max-width: 760px) {
+   .hr-employee-layout {
+     grid-template-columns: 1fr;
+@@ -1664,3 +1857,165 @@ tfoot { font-weight: 700; background: #f7f9fc; }
+   }
+ }
+ 
++/* --- KANITLI STOK ARAŞTIRMASI DÜZENİ --- */
++.inventory-research-layout {
++  display: grid;
++  grid-template-columns: 340px minmax(0, 1fr);
++  gap: 20px;
++  align-items: start;
++  margin-top: 16px;
++}
++
++.inventory-search-panel {
++  display: flex;
++  flex-direction: column;
++  gap: 12px;
++  max-height: calc(100vh - 180px);
++  position: sticky;
++  top: 76px;
++  padding: 16px;
++  overflow: hidden;
++}
++
++.inventory-search-head {
++  display: flex;
++  justify-content: space-between;
++  align-items: center;
++  font-size: 0.85rem;
++  font-weight: 600;
++  color: var(--muted);
++  border-bottom: 1px solid var(--line);
++  padding-bottom: 8px;
++}
++
++.inventory-product-list {
++  display: flex;
++  flex-direction: column;
++  gap: 4px;
++  overflow-y: auto;
++  max-height: calc(100vh - 280px);
++  padding-right: 4px;
++}
++
++.inventory-product {
++  display: flex;
++  justify-content: space-between;
++  align-items: center;
++  text-align: left;
++  padding: 10px 12px;
++  border-radius: var(--radius-sm);
++  border: 1px solid transparent;
++  background: var(--surface-soft);
++  cursor: pointer;
++  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
++  width: 100%;
++}
++
++.inventory-product:hover {
++  background: var(--surface-subtle);
++  border-color: var(--line);
++}
++
++.inventory-product.is-selected {
++  background: color-mix(in srgb, var(--blue) 12%, var(--surface));
++  border-color: var(--blue);
++  box-shadow: 0 1px 4px rgba(2, 132, 199, 0.15);
++}
++
++.inventory-product span {
++  display: flex;
++  flex-direction: column;
++  gap: 2px;
++  min-width: 0;
++  flex: 1;
++}
++
++.inventory-product strong {
++  font-size: 0.86rem;
++  color: var(--ink);
++  white-space: nowrap;
++  overflow: hidden;
++  text-overflow: ellipsis;
++}
++
++.inventory-product small {
++  font-size: 0.76rem;
++  color: var(--muted);
++  white-space: nowrap;
++  overflow: hidden;
++  text-overflow: ellipsis;
++  max-width: 220px;
++}
++
++.inventory-product em {
++  font-style: normal;
++  font-size: 0.7rem;
++  font-weight: 700;
++  padding: 2px 6px;
++  border-radius: 4px;
++  background: var(--line);
++  color: var(--muted);
++  margin-left: 8px;
++  flex-shrink: 0;
++}
++
++.inventory-product.is-selected em {
++  background: var(--blue);
++  color: #fff;
++}
++
++.inventory-research-content {
++  display: flex;
++  flex-direction: column;
++  gap: 16px;
++  min-width: 0;
++}
++
++.inventory-product-hero {
++  display: flex;
++  justify-content: space-between;
++  align-items: center;
++  padding: 20px 24px;
++}
++
++.inventory-product-hero h2 {
++  margin: 2px 0 4px;
++  font-size: 1.25rem;
++}
++
++.inventory-product-hero small {
++  color: var(--muted);
++  font-weight: 600;
++  font-size: 0.8rem;
++}
++
++.inventory-product-hero p {
++  margin: 0;
++  color: var(--muted);
++  font-size: 0.88rem;
++}
++
++.inventory-kpis {
++  display: grid;
++  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
++  gap: 16px;
++}
++
++.inventory-evidence-diagnostics {
++  margin-bottom: 12px;
++  padding: 14px 18px;
++}
++
++@media (max-width: 1024px) {
++  .inventory-research-layout {
++    grid-template-columns: 1fr;
++  }
++  .inventory-search-panel {
++    position: static;
++    max-height: 380px;
++  }
++  .inventory-product-list {
++    max-height: 260px;
++  }
++}
++

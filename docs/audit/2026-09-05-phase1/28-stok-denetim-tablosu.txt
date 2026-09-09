@@ -1,0 +1,420 @@
+- banner:
+  - link "Marlin Nexus Yönetim Sistemi":
+    - /url: "#top"
+    - strong: Marlin Nexus
+    - generic: Yönetim Sistemi
+  - navigation "Ana menü":
+    - button "Genel Bakış"
+    - button "Satış Analizi"
+    - button "Departman Analizi"
+    - button "Denetim"
+    - button "Stok"
+    - button "Havuz"
+    - button "Ayarlar"
+  - combobox "Yıl":
+    - option "2024"
+    - option "2025"
+    - option "2026" [selected]
+  - button "Görünüm ayarları":
+  - button "Çıkış yap":
+- main:
+  - paragraph: Kanıtlı stok araştırması
+  - heading "Stok Kartı ve Hareket Defteri" [level=1]
+  - paragraph: Ürün bazında KDV hariç perakende fiyatı, alım faturaları, Halkbank satış kuru kanıtı ve hareket kronolojisi.
+  - text: CPM hareket araştırması · WAC kapalı
+  - region "Açılış kanıtı tanısı":
+    - heading "Açılış kanıtı tanısı" [level=2]
+    - paragraph: STKSYM/STKHAR eşleştirmesi yalnızca salt-okuma denetim kanıtıdır; örneklem sayıları tüm CPM nüfusunu temsil etmez ve resmi WAC kararını kendiliğinden değiştirmez.
+    - text: Tanı mevcut değil
+    - paragraph: STKSYM/STKHAR eşleştirmesi mevcut değil; resmi WAC'a dahil değil.
+  - status "Stok kaynağı uyarısı":
+    - heading "Resmi stok/WAC kaynağı doğrulanmadı" [level=2]
+    - paragraph: Aşağıdaki satırlar yalnızca denetim araştırmasıdır; resmi WAC, maliyet ve kâr havuzuna dahil değildir.
+    - text: Resmî finansal hesap kapalı
+  - region "2024-2025 aday WAC kapsamı":
+    - heading "2024–2025 karşılaştırmalı aday WAC" [level=2]
+    - paragraph: Hareketli ağırlıklı ortalama yalnız tarihsel, ürün-depo-döviz anahtarında yürütülür. Bu özet candidate kanıtıdır; official WAC ve EUR KPI’ına bağlı değildir.
+    - text: Official WAC kapalı
+    - strong: "2024"
+    - text: · covered 0 / 38.268
+    - generic: "(%0,0) · uygunluk: hayır"
+    - strong: "2025"
+    - text: · covered 0 / 41.086
+    - generic: "(%0,0) · uygunluk: hayır"
+  - complementary:
+    - textbox:
+      - /placeholder: Ürün kodu veya adı ile ara…
+    - strong: Ürünler
+    - generic: "77"
+    - button "KARGO KARGO - NAVLUN BEDELİ TRY":
+      - strong: KARGO
+      - generic: KARGO - NAVLUN BEDELİ
+      - emphasis: TRY
+    - button "2606 CARBO CHEEK BLOCK 57MM TRY":
+      - strong: "2606"
+      - generic: CARBO CHEEK BLOCK 57MM
+      - emphasis: TRY
+    - button "128990-42580 RW PUMP LIP SEAL, YANMAR TRY":
+      - strong: 128990-42580
+      - generic: RW PUMP LIP SEAL, YANMAR
+      - emphasis: TRY
+    - button "BK4521 PAWL OIL, FOR SPRINGS & PAWLS, HARKEN TRY":
+      - strong: BK4521
+      - generic: PAWL OIL, FOR SPRINGS & PAWLS, HARKEN
+      - emphasis: TRY
+    - button "BK4513 WINCH GREASE WHITE, HARKEN TRY":
+      - strong: BK4513
+      - generic: WINCH GREASE WHITE, HARKEN
+      - emphasis: TRY
+    - button "2010PM PRIMARY FUEL FILTER, RACOR 30MIC TRY":
+      - strong: 2010PM
+      - generic: PRIMARY FUEL FILTER, RACOR 30MIC
+      - emphasis: TRY
+    - button "GM32809 OIL FILTER, KOHLER TRY":
+      - strong: GM32809
+      - generic: OIL FILTER, KOHLER
+      - emphasis: TRY
+    - button "GM48730 FUEL FILTER ELEMENT, KOHLER TRY":
+      - strong: GM48730
+      - generic: FUEL FILTER ELEMENT, KOHLER
+      - emphasis: TRY
+    - button "9534.003.003.01 4FCT DIGITAL PANEL ASSY (EASY), OPACMARE TRY":
+      - strong: 9534.003.003.01
+      - generic: 4FCT DIGITAL PANEL ASSY (EASY), OPACMARE
+      - emphasis: TRY
+    - button "9534.003.001.01 EASY CONTROL PANEL 2 FCT, OPACMARE TRY":
+      - strong: 9534.003.001.01
+      - generic: EASY CONTROL PANEL 2 FCT, OPACMARE
+      - emphasis: TRY
+    - button "COOLANT-PRO-5L GENUINE ENGINE COOLANT 5L, YANMAR TRY":
+      - strong: COOLANT-PRO-5L
+      - generic: GENUINE ENGINE COOLANT 5L, YANMAR
+      - emphasis: TRY
+    - button "7-1463 FLEXIBLE COUPLING (SE170), 20/20MM, SIDEPOWER TRY":
+      - strong: 7-1463
+      - generic: FLEXIBLE COUPLING (SE170), 20/20MM, SIDEPOWER
+      - emphasis: TRY
+    - button "129150-35170 OIL FILTER, YANMAR TRY":
+      - strong: 129150-35170
+      - generic: OIL FILTER, YANMAR
+      - emphasis: TRY
+    - button "MV-38023500 MASS COMBI ULTRA 24/3500 100A 3500W, MASTERVOLT TRY":
+      - strong: MV-38023500
+      - generic: MASS COMBI ULTRA 24/3500 100A 3500W, MASTERVOLT
+      - emphasis: TRY
+    - button "128990-77600 GROMMET, YANMAR TRY":
+      - strong: 128990-77600
+      - generic: GROMMET, YANMAR
+      - emphasis: TRY
+    - button "119305-35170 OIL FILTER, YANMAR TRY":
+      - strong: 119305-35170
+      - generic: OIL FILTER, YANMAR
+      - emphasis: TRY
+    - button "3840525 OIL FILTER, VOLVO TRY":
+      - strong: "3840525"
+      - generic: OIL FILTER, VOLVO
+      - emphasis: TRY
+    - button "DS0006 TWIST DECK SHOWER MIX/GREY/AN TRY":
+      - strong: DS0006
+      - generic: TWIST DECK SHOWER MIX/GREY/AN
+      - emphasis: TRY
+    - button "120322-33050 HEAT EXCHANGER DIVIDER O-RING, YANMAR TRY":
+      - strong: 120322-33050
+      - generic: HEAT EXCHANGER DIVIDER O-RING, YANMAR
+      - emphasis: TRY
+    - button "BK4512 WINCH SERVICE KIT, HARKEN TRY":
+      - strong: BK4512
+      - generic: WINCH SERVICE KIT, HARKEN
+      - emphasis: TRY
+    - button "15W40-5L GENUINE DIESEL ENGINE OIL 15W40 5L, YANMAR TRY":
+      - strong: 15W40-5L
+      - generic: GENUINE DIESEL ENGINE OIL 15W40 5L, YANMAR
+      - emphasis: TRY
+    - button "129670-42610 IMPELLER KIT, YANMAR TRY":
+      - strong: 129670-42610
+      - generic: IMPELLER KIT, YANMAR
+      - emphasis: TRY
+    - button "129A00-55810 FUEL FILTER, YANMAR TRY":
+      - strong: 129A00-55810
+      - generic: FUEL FILTER, YANMAR
+      - emphasis: TRY
+    - button "828254 25MM. PROPELLER SHAFT SEAL, VOLVO TRY":
+      - strong: "828254"
+      - generic: 25MM. PROPELLER SHAFT SEAL, VOLVO
+      - emphasis: TRY
+    - button "E2200 22MM ENDSTOP LOW BEAM SET OF 2, HARKEN TRY":
+      - strong: E2200
+      - generic: 22MM ENDSTOP LOW BEAM SET OF 2, HARKEN
+      - emphasis: TRY
+    - button "0309-0717 SWITCH, PRESSURE ASSEMBLY, ONAN TRY":
+      - strong: 0309-0717
+      - generic: SWITCH, PRESSURE ASSEMBLY, ONAN
+      - emphasis: TRY
+    - button "A94127300 46 WINCH JAWS, HARKEN TRY":
+      - strong: A94127300
+      - generic: 46 WINCH JAWS, HARKEN
+      - emphasis: TRY
+    - button "Z-288 80MM. MAST BASE HALYARD BLOCK, Z SPARS TRY":
+      - strong: Z-288
+      - generic: 80MM. MAST BASE HALYARD BLOCK, Z SPARS
+      - emphasis: TRY
+    - button "DPZT AKÜ DEPOZİTO BEDELİ TRY":
+      - strong: DPZT
+      - generic: AKÜ DEPOZİTO BEDELİ
+      - emphasis: TRY
+    - button "MV-62001300 AGM AKÜ 12V 130Ah, MASTERVOLT TRY":
+      - strong: MV-62001300
+      - generic: AGM AKÜ 12V 130Ah, MASTERVOLT
+      - emphasis: TRY
+    - button "121857-55710 FUEL FILTER SEPERATOR, YANMAR TRY":
+      - strong: 121857-55710
+      - generic: FUEL FILTER SEPERATOR, YANMAR
+      - emphasis: TRY
+    - button "X03431748 RW PUMP BALL BEARING, YANMAR TRY":
+      - strong: X03431748
+      - generic: RW PUMP BALL BEARING, YANMAR
+      - emphasis: TRY
+    - button "X03431760 COOLING PUMP(SEA WATER) BALL BEARING, YANMAR TRY":
+      - strong: X03431760
+      - generic: COOLING PUMP(SEA WATER) BALL BEARING, YANMAR
+      - emphasis: TRY
+    - button "128270-12540 ELEMENT-AIR INTAKE, 2GM-3GM TRY":
+      - strong: 128270-12540
+      - generic: ELEMENT-AIR INTAKE, 2GM-3GM
+      - emphasis: TRY
+    - button "128995-42450A V-BELT, RW PUMP, 3YM30AE M/21 TRY":
+      - strong: 128995-42450A
+      - generic: V-BELT, RW PUMP, 3YM30AE M/21
+      - emphasis: TRY
+    - button "128990-77580 DC ALTERNATOR V-RIBBED BELT (6PK998), YANMAR TRY":
+      - strong: 128990-77580
+      - generic: DC ALTERNATOR V-RIBBED BELT (6PK998), YANMAR
+      - emphasis: TRY
+    - button "129673-44131 CAP, HEAT EXCHANGER, 2-3YM, YANMAR TRY":
+      - strong: 129673-44131
+      - generic: CAP, HEAT EXCHANGER, 2-3YM, YANMAR
+      - emphasis: TRY
+    - button "128990-49011 RW PUMP TO HEATEXCHANCER HOSE, YANMAR TRY":
+      - strong: 128990-49011
+      - generic: RW PUMP TO HEATEXCHANCER HOSE, YANMAR
+      - emphasis: TRY
+    - button "128397-44500 EXPANSION TANK ASSY, YANMAR TRY":
+      - strong: 128397-44500
+      - generic: EXPANSION TANK ASSY, YANMAR
+      - emphasis: TRY
+    - button "128995-42501 PUMP ASSY, WATER TRY":
+      - strong: 128995-42501
+      - generic: PUMP ASSY, WATER
+      - emphasis: TRY
+    - button "128370-13201 EXHAUST MIXING ELBOW GASKET, YANMAR TRY":
+      - strong: 128370-13201
+      - generic: EXHAUST MIXING ELBOW GASKET, YANMAR
+      - emphasis: TRY
+    - button "104500-55710 FUEL FILTER, YANMAR TRY":
+      - strong: 104500-55710
+      - generic: FUEL FILTER, YANMAR
+      - emphasis: TRY
+    - button "GM17513 FRESH WATER PUMP ASSY, KOHLER TRY":
+      - strong: GM17513
+      - generic: FRESH WATER PUMP ASSY, KOHLER
+      - emphasis: TRY
+    - button "MV-62000900 AGM AKÜ 12V 90Ah, MASTERVOLT TRY":
+      - strong: MV-62000900
+      - generic: AGM AKÜ 12V 90Ah, MASTERVOLT
+      - emphasis: TRY
+    - button "SDS17X14X2SOL 17X14X2 SDS LH ALU PROPELLER, RADICE TRY":
+      - strong: SDS17X14X2SOL
+      - generic: 17X14X2 SDS LH ALU PROPELLER, RADICE
+      - emphasis: TRY
+    - button "0309-0295-01 TEMPERATURE SWITCH, ONAN TRY":
+      - strong: 0309-0295-01
+      - generic: TEMPERATURE SWITCH, ONAN
+      - emphasis: TRY
+    - button "9532.100.014.00 CABLE SENSOR 2 MT - 12 MM W/O CONNECTOR, OPACMARE TRY":
+      - strong: 9532.100.014.00
+      - generic: CABLE SENSOR 2 MT - 12 MM W/O CONNECTOR, OPACMARE
+      - emphasis: TRY
+    - button "121575-91250 IGNITION SWITCH WITH KEY, YANMAR TRY":
+      - strong: 121575-91250
+      - generic: IGNITION SWITCH WITH KEY, YANMAR
+      - emphasis: TRY
+    - button "185-6934 DC ALTERNATOR V-BELT, ONAN TRY":
+      - strong: 185-6934
+      - generic: DC ALTERNATOR V-BELT, ONAN
+      - emphasis: TRY
+    - button "164100-30000 PANEL ASSY,YD25 TRY":
+      - strong: 164100-30000
+      - generic: PANEL ASSY,YD25
+      - emphasis: TRY
+    - button "124223-42092 IMPELLER, GM TRY":
+      - strong: 124223-42092
+      - generic: IMPELLER, GM
+      - emphasis: TRY
+    - button "104511-78780A V-BELT, SWP, M-19, YANMAR TRY":
+      - strong: 104511-78780A
+      - generic: V-BELT, SWP, M-19, YANMAR
+      - emphasis: TRY
+    - button "24341-000125 LOWER GEAR HOUSING O-RING, 1AS12.5, YANMAR TRY":
+      - strong: 24341-000125
+      - generic: LOWER GEAR HOUSING O-RING, 1AS12.5, YANMAR
+      - emphasis: TRY
+    - button "24321-000950 SAILDRIVE PROP SHAFT COVER O-RING, YANMAR TRY":
+      - strong: 24321-000950
+      - generic: SAILDRIVE PROP SHAFT COVER O-RING, YANMAR
+      - emphasis: TRY
+    - button "196313-02591 SAILDRIVE PROPSHAFT SEAL, YANMAR TRY":
+      - strong: 196313-02591
+      - generic: SAILDRIVE PROPSHAFT SEAL, YANMAR
+      - emphasis: TRY
+    - button "01830 SEPAR YEDEK FİLTRE ELEMANI,SWK-2000/18 TRY":
+      - strong: "01830"
+      - generic: SEPAR YEDEK FİLTRE ELEMANI,SWK-2000/18
+      - emphasis: TRY
+    - button "0511-0237 BELT, ONAN TRY":
+      - strong: 0511-0237
+      - generic: BELT, ONAN
+      - emphasis: TRY
+    - button "0130-4434 COOLING ZINC ANODE, ONAN TRY":
+      - strong: 0130-4434
+      - generic: COOLING ZINC ANODE, ONAN
+      - emphasis: TRY
+    - button "0541-1316 RW PUMP IMPELLER, ONAN TRY":
+      - strong: 0541-1316
+      - generic: RW PUMP IMPELLER, ONAN
+      - emphasis: TRY
+    - button "0149-2804 FUEL FILTER, ONAN TRY":
+      - strong: 0149-2804
+      - generic: FUEL FILTER, ONAN
+      - emphasis: TRY
+    - button "0122-0906 OIL FILTER, ONAN TRY":
+      - strong: 0122-0906
+      - generic: OIL FILTER, ONAN
+      - emphasis: TRY
+    - button "0185-7016 V-BELT, ONAN TRY":
+      - strong: 0185-7016
+      - generic: V-BELT, ONAN
+      - emphasis: TRY
+    - button "A026K278 FUEL FILTER, ONAN TRY":
+      - strong: A026K278
+      - generic: FUEL FILTER, ONAN
+      - emphasis: TRY
+    - button "0122-0810 ONAN YAĞ FİLTRESİ TRY":
+      - strong: 0122-0810
+      - generic: ONAN YAĞ FİLTRESİ
+      - emphasis: TRY
+    - button "1766404 1 1/2\" (38MM) CERTIFIED RW HOSE W/ WIRE, VETUS TRY":
+      - strong: "1766404"
+      - generic: 1 1/2" (38MM) CERTIFIED RW HOSE W/ WIRE, VETUS
+      - emphasis: TRY
+    - button "YOL YOL ÜCRETİ TRY":
+      - strong: YOL
+      - generic: YOL ÜCRETİ
+      - emphasis: TRY
+    - button "İŞÇİLİK MARLİN İŞÇİLİK TRY":
+      - strong: İŞÇİLİK
+      - generic: MARLİN İŞÇİLİK
+      - emphasis: TRY
+    - button "GUNK NON-FLAMMABLE INDUSTRIAL CLEANER PRO, WINKEL TRY":
+      - strong: GUNK
+      - generic: NON-FLAMMABLE INDUSTRIAL CLEANER PRO, WINKEL
+      - emphasis: TRY
+    - button "129675-42280A BELT V-RIBBED, YANMAR (FRONT MOUNT) TRY":
+      - strong: 129675-42280A
+      - generic: BELT V-RIBBED, YANMAR (FRONT MOUNT)
+      - emphasis: TRY
+    - button "3-1180A ZINC ANODE, SIDE-POWER TRY":
+      - strong: 3-1180A
+      - generic: ZINC ANODE, SIDE-POWER
+      - emphasis: TRY
+    - button "8950G TOUCHPANEL 12/24V, SIDE POWER TRY":
+      - strong: 8950G
+      - generic: TOUCHPANEL 12/24V, SIDE POWER
+      - emphasis: TRY
+    - button "129693-44420 HEAT EXCHANGER DIVIDER GASKET, YANMAR TRY":
+      - strong: 129693-44420
+      - generic: HEAT EXCHANGER DIVIDER GASKET, YANMAR
+      - emphasis: TRY
+    - button "163100-18900 CLEANER, AIR CMP TRY":
+      - strong: 163100-18900
+      - generic: CLEANER, AIR CMP
+      - emphasis: TRY
+    - button "5039100 15AH, 270MM. THERMOSTAT FOR BOILER, MARINTEK TRY":
+      - strong: "5039100"
+      - generic: 15AH, 270MM. THERMOSTAT FOR BOILER, MARINTEK
+      - emphasis: TRY
+    - button "5039101 RESISTANCE FOR BOILER, 220V/1200W, QUICK TRY":
+      - strong: "5039101"
+      - generic: RESISTANCE FOR BOILER, 220V/1200W, QUICK
+      - emphasis: TRY
+    - button "GM102586A V-BELT FOR ALTERNATOR, KOHLER TRY":
+      - strong: GM102586A
+      - generic: V-BELT FOR ALTERNATOR, KOHLER
+      - emphasis: TRY
+    - button "ED0090802840-S-B TABBO M18X1.5 COMPLETO ZINCO TRY":
+      - strong: ED0090802840-S-B
+      - generic: TABBO M18X1.5 COMPLETO ZINCO
+      - emphasis: TRY
+  - text: "2606"
+  - heading "CARBO CHEEK BLOCK 57MM" [level=2]
+  - paragraph: HARKEN
+  - text: 1 kanıt incelenecek
+  - button "CSV İndir":
+    - text: CSV İndir
+  - article:
+    - generic: Toplam Hareket
+    - strong: "1"
+    - paragraph: 2 adet işlem
+  - article:
+    - generic: KDV Hariç Perakende Fiyat
+    - strong: —
+    - paragraph: Ürün stok kartı fiyatı
+  - article:
+    - generic: Son Döviz Birim Maliyeti
+    - strong: —
+    - paragraph: Halkbank satış kuru ile
+  - article:
+    - generic: Ürün Liste Brüt Marjı
+    - strong: —
+    - paragraph: 0 benzersiz fatura gözlemi
+  - heading "Fatura ve Stok Hareket Defteri" [level=2]
+  - paragraph: 1 hareket listeleniyor · Alım, satış ve iade kanıtları
+  - group "Görünüm biçimi":
+    - button "Muavin Defter"
+    - button "Denetim Tablosu" [active]
+  - combobox "Hareket türü filtresi":
+    - option "Tüm hareketler" [selected]
+    - option "Yalnız Alımlar (9/609)"
+    - option "Yalnız Satışlar"
+    - option "Yalnız İadeler"
+  - table:
+    - rowgroup:
+      - row "Tarih Hareket Belge No Miktar Birim Maliyet (TL) Döviz Maliyet Liste Brüt Marjı Alım Kanıtı Halkbank Kuru Durum":
+        - columnheader "Tarih"
+        - columnheader "Hareket"
+        - columnheader "Belge No"
+        - columnheader "Miktar"
+        - columnheader "Birim Maliyet (TL)"
+        - columnheader "Döviz Maliyet"
+        - columnheader "Liste Brüt Marjı"
+        - columnheader "Alım Kanıtı"
+        - columnheader "Halkbank Kuru"
+        - columnheader "Durum"
+    - rowgroup:
+      - 'row "05.09.2026 Çıkış / Satış 91/ME02026000003981 −2 1.009,94 TL — — 9/DNP2024000002490 — Belge: Doğrulandı Maliyet: İnceleme gerekli"':
+        - cell "05.09.2026"
+        - cell "Çıkış / Satış":
+          - text: Çıkış / Satış
+        - cell "91/ME02026000003981":
+          - strong: 91/ME02026000003981
+        - cell "−2":
+          - strong: −2
+        - cell "1.009,94 TL"
+        - cell "—"
+        - cell "—"
+        - cell "9/DNP2024000002490":
+          - generic "DENPAR MAKİNA SAN VE TİC A.Ş.": 9/DNP2024000002490
+        - cell "—"
+        - 'cell "Belge: Doğrulandı Maliyet: İnceleme gerekli"':
+          - generic: "Belge: Doğrulandı"
+          - generic: "Maliyet: İnceleme gerekli"
+- generic: Servis

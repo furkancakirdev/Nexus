@@ -17,7 +17,6 @@ export const DEFAULT_SETTINGS = Object.freeze({
     road: 100,
   }),
   minimumCoverage: 85,
-  exchangeRateRule: "document",
   requireManagementApprovalForManualCost: true,
   requireManagementApprovalForManualMargin: true,
   manualMarginPolicies: Object.freeze([]),
@@ -34,6 +33,20 @@ export const DEFAULT_SETTINGS = Object.freeze({
   reportingCurrencyDefault: "EUR",
   enableCrossDepotTracking: true,
   filterAccountingActors: true,
+});
+
+export const SETTINGS_REGISTRY = Object.freeze({
+  toggles: Object.freeze([
+    Object.freeze({ key: "negativeStockWeightByQuantity", section: "cost", label: "Negatif stokta alım adetleriyle ağırlıklandırma", help: "Negatif stoğa düşen satışlarda alım faturası adetleriyle ağırlıklı marj hesaplar." }),
+    Object.freeze({ key: "enableCrossDepotTracking", section: "cost", label: "Çapraz-depo sevkiyatlarını ayrı izle", help: "Merkez depodan sevk edilen parçaları ayrı hareket olarak izler." }),
+    Object.freeze({ key: "filterAccountingActors", section: "cost", label: "Muhasebe aktörlerini filtrele", help: "Muhasebe veya cari kart aktörlerini ticari sorumlu sıralamasından çıkarır." }),
+    Object.freeze({ key: "requireManagementApprovalForManualCost", section: "cost", label: "Manuel maliyette yönetim onayı zorunlu", help: "Onaysız manuel maliyetleri kesin havuz hesabına dahil etmez." }),
+    Object.freeze({ key: "requireManagementApprovalForManualMargin", section: "cost", label: "Manuel marjda yönetim onayı zorunlu", help: "Bekleyen manuel marj kararlarını onaylanana kadar kesin saymaz." }),
+    Object.freeze({ key: "boardApproval", section: "approval", label: "Yönetim nihai dağıtım onayı", help: "Nihai dağıtım öncesi yönetim onayını zorunlu tutar." }),
+    Object.freeze({ key: "lockAfterApproval", section: "approval", label: "Nihai onay sonrası dönemi kilitle", help: "Onaylanmış dönemde değişiklik yapılmasını engeller." }),
+    Object.freeze({ key: "auditLog", section: "approval", label: "Değişiklik ve onay günlüğü tut", help: "Ayar ve onay değişikliklerini uygulama günlüğünde saklar." }),
+    Object.freeze({ key: "monthlyNotifications", section: "approval", label: "Aylık kapanış bildirimleri", help: "Aylık kapanış zamanı için uygulama bildirimlerini etkinleştirir." }),
+  ]),
 });
 
 function optionalRecord(value, fieldName) {
@@ -321,31 +334,6 @@ export function normalizeSettings(stored) {
     60,
     100,
   );
-  result.exchangeRateRule = enumValue(
-    valueOrDefault(
-      source,
-      "exchangeRateRule",
-      DEFAULT_SETTINGS.exchangeRateRule,
-    ),
-    "Kur dönüşüm kuralı",
-    ["document", "monthEnd", "centralBank"],
-  );
-  result.requireManagementApprovalForManualCost = booleanValue(
-    valueOrDefault(
-      source,
-      "requireManagementApprovalForManualCost",
-      DEFAULT_SETTINGS.requireManagementApprovalForManualCost,
-    ),
-    "Manuel maliyet yönetim onayı",
-  );
-  result.requireManagementApprovalForManualMargin = booleanValue(
-    valueOrDefault(
-      source,
-      "requireManagementApprovalForManualMargin",
-      DEFAULT_SETTINGS.requireManagementApprovalForManualMargin,
-    ),
-    "Manuel marj yönetim onayı",
-  );
   result.allocationMethod = enumValue(
     valueOrDefault(
       source,
@@ -365,12 +353,7 @@ export function normalizeSettings(stored) {
     1,
     28,
   );
-  for (const key of [
-    "boardApproval",
-    "lockAfterApproval",
-    "auditLog",
-    "monthlyNotifications",
-  ]) {
+  for (const { key } of SETTINGS_REGISTRY.toggles) {
     result[key] = booleanValue(
       valueOrDefault(source, key, DEFAULT_SETTINGS[key]),
       key,
@@ -385,14 +368,6 @@ export function normalizeSettings(stored) {
     "Personel görünürlüğü",
     ["summary", "details", "hidden"],
   );
-  result.negativeStockWeightByQuantity = booleanValue(
-    valueOrDefault(
-      source,
-      "negativeStockWeightByQuantity",
-      DEFAULT_SETTINGS.negativeStockWeightByQuantity,
-    ),
-    "Negatif stok adet ağırlıklandırma",
-  );
   result.reportingCurrencyDefault = enumValue(
     valueOrDefault(
       source,
@@ -401,22 +376,6 @@ export function normalizeSettings(stored) {
     ),
     "Varsayılan raporlama para birimi",
     ["EUR", "TRY"],
-  );
-  result.enableCrossDepotTracking = booleanValue(
-    valueOrDefault(
-      source,
-      "enableCrossDepotTracking",
-      DEFAULT_SETTINGS.enableCrossDepotTracking,
-    ),
-    "Çapraz depo izleme",
-  );
-  result.filterAccountingActors = booleanValue(
-    valueOrDefault(
-      source,
-      "filterAccountingActors",
-      DEFAULT_SETTINGS.filterAccountingActors,
-    ),
-    "Muhasebe aktörlerini filtreleme",
   );
   for (const [department, target] of Object.entries(result.departmentTargets)) {
     target.growthPct = rangedNumber(

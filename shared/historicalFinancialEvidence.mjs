@@ -141,18 +141,20 @@ export function buildHistoricalFinancialEvidence({ movements = [], priceRows = [
     reviewCounts.review += 1;
     reviewReasons[reason] = (reviewReasons[reason] || 0) + 1;
   };
-  const addCostReview = (reason) => {
-    costReviewCounts.review += 1;
+  const addCostReview = (reason, movementKind) => {
+    if (movementKind === "purchase") costReviewCounts.review += 1;
     costReviewReasons[reason] = (costReviewReasons[reason] || 0) + 1;
   };
 
   for (const movement of enrichedMovements) {
     const productCode = text(movement.productCode);
-    const isCostMovement = ["opening", "purchase"].includes(movement.kind);
+    // Opening/devir satırları resmi maliyet kaynağı değildir; WAC yalnız doğrulanabilir
+    // alış faturalarından kurulur. Eksik açılış kaydı global kanıt kapısını kilitlemez.
+    const isCostMovement = movement.kind === "purchase";
     const sourceCost = isCostMovement ? resolveSourceCostToTry({ movement, rateIndex }) : null;
     if (isCostMovement && sourceCost.reviewReason) {
       addReview(sourceCost.reviewReason);
-      addCostReview(sourceCost.reviewReason);
+      addCostReview(sourceCost.reviewReason, movement.kind);
       continue;
     }
     const knownCurrencies = new Set(currencies.get(productCode) || []);
@@ -181,7 +183,7 @@ export function buildHistoricalFinancialEvidence({ movements = [], priceRows = [
     const rate = sellingRateOnOrBefore(rateIndex, productCurrency, movement.date);
     if (!rate) {
       addReview("missing-exchange-rate");
-      addCostReview("missing-exchange-rate");
+      addCostReview("missing-exchange-rate", movement.kind);
       continue;
     }
     const unitCostTryExVat = sourceCost.unitCostTryExVat;
@@ -194,7 +196,7 @@ export function buildHistoricalFinancialEvidence({ movements = [], priceRows = [
     });
     if (costConversion.reviewReason) {
       addReview(costConversion.reviewReason);
-      addCostReview(costConversion.reviewReason);
+      addCostReview(costConversion.reviewReason, movement.kind);
       continue;
     }
     movement.unitCostTryExVat = unitCostTryExVat;
@@ -249,7 +251,9 @@ export function buildHistoricalFinancialEvidence({ movements = [], priceRows = [
     reviewCounts.covered += 1;
   }
 
-  const costMovements = enrichedMovements.filter((movement) => ["opening", "purchase"].includes(movement.kind));
+  // WAC evidence is sourced from chronological purchase invoices. Opening/devir
+  // rows remain in the movement ledger but are not cost candidates.
+  const costMovements = enrichedMovements.filter((movement) => movement.kind === "purchase");
   const countByYear = (rows) => rows.reduce((counts, movement) => {
     const year = String(dateKey(movement.date) || "").slice(0, 4);
     if (/^\d{4}$/.test(year)) counts[year] = (counts[year] || 0) + 1;

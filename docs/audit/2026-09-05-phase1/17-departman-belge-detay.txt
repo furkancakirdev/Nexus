@@ -1,0 +1,819 @@
+- banner:
+  - link "Marlin Nexus Yönetim Sistemi":
+    - /url: "#top"
+    - strong: Marlin Nexus
+    - generic: Yönetim Sistemi
+  - navigation "Ana menü":
+    - button "Genel Bakış"
+    - button "Satış Analizi"
+    - button "Departman Analizi"
+    - button "Denetim"
+    - button "Stok"
+    - button "Havuz"
+    - button "Ayarlar"
+  - combobox "Yıl":
+    - option "2024"
+    - option "2025"
+    - option "2026" [selected]
+  - button "Görünüm ayarları":
+  - button "Çıkış yap":
+- main:
+  - paragraph: Ticari performans ve kaynak kanıtı
+  - heading "Departman Analizi" [level=1]
+  - paragraph: Servis ve Yedek Parça Satış sonuçlarını ticari sorumluya göre karşılaştırın; depo ve belge kullanıcısını teslimat bağlamı olarak izleyin.
+  - text: CPM canlı · salt okunur
+  - button "Yenile":
+    - text: Yenile
+  - region "Departman analizi kontrolleri":
+    - group "Departman":
+      - button "Tümü"
+      - button "Servis":
+        - text: Servis
+      - button "Yedek Parça":
+        - text: Yedek Parça
+      - button "İnceleme"
+    - generic: Dönem
+    - combobox "Dönem":
+      - option "2026 geneli" [selected]
+      - option "Ocak"
+      - option "Şubat"
+      - option "Mart"
+      - option "Nisan"
+      - option "Mayıs"
+      - option "Haziran"
+      - option "Temmuz"
+      - option "Ağustos"
+      - option "Eylül"
+      - option "Ekim"
+      - option "Kasım"
+      - option "Aralık"
+    - text: Toplu raporla brüt/net uzlaşıyor
+  - article:
+    - generic: Net satış
+    - strong: 229.254.911 TL
+    - paragraph: Brüt 268.370.488 TL · KDV hariç
+  - article:
+    - generic: Esas brüt kâr
+    - strong: İncelemede
+    - paragraph: WAC maliyeti bekleniyor
+  - article:
+    - generic: Maliyet kapsamı
+    - strong: "%95,0"
+    - paragraph: 21.046 / 22.145 satır
+  - article:
+    - generic: Satış belgeleri
+    - strong: "5.801"
+    - paragraph: 1.194 farklı cari
+  - article:
+    - generic: Çapraz-depo satış
+    - strong: 53.652.609 TL
+    - paragraph: 534 belge · %23,4
+  - article:
+    - generic: Teyitli atıf
+    - strong: "%0,0"
+    - paragraph: "Kullanıcı eşlemesi: 161.838.851 TL"
+  - navigation "Departman analizi görünümleri":
+    - button "Genel Bakış"
+    - button "Sorumlu, Ürün & Müşteri"
+    - button "Belge Defteri"
+    - button "CPM Pilot İzleme"
+  - paragraph: İzlenebilir ekonomik satırlar
+  - heading "Departman Belge Defteri" [level=2]
+  - paragraph: 25 / 22.145 satır gösteriliyor · seçili yılın tamamı aranır
+  - textbox:
+    - /placeholder: Belge, müşteri, ürün veya sorumlu ara
+  - combobox:
+    - option "Tüm atıflar" [selected]
+    - option "Teyitli"
+    - option "Kullanıcı eşlemesi"
+    - option "İnceleme gerekli"
+  - combobox:
+    - option "Tüm depolar" [selected]
+    - option "Merkez Depo"
+    - option "Yatmarin Depo"
+    - option "Belirsiz depo"
+  - table:
+    - rowgroup:
+      - row "Detay Belge / tarih Departman Ticari sorumlu Müşteri Ürün Net satış Maliyet Brüt kâr Teslimat Kanıt":
+        - columnheader "Detay"
+        - columnheader "Belge / tarih"
+        - columnheader "Departman"
+        - columnheader "Ticari sorumlu"
+        - columnheader "Müşteri"
+        - columnheader "Ürün"
+        - columnheader "Net satış"
+        - columnheader "Maliyet"
+        - columnheader "Brüt kâr"
+        - columnheader "Teslimat"
+        - columnheader "Kanıt"
+    - rowgroup:
+      - row "Detayı kapat 91/ME02026000003979 05.09.2026 Yedek Parça Satış Can Belikırık CBELIKIRIK ELECTROMARİNE GEMİ ELEKTRONİĞİ SAN.VE TİC.LTD.ŞTİ. A2119 MASS COMBI ULTRA 24/3500 100A 3500W, MASTERVOLT MV-38023500 179.759 TL 151.463 TL 28.295 TL — Merkez Depo Eşleme":
+        - cell "Detayı kapat":
+          - button "Detayı kapat" [expanded] [active]:
+        - rowheader "91/ME02026000003979 05.09.2026":
+          - strong: 91/ME02026000003979
+          - generic: 05.09.2026
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Can Belikırık CBELIKIRIK":
+          - strong: Can Belikırık
+          - generic: CBELIKIRIK
+        - cell "ELECTROMARİNE GEMİ ELEKTRONİĞİ SAN.VE TİC.LTD.ŞTİ. A2119":
+          - strong: ELECTROMARİNE GEMİ ELEKTRONİĞİ SAN.VE TİC.LTD.ŞTİ.
+          - generic: A2119
+        - cell "MASS COMBI ULTRA 24/3500 100A 3500W, MASTERVOLT MV-38023500":
+          - strong: MASS COMBI ULTRA 24/3500 100A 3500W, MASTERVOLT
+          - generic: MV-38023500
+        - cell "179.759 TL":
+          - strong: 179.759 TL
+        - cell "151.463 TL"
+        - cell "28.295 TL —":
+          - strong: 28.295 TL
+          - generic: —
+        - cell "Merkez Depo":
+          - strong: Merkez Depo
+        - cell "Eşleme":
+          - generic: Eşleme
+      - row "Atıf dayanağı Perakende satış işlem geçmişi Ticari sorumlu Can Belikırık (CBELIKIRIK) Kaynak sipariş Bağlantı yok Teslimat bağlamı Merkez Depo Maliyet kanıtı Toplu alım stoku Kontrol Standart akış Evrak zinciri Perakende satış 91/ME02026000003979 05.09.2026 · sonuç belgesi Aktör geçmişi Can Belikırık CBELIKIRIK İlk kayıt 05.09.2026 Can Belikırık CBELIKIRIK Değişiklik / muhasebe işlemi 05.09.2026 Dışlanan aktörler Ticari sahiplikten dışlanan aktör bulunmuyor.":
+        - cell "Atıf dayanağı Perakende satış işlem geçmişi Ticari sorumlu Can Belikırık (CBELIKIRIK) Kaynak sipariş Bağlantı yok Teslimat bağlamı Merkez Depo Maliyet kanıtı Toplu alım stoku Kontrol Standart akış Evrak zinciri Perakende satış 91/ME02026000003979 05.09.2026 · sonuç belgesi Aktör geçmişi Can Belikırık CBELIKIRIK İlk kayıt 05.09.2026 Can Belikırık CBELIKIRIK Değişiklik / muhasebe işlemi 05.09.2026 Dışlanan aktörler Ticari sahiplikten dışlanan aktör bulunmuyor.":
+          - generic: Atıf dayanağı
+          - strong: Perakende satış işlem geçmişi
+          - generic: Ticari sorumlu
+          - strong: Can Belikırık (CBELIKIRIK)
+          - generic: Kaynak sipariş
+          - strong: Bağlantı yok
+          - generic: Teslimat bağlamı
+          - strong: Merkez Depo
+          - generic: Maliyet kanıtı
+          - strong: Toplu alım stoku
+          - generic: Kontrol
+          - strong: Standart akış
+          - heading "Evrak zinciri" [level=3]
+          - generic: Perakende satış
+          - strong: 91/ME02026000003979
+          - emphasis: 05.09.2026 · sonuç belgesi
+          - heading "Aktör geçmişi" [level=3]
+          - strong: Can Belikırık
+          - generic: CBELIKIRIK
+          - strong: İlk kayıt
+          - generic: 05.09.2026
+          - strong: Can Belikırık
+          - generic: CBELIKIRIK
+          - strong: Değişiklik / muhasebe işlemi
+          - generic: 05.09.2026
+          - heading "Dışlanan aktörler" [level=3]
+          - paragraph: Ticari sahiplikten dışlanan aktör bulunmuyor.
+      - row "Detayı aç 91/ME02026000003980 05.09.2026 Yedek Parça Satış Can Belikırık CBELIKIRIK ALFABETA TEKNİK İŞLETME VE DAN. HİZ. TİC. LTD. ŞTİ. 2480 EASY CONTROL PANEL 2 FCT, OPACMARE 9534.003.001.01 47.974 TL 35.126 TL 12.849 TL — Merkez Depo Eşleme":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/ME02026000003980 05.09.2026":
+          - strong: 91/ME02026000003980
+          - generic: 05.09.2026
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Can Belikırık CBELIKIRIK":
+          - strong: Can Belikırık
+          - generic: CBELIKIRIK
+        - cell "ALFABETA TEKNİK İŞLETME VE DAN. HİZ. TİC. LTD. ŞTİ. 2480":
+          - strong: ALFABETA TEKNİK İŞLETME VE DAN. HİZ. TİC. LTD. ŞTİ.
+          - generic: "2480"
+        - cell "EASY CONTROL PANEL 2 FCT, OPACMARE 9534.003.001.01":
+          - strong: EASY CONTROL PANEL 2 FCT, OPACMARE
+          - generic: 9534.003.001.01
+        - cell "47.974 TL":
+          - strong: 47.974 TL
+        - cell "35.126 TL"
+        - cell "12.849 TL —":
+          - strong: 12.849 TL
+          - generic: —
+        - cell "Merkez Depo":
+          - strong: Merkez Depo
+        - cell "Eşleme":
+          - generic: Eşleme
+      - row "Detayı aç 91/ME02026000003980 05.09.2026 Yedek Parça Satış Can Belikırık CBELIKIRIK ALFABETA TEKNİK İŞLETME VE DAN. HİZ. TİC. LTD. ŞTİ. 2480 4FCT DIGITAL PANEL ASSY (EASY), OPACMARE 9534.003.003.01 24.717 TL 18.097 TL 6.620 TL — Merkez Depo Eşleme":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/ME02026000003980 05.09.2026":
+          - strong: 91/ME02026000003980
+          - generic: 05.09.2026
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Can Belikırık CBELIKIRIK":
+          - strong: Can Belikırık
+          - generic: CBELIKIRIK
+        - cell "ALFABETA TEKNİK İŞLETME VE DAN. HİZ. TİC. LTD. ŞTİ. 2480":
+          - strong: ALFABETA TEKNİK İŞLETME VE DAN. HİZ. TİC. LTD. ŞTİ.
+          - generic: "2480"
+        - cell "4FCT DIGITAL PANEL ASSY (EASY), OPACMARE 9534.003.003.01":
+          - strong: 4FCT DIGITAL PANEL ASSY (EASY), OPACMARE
+          - generic: 9534.003.003.01
+        - cell "24.717 TL":
+          - strong: 24.717 TL
+        - cell "18.097 TL"
+        - cell "6.620 TL —":
+          - strong: 6.620 TL
+          - generic: —
+        - cell "Merkez Depo":
+          - strong: Merkez Depo
+        - cell "Eşleme":
+          - generic: Eşleme
+      - row "Detayı aç 17/ME02026000003978 05.09.2026 Yedek Parça Satış Belirsiz Kod yok ORCAN DENİZCİLİK / REŞAT CAN SAYAR DBS025 FUEL FILTER ELEMENT, KOHLER GM48730 6.139 TL 3.890 TL 2.249 TL — Merkez Depo İncele":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/ME02026000003978 05.09.2026":
+          - strong: 17/ME02026000003978
+          - generic: 05.09.2026
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Belirsiz Kod yok":
+          - strong: Belirsiz
+          - generic: Kod yok
+        - cell "ORCAN DENİZCİLİK / REŞAT CAN SAYAR DBS025":
+          - strong: ORCAN DENİZCİLİK / REŞAT CAN SAYAR
+          - generic: DBS025
+        - cell "FUEL FILTER ELEMENT, KOHLER GM48730":
+          - strong: FUEL FILTER ELEMENT, KOHLER
+          - generic: GM48730
+        - cell "6.139 TL":
+          - strong: 6.139 TL
+        - cell "3.890 TL"
+        - cell "2.249 TL —":
+          - strong: 2.249 TL
+          - generic: —
+        - cell "Merkez Depo":
+          - strong: Merkez Depo
+        - cell "İncele":
+          - generic: İncele
+      - row "Detayı aç 91/PRK-38954 05.09.2026 Yedek Parça Satış Can Belikırık CBELIKIRIK Genel Cari GENEL FLEXIBLE COUPLING (SE170), 20/20MM, SIDEPOWER 7-1463 4.803 TL 3.026 TL 1.777 TL — Merkez Depo Eşleme":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38954 05.09.2026":
+          - strong: 91/PRK-38954
+          - generic: 05.09.2026
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Can Belikırık CBELIKIRIK":
+          - strong: Can Belikırık
+          - generic: CBELIKIRIK
+        - cell "Genel Cari GENEL":
+          - strong: Genel Cari
+          - generic: GENEL
+        - cell "FLEXIBLE COUPLING (SE170), 20/20MM, SIDEPOWER 7-1463":
+          - strong: FLEXIBLE COUPLING (SE170), 20/20MM, SIDEPOWER
+          - generic: 7-1463
+        - cell "4.803 TL":
+          - strong: 4.803 TL
+        - cell "3.026 TL"
+        - cell "1.777 TL —":
+          - strong: 1.777 TL
+          - generic: —
+        - cell "Merkez Depo":
+          - strong: Merkez Depo
+        - cell "Eşleme":
+          - generic: Eşleme
+      - row "Detayı aç 91/PRK-38955 05.09.2026 Yedek Parça Satış Can Belikırık CBELIKIRIK TUNA İTH. İHR. OTEL TUR. TİC. İNŞ. SAN. TAAH.VE PAZ. LTD. ŞTİ. S445 GENUINE ENGINE COOLANT 5L, YANMAR COOLANT-PRO-5L 4.288 TL 2.070 TL 2.219 TL — Merkez Depo Eşleme":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38955 05.09.2026":
+          - strong: 91/PRK-38955
+          - generic: 05.09.2026
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Can Belikırık CBELIKIRIK":
+          - strong: Can Belikırık
+          - generic: CBELIKIRIK
+        - cell "TUNA İTH. İHR. OTEL TUR. TİC. İNŞ. SAN. TAAH.VE PAZ. LTD. ŞTİ. S445":
+          - strong: TUNA İTH. İHR. OTEL TUR. TİC. İNŞ. SAN. TAAH.VE PAZ. LTD. ŞTİ.
+          - generic: S445
+        - cell "GENUINE ENGINE COOLANT 5L, YANMAR COOLANT-PRO-5L":
+          - strong: GENUINE ENGINE COOLANT 5L, YANMAR
+          - generic: COOLANT-PRO-5L
+        - cell "4.288 TL":
+          - strong: 4.288 TL
+        - cell "2.070 TL"
+        - cell "2.219 TL —":
+          - strong: 2.219 TL
+          - generic: —
+        - cell "Merkez Depo":
+          - strong: Merkez Depo
+        - cell "Eşleme":
+          - generic: Eşleme
+      - row "Detayı aç 91/ME02026000003981 05.09.2026 Yedek Parça Satış Can Belikırık CBELIKIRIK FETHİYE MARİNE YATÇILIK LTD. ŞTİ. 1790 CARBO CHEEK BLOCK 57MM 2606 4.190 TL 2.020 TL 2.170 TL — Merkez Depo Eşleme":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/ME02026000003981 05.09.2026":
+          - strong: 91/ME02026000003981
+          - generic: 05.09.2026
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Can Belikırık CBELIKIRIK":
+          - strong: Can Belikırık
+          - generic: CBELIKIRIK
+        - cell "FETHİYE MARİNE YATÇILIK LTD. ŞTİ. 1790":
+          - strong: FETHİYE MARİNE YATÇILIK LTD. ŞTİ.
+          - generic: "1790"
+        - cell "CARBO CHEEK BLOCK 57MM 2606":
+          - strong: CARBO CHEEK BLOCK 57MM
+          - generic: "2606"
+        - cell "4.190 TL":
+          - strong: 4.190 TL
+        - cell "2.020 TL"
+        - cell "2.170 TL —":
+          - strong: 2.170 TL
+          - generic: —
+        - cell "Merkez Depo":
+          - strong: Merkez Depo
+        - cell "Eşleme":
+          - generic: Eşleme
+      - row "Detayı aç 17/ME02026000003978 05.09.2026 Yedek Parça Satış Belirsiz Kod yok ORCAN DENİZCİLİK / REŞAT CAN SAYAR DBS025 OIL FILTER, KOHLER GM32809 3.595 TL 2.278 TL 1.317 TL — Merkez Depo İncele":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/ME02026000003978 05.09.2026":
+          - strong: 17/ME02026000003978
+          - generic: 05.09.2026
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Belirsiz Kod yok":
+          - strong: Belirsiz
+          - generic: Kod yok
+        - cell "ORCAN DENİZCİLİK / REŞAT CAN SAYAR DBS025":
+          - strong: ORCAN DENİZCİLİK / REŞAT CAN SAYAR
+          - generic: DBS025
+        - cell "OIL FILTER, KOHLER GM32809":
+          - strong: OIL FILTER, KOHLER
+          - generic: GM32809
+        - cell "3.595 TL":
+          - strong: 3.595 TL
+        - cell "2.278 TL"
+        - cell "1.317 TL —":
+          - strong: 1.317 TL
+          - generic: —
+        - cell "Merkez Depo":
+          - strong: Merkez Depo
+        - cell "İncele":
+          - generic: İncele
+      - row "Detayı aç 17/ME02026000003978 05.09.2026 Yedek Parça Satış Belirsiz Kod yok ORCAN DENİZCİLİK / REŞAT CAN SAYAR DBS025 PRIMARY FUEL FILTER, RACOR 30MIC 2010PM 2.728 TL 1.760 TL 968 TL — Merkez Depo İncele":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/ME02026000003978 05.09.2026":
+          - strong: 17/ME02026000003978
+          - generic: 05.09.2026
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Belirsiz Kod yok":
+          - strong: Belirsiz
+          - generic: Kod yok
+        - cell "ORCAN DENİZCİLİK / REŞAT CAN SAYAR DBS025":
+          - strong: ORCAN DENİZCİLİK / REŞAT CAN SAYAR
+          - generic: DBS025
+        - cell "PRIMARY FUEL FILTER, RACOR 30MIC 2010PM":
+          - strong: PRIMARY FUEL FILTER, RACOR 30MIC
+          - generic: 2010PM
+        - cell "2.728 TL":
+          - strong: 2.728 TL
+        - cell "1.760 TL"
+        - cell "968 TL —":
+          - strong: 968 TL
+          - generic: —
+        - cell "Merkez Depo":
+          - strong: Merkez Depo
+        - cell "İncele":
+          - generic: İncele
+      - row "Detayı aç 91/ME02026000003981 05.09.2026 Yedek Parça Satış Can Belikırık CBELIKIRIK FETHİYE MARİNE YATÇILIK LTD. ŞTİ. 1790 KARGO - NAVLUN BEDELİ KARGO 700 TL 2.500 TL -1.800 TL — Merkez Depo Eşleme":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/ME02026000003981 05.09.2026":
+          - strong: 91/ME02026000003981
+          - generic: 05.09.2026
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Can Belikırık CBELIKIRIK":
+          - strong: Can Belikırık
+          - generic: CBELIKIRIK
+        - cell "FETHİYE MARİNE YATÇILIK LTD. ŞTİ. 1790":
+          - strong: FETHİYE MARİNE YATÇILIK LTD. ŞTİ.
+          - generic: "1790"
+        - cell "KARGO - NAVLUN BEDELİ KARGO":
+          - strong: KARGO - NAVLUN BEDELİ
+          - generic: KARGO
+        - cell "700 TL":
+          - strong: 700 TL
+        - cell "2.500 TL"
+        - cell "-1.800 TL —":
+          - strong: "-1.800 TL"
+          - generic: —
+        - cell "Merkez Depo":
+          - strong: Merkez Depo
+        - cell "Eşleme":
+          - generic: Eşleme
+      - row "Detayı aç 91/PRK-38958 05.09.2026 Yedek Parça Satış Can Belikırık CBELIKIRIK HASAN YİĞİT A1499 PAWL OIL, FOR SPRINGS & PAWLS, HARKEN BK4521 683 TL 416 TL 266 TL — Merkez Depo Eşleme":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38958 05.09.2026":
+          - strong: 91/PRK-38958
+          - generic: 05.09.2026
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Can Belikırık CBELIKIRIK":
+          - strong: Can Belikırık
+          - generic: CBELIKIRIK
+        - cell "HASAN YİĞİT A1499":
+          - strong: HASAN YİĞİT
+          - generic: A1499
+        - cell "PAWL OIL, FOR SPRINGS & PAWLS, HARKEN BK4521":
+          - strong: PAWL OIL, FOR SPRINGS & PAWLS, HARKEN
+          - generic: BK4521
+        - cell "683 TL":
+          - strong: 683 TL
+        - cell "416 TL"
+        - cell "266 TL —":
+          - strong: 266 TL
+          - generic: —
+        - cell "Merkez Depo":
+          - strong: Merkez Depo
+        - cell "Eşleme":
+          - generic: Eşleme
+      - row "Detayı aç 91/PRK-38959 05.09.2026 Yedek Parça Satış Tuğrul Semiz TSEMIZ DURAN YAYALIK - HİLAL MARİN- A2412 RW PUMP LIP SEAL, YANMAR 128990-42580 659 TL 359 TL 300 TL — Merkez Depo Eşleme":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38959 05.09.2026":
+          - strong: 91/PRK-38959
+          - generic: 05.09.2026
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Tuğrul Semiz TSEMIZ":
+          - strong: Tuğrul Semiz
+          - generic: TSEMIZ
+        - cell "DURAN YAYALIK - HİLAL MARİN- A2412":
+          - strong: DURAN YAYALIK - HİLAL MARİN-
+          - generic: A2412
+        - cell "RW PUMP LIP SEAL, YANMAR 128990-42580":
+          - strong: RW PUMP LIP SEAL, YANMAR
+          - generic: 128990-42580
+        - cell "659 TL":
+          - strong: 659 TL
+        - cell "359 TL"
+        - cell "300 TL —":
+          - strong: 300 TL
+          - generic: —
+        - cell "Merkez Depo":
+          - strong: Merkez Depo
+        - cell "Eşleme":
+          - generic: Eşleme
+      - row "Detayı aç 91/PRK-38958 05.09.2026 Yedek Parça Satış Can Belikırık CBELIKIRIK HASAN YİĞİT A1499 WINCH GREASE WHITE, HARKEN BK4513 632 TL 385 TL 246 TL — Merkez Depo Eşleme":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38958 05.09.2026":
+          - strong: 91/PRK-38958
+          - generic: 05.09.2026
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Can Belikırık CBELIKIRIK":
+          - strong: Can Belikırık
+          - generic: CBELIKIRIK
+        - cell "HASAN YİĞİT A1499":
+          - strong: HASAN YİĞİT
+          - generic: A1499
+        - cell "WINCH GREASE WHITE, HARKEN BK4513":
+          - strong: WINCH GREASE WHITE, HARKEN
+          - generic: BK4513
+        - cell "632 TL":
+          - strong: 632 TL
+        - cell "385 TL"
+        - cell "246 TL —":
+          - strong: 246 TL
+          - generic: —
+        - cell "Merkez Depo":
+          - strong: Merkez Depo
+        - cell "Eşleme":
+          - generic: Eşleme
+      - row "Detayı aç 91/PRK-38952 05.09.2026 Servis Furkan Çakır FURKAN STEPHAN KOHLER YAT TUR. İNŞ. TİC. LTD. ŞTİ. A945 OIL FILTER, YANMAR 129150-35170 236 TL 136 TL 100 TL — Yatmarin Depo Eşleme":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38952 05.09.2026":
+          - strong: 91/PRK-38952
+          - generic: 05.09.2026
+        - cell "Servis":
+          - generic: Servis
+        - cell "Furkan Çakır FURKAN":
+          - strong: Furkan Çakır
+          - generic: FURKAN
+        - cell "STEPHAN KOHLER YAT TUR. İNŞ. TİC. LTD. ŞTİ. A945":
+          - strong: STEPHAN KOHLER YAT TUR. İNŞ. TİC. LTD. ŞTİ.
+          - generic: A945
+        - cell "OIL FILTER, YANMAR 129150-35170":
+          - strong: OIL FILTER, YANMAR
+          - generic: 129150-35170
+        - cell "236 TL":
+          - strong: 236 TL
+        - cell "136 TL"
+        - cell "100 TL —":
+          - strong: 100 TL
+          - generic: —
+        - cell "Yatmarin Depo":
+          - strong: Yatmarin Depo
+        - cell "Eşleme":
+          - generic: Eşleme
+      - row "Detayı aç 91/PRK-38951 05.09.2026 Servis Furkan Çakır FURKAN STEPHAN KOHLER YAT TUR. İNŞ. TİC. LTD. ŞTİ. A945 OIL FILTER, YANMAR 129150-35170 236 TL 136 TL 100 TL — Yatmarin Depo Eşleme":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38951 05.09.2026":
+          - strong: 91/PRK-38951
+          - generic: 05.09.2026
+        - cell "Servis":
+          - generic: Servis
+        - cell "Furkan Çakır FURKAN":
+          - strong: Furkan Çakır
+          - generic: FURKAN
+        - cell "STEPHAN KOHLER YAT TUR. İNŞ. TİC. LTD. ŞTİ. A945":
+          - strong: STEPHAN KOHLER YAT TUR. İNŞ. TİC. LTD. ŞTİ.
+          - generic: A945
+        - cell "OIL FILTER, YANMAR 129150-35170":
+          - strong: OIL FILTER, YANMAR
+          - generic: 129150-35170
+        - cell "236 TL":
+          - strong: 236 TL
+        - cell "136 TL"
+        - cell "100 TL —":
+          - strong: 100 TL
+          - generic: —
+        - cell "Yatmarin Depo":
+          - strong: Yatmarin Depo
+        - cell "Eşleme":
+          - generic: Eşleme
+      - row "Detayı aç 91/PRK-38950 05.09.2026 Servis Furkan Çakır FURKAN STEPHAN KOHLER YAT TUR. İNŞ. TİC. LTD. ŞTİ. A945 OIL FILTER, YANMAR 129150-35170 236 TL 136 TL 100 TL — Yatmarin Depo Eşleme":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38950 05.09.2026":
+          - strong: 91/PRK-38950
+          - generic: 05.09.2026
+        - cell "Servis":
+          - generic: Servis
+        - cell "Furkan Çakır FURKAN":
+          - strong: Furkan Çakır
+          - generic: FURKAN
+        - cell "STEPHAN KOHLER YAT TUR. İNŞ. TİC. LTD. ŞTİ. A945":
+          - strong: STEPHAN KOHLER YAT TUR. İNŞ. TİC. LTD. ŞTİ.
+          - generic: A945
+        - cell "OIL FILTER, YANMAR 129150-35170":
+          - strong: OIL FILTER, YANMAR
+          - generic: 129150-35170
+        - cell "236 TL":
+          - strong: 236 TL
+        - cell "136 TL"
+        - cell "100 TL —":
+          - strong: 100 TL
+          - generic: —
+        - cell "Yatmarin Depo":
+          - strong: Yatmarin Depo
+        - cell "Eşleme":
+          - generic: Eşleme
+      - row "Detayı aç 91/PRK-38925 04.09.2026 Yedek Parça Satış Emre Erdoğan EERDOGAN SİRENA MARİNE DENİZCİLİK SAN. TİC.A.Ş. A335 AGM AKÜ 12V 130Ah, MASTERVOLT MV-62001300 145.253 TL 127.192 TL 18.061 TL — Merkez Depo Eşleme":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38925 04.09.2026":
+          - strong: 91/PRK-38925
+          - generic: 04.09.2026
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Emre Erdoğan EERDOGAN":
+          - strong: Emre Erdoğan
+          - generic: EERDOGAN
+        - cell "SİRENA MARİNE DENİZCİLİK SAN. TİC.A.Ş. A335":
+          - strong: SİRENA MARİNE DENİZCİLİK SAN. TİC.A.Ş.
+          - generic: A335
+        - cell "AGM AKÜ 12V 130Ah, MASTERVOLT MV-62001300":
+          - strong: AGM AKÜ 12V 130Ah, MASTERVOLT
+          - generic: MV-62001300
+        - cell "145.253 TL":
+          - strong: 145.253 TL
+        - cell "127.192 TL"
+        - cell "18.061 TL —":
+          - strong: 18.061 TL
+          - generic: —
+        - cell "Merkez Depo":
+          - strong: Merkez Depo
+        - cell "Eşleme":
+          - generic: Eşleme
+      - row "Detayı aç 17/ME02026000003969 04.09.2026 Yedek Parça Satış Can Belikırık CBELIKIRIK DENPAR MAKİNA SAN VE TİC A.Ş. S001 FRESH WATER PUMP ASSY, KOHLER GM17513 66.644 TL 34.845 TL 31.799 TL — Merkez Depo Eşleme":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/ME02026000003969 04.09.2026":
+          - strong: 17/ME02026000003969
+          - generic: 04.09.2026
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Can Belikırık CBELIKIRIK":
+          - strong: Can Belikırık
+          - generic: CBELIKIRIK
+        - cell "DENPAR MAKİNA SAN VE TİC A.Ş. S001":
+          - strong: DENPAR MAKİNA SAN VE TİC A.Ş.
+          - generic: S001
+        - cell "FRESH WATER PUMP ASSY, KOHLER GM17513":
+          - strong: FRESH WATER PUMP ASSY, KOHLER
+          - generic: GM17513
+        - cell "66.644 TL":
+          - strong: 66.644 TL
+        - cell "34.845 TL"
+        - cell "31.799 TL —":
+          - strong: 31.799 TL
+          - generic: —
+        - cell "Merkez Depo":
+          - strong: Merkez Depo
+        - cell "Eşleme":
+          - generic: Eşleme
+      - row "Detayı aç 91/ME02026000003973 04.09.2026 Yedek Parça Satış Can Belikırık CBELIKIRIK H.C.G. İNŞAAT VE TİCARET ANONİM ŞİRKETİ 4068 AGM AKÜ 12V 90Ah, MASTERVOLT MV-62000900 39.945 TL 33.747 TL 6.197 TL — KNSY Çapraz depo Eşleme":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/ME02026000003973 04.09.2026":
+          - strong: 91/ME02026000003973
+          - generic: 04.09.2026
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Can Belikırık CBELIKIRIK":
+          - strong: Can Belikırık
+          - generic: CBELIKIRIK
+        - cell "H.C.G. İNŞAAT VE TİCARET ANONİM ŞİRKETİ 4068":
+          - strong: H.C.G. İNŞAAT VE TİCARET ANONİM ŞİRKETİ
+          - generic: "4068"
+        - cell "AGM AKÜ 12V 90Ah, MASTERVOLT MV-62000900":
+          - strong: AGM AKÜ 12V 90Ah, MASTERVOLT
+          - generic: MV-62000900
+        - cell "39.945 TL":
+          - strong: 39.945 TL
+        - cell "33.747 TL"
+        - cell "6.197 TL —":
+          - strong: 6.197 TL
+          - generic: —
+        - cell "KNSY Çapraz depo":
+          - strong: KNSY
+          - generic: Çapraz depo
+        - cell "Eşleme":
+          - generic: Eşleme
+      - row "Detayı aç 17/ME02026000003964 04.09.2026 Yedek Parça Satış Belirsiz Kod yok WEST MARİNE DENİZ MOT. VE JEN. TEKNİK SERVİSİ SAN. VE TİC. A.Ş. DBS024 PANEL ASSY,YD25 164100-30000 19.595 TL 13.029 TL 6.566 TL — Merkez Depo İncele":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/ME02026000003964 04.09.2026":
+          - strong: 17/ME02026000003964
+          - generic: 04.09.2026
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Belirsiz Kod yok":
+          - strong: Belirsiz
+          - generic: Kod yok
+        - cell "WEST MARİNE DENİZ MOT. VE JEN. TEKNİK SERVİSİ SAN. VE TİC. A.Ş. DBS024":
+          - strong: WEST MARİNE DENİZ MOT. VE JEN. TEKNİK SERVİSİ SAN. VE TİC. A.Ş.
+          - generic: DBS024
+        - cell "PANEL ASSY,YD25 164100-30000":
+          - strong: PANEL ASSY,YD25
+          - generic: 164100-30000
+        - cell "19.595 TL":
+          - strong: 19.595 TL
+        - cell "13.029 TL"
+        - cell "6.566 TL —":
+          - strong: 6.566 TL
+          - generic: —
+        - cell "Merkez Depo":
+          - strong: Merkez Depo
+        - cell "İncele":
+          - generic: İncele
+      - row "Detayı aç 91/ME02026000003966 04.09.2026 Yedek Parça Satış Emre Erdoğan EERDOGAN BARIŞ DURDU 3681 CABLE SENSOR 2 MT - 12 MM W/O CONNECTOR, OPACMARE 9532.100.014.00 18.370 TL 13.592 TL 4.779 TL — Merkez Depo Eşleme":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/ME02026000003966 04.09.2026":
+          - strong: 91/ME02026000003966
+          - generic: 04.09.2026
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Emre Erdoğan EERDOGAN":
+          - strong: Emre Erdoğan
+          - generic: EERDOGAN
+        - cell "BARIŞ DURDU 3681":
+          - strong: BARIŞ DURDU
+          - generic: "3681"
+        - cell "CABLE SENSOR 2 MT - 12 MM W/O CONNECTOR, OPACMARE 9532.100.014.00":
+          - strong: CABLE SENSOR 2 MT - 12 MM W/O CONNECTOR, OPACMARE
+          - generic: 9532.100.014.00
+        - cell "18.370 TL":
+          - strong: 18.370 TL
+        - cell "13.592 TL"
+        - cell "4.779 TL —":
+          - strong: 4.779 TL
+          - generic: —
+        - cell "Merkez Depo":
+          - strong: Merkez Depo
+        - cell "Eşleme":
+          - generic: Eşleme
+      - row "Detayı aç 91/ME02026000003968 04.09.2026 Yedek Parça Satış Can Belikırık CBELIKIRIK TUNCAR MARİNE YATÇILIK LTD.ŞTİ. DBS005 17X14X2 SDS LH ALU PROPELLER, RADICE SDS17X14X2SOL 18.335 TL 6.866 TL 11.469 TL — Merkez Depo Eşleme":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/ME02026000003968 04.09.2026":
+          - strong: 91/ME02026000003968
+          - generic: 04.09.2026
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Can Belikırık CBELIKIRIK":
+          - strong: Can Belikırık
+          - generic: CBELIKIRIK
+        - cell "TUNCAR MARİNE YATÇILIK LTD.ŞTİ. DBS005":
+          - strong: TUNCAR MARİNE YATÇILIK LTD.ŞTİ.
+          - generic: DBS005
+        - cell "17X14X2 SDS LH ALU PROPELLER, RADICE SDS17X14X2SOL":
+          - strong: 17X14X2 SDS LH ALU PROPELLER, RADICE
+          - generic: SDS17X14X2SOL
+        - cell "18.335 TL":
+          - strong: 18.335 TL
+        - cell "6.866 TL"
+        - cell "11.469 TL —":
+          - strong: 11.469 TL
+          - generic: —
+        - cell "Merkez Depo":
+          - strong: Merkez Depo
+        - cell "Eşleme":
+          - generic: Eşleme
+      - row "Detayı aç 17/ME02026000003970 04.09.2026 Yedek Parça Satış Can Belikırık CBELIKIRIK ÖZLEM YILMAZ DBS023 PUMP ASSY, WATER 128995-42501 16.177 TL 10.756 TL 5.420 TL — Merkez Depo Eşleme":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/ME02026000003970 04.09.2026":
+          - strong: 17/ME02026000003970
+          - generic: 04.09.2026
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Can Belikırık CBELIKIRIK":
+          - strong: Can Belikırık
+          - generic: CBELIKIRIK
+        - cell "ÖZLEM YILMAZ DBS023":
+          - strong: ÖZLEM YILMAZ
+          - generic: DBS023
+        - cell "PUMP ASSY, WATER 128995-42501":
+          - strong: PUMP ASSY, WATER
+          - generic: 128995-42501
+        - cell "16.177 TL":
+          - strong: 16.177 TL
+        - cell "10.756 TL"
+        - cell "5.420 TL —":
+          - strong: 5.420 TL
+          - generic: —
+        - cell "Merkez Depo":
+          - strong: Merkez Depo
+        - cell "Eşleme":
+          - generic: Eşleme
+      - row "Detayı aç 91/ME02026000003975 04.09.2026 Yedek Parça Satış Can Belikırık CBELIKIRIK FEBA YATÇILIK ANONİM ŞİRKETİ 3493 TWIST DECK SHOWER MIX/GREY/AN DS0006 13.286 TL 9.466 TL 3.821 TL — Merkez Depo Eşleme":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/ME02026000003975 04.09.2026":
+          - strong: 91/ME02026000003975
+          - generic: 04.09.2026
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Can Belikırık CBELIKIRIK":
+          - strong: Can Belikırık
+          - generic: CBELIKIRIK
+        - cell "FEBA YATÇILIK ANONİM ŞİRKETİ 3493":
+          - strong: FEBA YATÇILIK ANONİM ŞİRKETİ
+          - generic: "3493"
+        - cell "TWIST DECK SHOWER MIX/GREY/AN DS0006":
+          - strong: TWIST DECK SHOWER MIX/GREY/AN
+          - generic: DS0006
+        - cell "13.286 TL":
+          - strong: 13.286 TL
+        - cell "9.466 TL"
+        - cell "3.821 TL —":
+          - strong: 3.821 TL
+          - generic: —
+        - cell "Merkez Depo":
+          - strong: Merkez Depo
+        - cell "Eşleme":
+          - generic: Eşleme
+      - row "Detayı aç 91/ME02026000003977 04.09.2026 Yedek Parça Satış Can Belikırık CBELIKIRIK SEAWIND MARİNE DENİZCİLİK ANONİM ŞİRKETİ 3685 IMPELLER KIT, YANMAR 129670-42610 11.084 TL 6.142 TL 4.942 TL — Merkez Depo Eşleme":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/ME02026000003977 04.09.2026":
+          - strong: 91/ME02026000003977
+          - generic: 04.09.2026
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Can Belikırık CBELIKIRIK":
+          - strong: Can Belikırık
+          - generic: CBELIKIRIK
+        - cell "SEAWIND MARİNE DENİZCİLİK ANONİM ŞİRKETİ 3685":
+          - strong: SEAWIND MARİNE DENİZCİLİK ANONİM ŞİRKETİ
+          - generic: "3685"
+        - cell "IMPELLER KIT, YANMAR 129670-42610":
+          - strong: IMPELLER KIT, YANMAR
+          - generic: 129670-42610
+        - cell "11.084 TL":
+          - strong: 11.084 TL
+        - cell "6.142 TL"
+        - cell "4.942 TL —":
+          - strong: 4.942 TL
+          - generic: —
+        - cell "Merkez Depo":
+          - strong: Merkez Depo
+        - cell "Eşleme":
+          - generic: Eşleme
+  - navigation "Belge defteri sayfaları":
+    - button "Önceki" [disabled]
+    - generic: Sayfa 1 / 886
+    - button "Sonraki"
+- generic: Servis

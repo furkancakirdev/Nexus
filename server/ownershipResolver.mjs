@@ -541,6 +541,9 @@ export function resolveCommercialOwnership({
 
   const consensusActors = [];
   for (const row of evidenceDocuments.filter((item) => isPlausibleSourceDocument(item, economic))) {
+    const economicWeight = Math.abs(number(
+      row.netSales ?? row.netAmount ?? row.amount ?? row.grossAmount ?? economic.netSales ?? economic.amount,
+    ));
     for (const [field, value] of [["preparerUser", row.preparerUser], ["entryUser", row.entryUser]]) {
       const selected = actorEvidence(
         value,
@@ -549,19 +552,31 @@ export function resolveCommercialOwnership({
         excludedActors,
         `${documentKey(row)}:${field}`,
       );
-      if (selected) consensusActors.push(selected);
+      if (selected) consensusActors.push({ selected, economicWeight, field, row });
     }
   }
-  const distinctConsensusActors = [...new Map(consensusActors.map((item) => [item.code, item])).values()];
+  const weightedConsensus = [...new Map(consensusActors.map((item) => [item.selected.code, item])).values()]
+    .map((item) => ({
+      ...item,
+      totalWeight: consensusActors
+        .filter((candidate) => candidate.selected.code === item.selected.code)
+        .reduce((total, candidate) => total + candidate.economicWeight, 0),
+    }))
+    .sort((left, right) => right.totalWeight - left.totalWeight || left.selected.code.localeCompare(right.selected.code, "tr"));
+  const distinctConsensusActors = weightedConsensus.map((item) => item.selected);
   const consensusDepartments = new Set(distinctConsensusActors.map((item) => item.identity.department));
-  if (distinctConsensusActors.length >= 2 && consensusDepartments.size === 1) {
+  if (weightedConsensus.length > 0 && consensusDepartments.size === 1) {
+    const winner = weightedConsensus[0];
+    const tied = weightedConsensus.length > 1 && winner.totalWeight === weightedConsensus[1].totalWeight;
     return selectedResult({
-      department: [...consensusDepartments][0],
-      method: "same-department-consensus",
-      confidence: "review",
+      selected: tied ? null : winner.selected,
+      department: tied ? "review" : winner.selected.identity.department,
+      method: tied ? "preparer-tie-review" : "preparer-economic-weight",
+      confidence: tied ? "review" : "inferred",
       evidence: {
         ...baseEvidence,
         consensusActors: distinctConsensusActors.map((item) => item.code),
+        weightedConsensus: weightedConsensus.map((item) => ({ code: item.selected.code, totalWeight: item.totalWeight })),
       },
       evidenceDocuments,
       actorEvents: events,

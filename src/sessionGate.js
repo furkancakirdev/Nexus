@@ -8,7 +8,7 @@ export const CLIENT_CAPABILITIES = Object.freeze({
 });
 
 // Envanter araştırması route sözleşmesi: page: "inventory", label: "Stok".
-export const NAV_ITEMS = MODULE_REGISTRY;
+export const NAV_ITEMS = Object.freeze(MODULE_REGISTRY.filter((item) => item.active));
 
 export function hasCapability(user, capability) {
   return user?.role === "admin"

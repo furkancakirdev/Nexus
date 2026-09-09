@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { IconAlertTriangle, IconBuilding, IconChartBar, IconDatabase, IconDiscount, IconReportAnalytics, IconSearch, IconUsers, IconWallet } from "@tabler/icons-react";
 import { calculateDepartmentDistribution } from "./distribution";
+import { FinancialVisibilityPanel } from "./components/FinancialVisibilityPanel.jsx";
 
 const moneyFormatter=new Intl.NumberFormat("tr-TR",{maximumFractionDigits:0});
 const money={format:(value)=>value===null||value===undefined?"—":moneyFormatter.format(value)};
@@ -14,7 +15,10 @@ const pilotMethodRates={configuredLabor:"labor",configuredSrf:"srf",configuredTs
 const REPORT_CHART_COLORS = { sales: "var(--chart-sales)", profit: "var(--chart-profit)" };
 
 export function isBrandChartVisible({ active, loading, error, brand }) {
-  return active === "summary" && !loading && !error && brand.length > 0;
+  return active === "summary"
+    && !loading
+    && !error
+    && brand.some((item) => Number.isFinite(Number(item?.netSales)));
 }
 
 export function AccessibleChartLegend({ label, items }) {
@@ -39,7 +43,7 @@ export function ReportsPage({settings,employees,targetRows,annualPool,year,rows,
     ? "CPM öncelikli · TCMB fallback"
     : "Halkbank alış kuru";
   const reviewNetSales = canonicalMetric?.scope?.costReview?.netSales ?? null;
-  const reviewLines = canonicalMetric?.scope?.costReview?.lines ?? 0;
+  const reviewLines = canonicalMetric?.scope?.costReview?.lines ?? null;
   const currencyBaskets = Object.entries(canonicalMetric?.byCurrency || {})
     .filter(([, basket]) => Number(basket?.lineCount || 0) > 0);
   const toEurRows=(items)=>(items||[]).map((item)=>({...item,netSales:item.eurEquivalent?.netSales??null,cost:item.eurEquivalent?.cost??null,profit:item.eurEquivalent?.profit??null,margin:item.eurEquivalent?.margin??null}));
@@ -59,8 +63,8 @@ export function ReportsPage({settings,employees,targetRows,annualPool,year,rows,
     cost:null,
     profit:null,
     margin:null,
-    discount:0,
-    returns:0,
+    discount:null,
+    returns:null,
   }));
   const datasets={brand,dealer,channel,service,cost:costs,confidence,pool};
   const current=datasets[active]||[];
@@ -69,6 +73,7 @@ export function ReportsPage({settings,employees,targetRows,annualPool,year,rows,
   return <main className="page reports-page" id="top"><section className="page-heading reports-heading"><div><p className="eyebrow">CPM iş analitiği</p><h1>Raporlar Merkezi</h1><p>Satış, kârlılık, marka, bayi, kanal, servis, maliyet ve havuz sonuçlarını tek merkezde inceleyin.</p></div><span className={`source-badge source-badge--${loading ? "loading" : error ? "demo" : "live"}`}>{loading?"CPM okunuyor…":error?"Veri kullanılamıyor":"CPM canlı · salt okunur"}</span></section>
   {loading && <div className="report-state report-state--loading" role="status" aria-live="polite">Rapor verileri yükleniyor…</div>}
   {error && <div className="report-state report-state--error" role="alert">{error}</div>}
+  <FinancialVisibilityPanel metric={canonicalMetric} title="Raporlanan kârlılık · tüm görünür kapsam" />
   <section className="report-kpis"><article><span><IconChartBar/></span><div><small>Net satış · EUR</small><strong>{eurNetSales == null ? "—" : eurFormat.format(eurNetSales)}</strong><p>{eurRateCount ? `${eurRateSourceLabel} · ${eurRateCount} dönem` : "Kur kanıtı bekleniyor"}</p></div></article><article><span className="report-kpi--green"><IconWallet/></span><div><small>Hesaplanan kâr · EUR</small><strong>{eurProfit == null ? "—" : eurFormat.format(eurProfit)}</strong><p>{eurComplete ? "Doğrulanmış WAC ve kur seti karşılığı" : "Maliyet kanıtı bekleniyor"}</p></div></article><article><span className="report-kpi--blue"><IconBuilding/></span><div><small>Bayi satışı · EUR</small><strong>{projections.summary?.dealerEurNetSales == null ? "—" : eurFormat.format(projections.summary.dealerEurNetSales)}</strong><p>DBS kodlu {dealer.length} bayi · EUR kanıtı</p></div></article><article><span className="report-kpi--amber"><IconDatabase/></span><div><small>Teknik servis · EUR</small><strong>{projections.summary?.serviceEurNetSales == null ? "—" : eurFormat.format(projections.summary.serviceEurNetSales)}</strong><p>Kaynak evrak 64 · EUR kanıtı</p></div></article><article><span className="report-kpi--amber"><IconAlertTriangle/></span><div><small>İnceleme gerekli · kaynak TRY</small><strong>{reviewNetSales == null ? "—" : `${money.format(reviewNetSales)} TL`}</strong><p>{reviewLines} satırda resmî kâr yayınlanmaz</p></div></article></section>
   <section className="panel"><div className="report-tabs">{tabs.map(([id,label])=><button key={id} className={active===id?"active":""} onClick={()=>setActive(id)}>{label}</button>)}</div></section>
   {active === "summary" && <>
@@ -82,7 +87,7 @@ export function ReportsPage({settings,employees,targetRows,annualPool,year,rows,
     </section>
     <div className="report-grid">
       <section className="panel department-report"><div className="panel-heading"><div><h2>En Yüksek Net Satışlı Markalar</h2><p>EUR karşılığı · KDV hariç</p></div></div>
-        {!loading&&!error&&!brand.length ? <div className="report-state report-state--empty">Marka grafiği için veri bulunamadı.</div> : !loading&&!error && <div className="report-chart" role="img" aria-label="Marka satış ve kâr grafiği"><ResponsiveContainer width="100%" height={320}><BarChart data={brand.slice(0,10)}><CartesianGrid vertical={false} stroke="var(--chart-grid)"/><XAxis dataKey="name" tick={{fontSize:10,fill:"var(--muted)"}}/><YAxis tickFormatter={(v)=>`${Math.round(v/1e6)} Mn`} tick={{fill:"var(--muted)"}}/><Tooltip formatter={(v)=>eurFormat.format(v)}/><Legend iconType="square" wrapperStyle={{fontSize:12}}/><Bar dataKey="netSales" name="Net satış · EUR" fill={REPORT_CHART_COLORS.sales} radius={[3,3,0,0]}/><Bar dataKey="profit" name="Kâr · EUR" fill={REPORT_CHART_COLORS.profit} radius={[3,3,0,0]}/></BarChart></ResponsiveContainer></div>}
+        {!loading&&!error&&!brand.some((item) => Number.isFinite(Number(item?.netSales))) ? <div className="report-state report-state--empty">Marka grafiği gösterilemiyor: EUR kur kanıtı veya sayısal net satış kapsamı tamamlanmadı.</div> : !loading&&!error && <div className="report-chart" role="img" aria-label="Marka satış ve kâr grafiği"><ResponsiveContainer width="100%" height={320}><BarChart data={brand.slice(0,10)}><CartesianGrid vertical={false} stroke="var(--chart-grid)"/><XAxis dataKey="name" tick={{fontSize:10,fill:"var(--muted)"}}/><YAxis tickFormatter={(v)=>`${Math.round(v/1e6)} Mn`} tick={{fill:"var(--muted)"}}/><Tooltip formatter={(v)=>v == null ? "—" : eurFormat.format(v)}/><Legend iconType="square" wrapperStyle={{fontSize:12}}/><Bar dataKey="netSales" name="Net satış · EUR" fill={REPORT_CHART_COLORS.sales} radius={[3,3,0,0]}/><Bar dataKey="profit" name="Kâr · EUR" fill={REPORT_CHART_COLORS.profit} radius={[3,3,0,0]}/></BarChart></ResponsiveContainer></div>}
       </section>
       <aside className="report-notes"><div className="report-notes__head"><IconReportAnalytics/><strong>Yönetim Özeti</strong></div><ul><li>{brand.length} marka satış hareketi oluşturdu.</li><li>DBS kodlu bayiler {projections.summary?.dealerEurNetSales == null ? "—" : eurFormat.format(projections.summary.dealerEurNetSales)} EUR net satış yarattı.</li><li>Teknik servis kaynaklı satış {projections.summary?.serviceEurNetSales == null ? "—" : eurFormat.format(projections.summary.serviceEurNetSales)} EUR.</li><li>{confidence.find(r=>r.name==="İnceleme gerekli")?.lines||0} satır maliyet incelemesi bekliyor.</li></ul></aside>
     </div>

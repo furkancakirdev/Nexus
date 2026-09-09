@@ -12,6 +12,7 @@ import { buildInventoryResearchPayload } from "./inventoryResearchApi.mjs";
 import { buildInventoryOpeningResearchPayload } from "./inventoryOpeningResearch.mjs";
 import { aggregateFinancialMetric, FINANCIAL_ROWS } from "../shared/financialMetric.mjs";
 import { normalizeExchangeRateSet } from "./exchangeRateSet.mjs";
+import { normalizeInvoiceAuditRequest } from "./cpmInvoiceAudit.mjs";
 
 const MONTH_NAMES = [
   "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
@@ -24,7 +25,6 @@ const AUDIT_METHODS = new Set([
 ]);
 const AUDIT_VERIFICATIONS = new Set(["verified", "configured", "review", "excluded"]);
 const AUDIT_SOURCES = new Set(["invoice", "provisional", "return"]);
-const EXCLUDED_INCOME_CODES = new Set(["KOMISYON", "GD-0187", "GD-0079", "PDI"]);
 const overviewRowsCache = new WeakMap();
 const auditRowsCache = new WeakMap();
 const departmentAnalysisCache = new WeakMap();
@@ -105,12 +105,7 @@ function pilotCardKey(productCode) {
   return null;
 }
 
-function isExcludedIncome(productCode) {
-  return EXCLUDED_INCOME_CODES.has(normalizedCode(productCode));
-}
-
 function configuredCostMethod(productCode) {
-  if (isExcludedIncome(productCode)) return "excludedIncome";
   const methods = {
     labor: "configuredLabor",
     srf: "configuredSrf",
@@ -179,7 +174,6 @@ export function buildOverviewRows(ledger) {
   }
   const months = new Map();
   for (const row of ledger?.rows || []) {
-    if (isExcludedIncome(row.productCode)) continue;
     const month = monthOf(row.documentDate);
     if (!month) continue;
     const target = months.get(month) || emptyOverviewMonth(month);
@@ -312,8 +306,6 @@ function overviewNetSales(rows) {
  */
 export function buildInvoiceReconciliation(ledger, overviewRows = buildOverviewRows(ledger)) {
   const sourceRows = Array.isArray(ledger?.rows) ? ledger.rows : [];
-  const excludedIncomeRows = sourceRows.filter((row) => isExcludedIncome(row.productCode));
-  const includedRows = sourceRows.filter((row) => !isExcludedIncome(row.productCode));
   const sumSource = (rows) => rows.reduce((total, row) => ({
     grossSales: total.grossSales + (row.isSale ? number(row.grossAmount) : 0),
     returns: total.returns + (row.isSale ? 0 : number(row.netAmount)),
@@ -326,8 +318,8 @@ export function buildInvoiceReconciliation(ledger, overviewRows = buildOverviewR
     grossSales: 0, returns: 0, discounts: 0, netSales: 0, vatAmount: 0,
     invoiceTotalInclVat: 0, rows: 0,
   });
-  const source = sumSource(includedRows);
-  const excludedIncome = sumSource(excludedIncomeRows);
+  const source = sumSource(sourceRows);
+  const excludedIncome = sumSource([]);
   const nexus = (overviewRows || []).reduce((total, row) => {
     const pilotEntries = Object.values(row.pilotCards || {});
     const pilotSales = pilotEntries.reduce((sum, card) => sum + number(card.sales), 0);
@@ -348,10 +340,10 @@ export function buildInvoiceReconciliation(ledger, overviewRows = buildOverviewR
     netSales: source.netSales - nexus.netSales,
   };
   const sourceMinor = {
-    grossSales: sumMinorUnits(includedRows, (row) => row.isSale ? row.grossAmount : 0),
-    returns: sumMinorUnits(includedRows, (row) => row.isSale ? 0 : row.netAmount),
-    discounts: sumMinorUnits(includedRows, (row) => row.isSale ? row.discountAmount : 0),
-    netSales: sumMinorUnits(includedRows, (row) => row.signedNetSales),
+    grossSales: sumMinorUnits(sourceRows, (row) => row.isSale ? row.grossAmount : 0),
+    returns: sumMinorUnits(sourceRows, (row) => row.isSale ? 0 : row.netAmount),
+    discounts: sumMinorUnits(sourceRows, (row) => row.isSale ? row.discountAmount : 0),
+    netSales: sumMinorUnits(sourceRows, (row) => row.signedNetSales),
   };
   const nexusMinor = {
     grossSales: sumMinorUnits(overviewRows || [], (row) => number(row.sales) + Object.values(row.pilotCards || {}).reduce((sum, card) => sum + number(card.sales), 0)),
@@ -388,8 +380,8 @@ export function buildInvoiceReconciliation(ledger, overviewRows = buildOverviewR
     differences,
     exactMinorUnitDifferences,
     breakdown,
-    excludedIncomeCodes: [...EXCLUDED_INCOME_CODES],
-    note: "KDV hariç net ciro ve KDV dahil fatura toplamı ayrı tutulur; kapsam dışı ve inceleme satırları ayrıca izlenir.",
+    excludedIncomeCodes: [],
+    note: "KDV hariç net ciro ve KDV dahil fatura toplamı ayrı tutulur; KOMISYON, GD-0187, GD-0079 ve PDI ilgili departman ve kişi toplamlarına dahil edilir. Maliyet kanıtı eksik satırlar yine incelemede kalır.",
   };
 }
 
@@ -429,7 +421,6 @@ export function buildSourceRowProvenanceDiagnostic(ledger) {
     if (row?.convertedToFinal || row?.convertedRetail || row?.isConvertedRetail) {
       return { disposition: "converted", reason: "converted-to-final" };
     }
-    if (isExcludedIncome(row?.productCode)) return { disposition: "excluded-income", reason: "excluded-income-code" };
     return { disposition: "included", reason: null };
   };
   const scopeClassificationOf = ({ disposition }) => ({
@@ -478,7 +469,7 @@ export function buildSourceRowProvenanceDiagnostic(ledger) {
       nullSourceRowIds,
       duplicateSourceRowIds,
       includedRows: rows.filter((row) => row.disposition === "included").length,
-      excludedIncomeRows: rows.filter((row) => row.disposition === "excluded-income").length,
+      excludedIncomeRows: 0,
       unmatchedRows: rows.length,
     },
     rows,
@@ -922,7 +913,6 @@ function normalizedDifference(value) {
 
 function economicScopeNetSales(ledger) {
   return (ledger?.rows || [])
-    .filter((row) => !isExcludedIncome(row.productCode))
     .reduce((sum, row) => sum + number(row.signedNetSales), 0);
 }
 
@@ -1261,6 +1251,7 @@ export function createUnifiedLedgerRouter({
   departmentTargetLoader,
   sourceProvenanceLoader,
   inventoryOpeningResearchLoader,
+  rawInvoiceAuditLoader,
   logger = console,
 } = {}) {
   if (!ledgerService || typeof ledgerService.get !== "function") {
@@ -1337,7 +1328,7 @@ export function createUnifiedLedgerRouter({
         return [month, resolved.rateSet];
       }));
       const annualCanonicalMetric = aggregateFinancialMetric(
-        (snapshot.value.rows || []).filter((row) => !isExcludedIncome(row.productCode)).map((row) => ({
+        (snapshot.value.rows || []).map((row) => ({
           signedNetSalesTry: row.signedNetSales,
           grossSalesTry: row.isSale ? row.grossAmount : 0,
           returnsTry: row.isSale ? 0 : row.netAmount,
@@ -1426,6 +1417,48 @@ export function createUnifiedLedgerRouter({
     } catch (error) {
       logger.error("Marlin Nexus invoice reconciliation failed:", error);
       return response.status(500).json({ year, mode: "error", ...retainedMetadata(ledgerService, year), error: "CPM fatura uzlaştırması okunamadı." });
+    }
+  });
+
+  router.get("/api/reconciliation/raw-invoices", async (request, response) => {
+    const year = validYear(request.query.year);
+    if (!year) return response.status(400).json({ error: "Geçersiz yıl.", ...INVALID_METADATA });
+    if (typeof rawInvoiceAuditLoader !== "function") {
+      return response.status(503).json({
+        year,
+        mode: "unavailable",
+        evidence: { status: "unavailable", official: false, queryId: "invoice-audit-bounded-v1" },
+        error: "CPM ham fatura kanıtı yükleyicisi yapılandırılmadı.",
+      });
+    }
+    const pagination = normalizeInvoiceAuditRequest(request.query);
+    if (!pagination.valid) {
+      return response.status(400).json({
+        year,
+        mode: "error",
+        error: `Geçersiz sayfalama parametresi: ${pagination.error}.`,
+      });
+    }
+    try {
+      const payload = await rawInvoiceAuditLoader(year, pagination);
+      if (!payload) {
+        return response.status(503).json({
+          year,
+          mode: "unavailable",
+          evidence: { status: "unavailable", official: false, queryId: "invoice-audit-bounded-v1" },
+          error: "CPM ham fatura kanıtı okunamadı.",
+        });
+      }
+      response.setHeader("Cache-Control", "no-store");
+      return response.json(payload);
+    } catch (error) {
+      logger.error("Marlin Nexus bounded CPM invoice audit failed:", error);
+      return response.status(500).json({
+        year,
+        mode: "error",
+        evidence: { status: "error", official: false, queryId: "invoice-audit-bounded-v1" },
+        error: "CPM ham fatura kanıtı okunamadı.",
+      });
     }
   });
 

@@ -23,6 +23,7 @@ export function evaluateReleaseReadiness({
     blockers.push("source-provenance-unverified");
   }
   if (inventorySource?.status !== "verified") blockers.push("inventory-source-not-verified");
+  if (inventorySource?.reviewReason) blockers.push("inventory-source-review-required");
   if (inventorySource && inventorySource.financialStatus !== "ready") {
     blockers.push("official-cost-coverage-insufficient");
   }

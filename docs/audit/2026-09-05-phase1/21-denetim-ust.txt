@@ -1,0 +1,884 @@
+- banner:
+  - link "Marlin Nexus Yönetim Sistemi":
+    - /url: "#top"
+    - strong: Marlin Nexus
+    - generic: Yönetim Sistemi
+  - navigation "Ana menü":
+    - button "Genel Bakış"
+    - button "Satış Analizi"
+    - button "Departman Analizi"
+    - button "Denetim" [active]
+    - button "Stok"
+    - button "Havuz"
+    - button "Ayarlar"
+  - combobox "Yıl":
+    - option "2024"
+    - option "2025"
+    - option "2026" [selected]
+  - button "Görünüm ayarları":
+  - button "Çıkış yap":
+- main:
+  - paragraph: Finansal izlenebilirlik
+  - heading "CPM Denetim Merkezi" [level=1]
+  - paragraph: Hesaplamaya giren, oranla değerlendirilen, dışlanan ve inceleme bekleyen tüm belge satırlarını doğrulayın.
+  - generic: CPM canlı · salt okunur
+  - article:
+    - generic: Filtrelenen satır
+    - strong: "22.224"
+    - paragraph: 229.872.038 TL net hareket · kapsam dışı dahil
+    - generic: "Kapsam dışı: 617.127,34 TL"
+  - article:
+    - generic: Doğrulanan
+    - strong: "21.046"
+    - paragraph: 18.146 fatura · 2.900 oran
+  - article:
+    - generic: İnceleme / iade kontrolü
+    - strong: "1.099"
+    - paragraph: 0 satırda müşteri iadesi maliyetten ayıklandı
+  - article:
+    - generic: Kapsam dışı
+    - strong: "79"
+    - paragraph: Kâra ve havuza alınmaz
+  - heading "Belge ve Hesap Satırları" [level=2]
+  - paragraph: 2026 · sayfa 1/445 · 22.224 sonuç
+  - button "Tüm veriyi indir":
+    - text: Tüm veriyi indir
+  - textbox:
+    - /placeholder: Evrak no, stok kodu, ürün veya alım faturası ara
+  - generic: Ay
+  - combobox "Ay":
+    - option "Tümü" [selected]
+    - option "Ocak"
+    - option "Şubat"
+    - option "Mart"
+    - option "Nisan"
+    - option "Mayıs"
+    - option "Haziran"
+    - option "Temmuz"
+    - option "Ağustos"
+    - option "Eylül"
+    - option "Ekim"
+    - option "Kasım"
+    - option "Aralık"
+  - generic: Belge
+  - combobox "Belge":
+    - option "Tümü" [selected]
+    - option "13 · Teklif"
+    - option "14 · Satış siparişi"
+    - option "15 · Satış irsaliyesi"
+    - option "17 · Satış faturası"
+    - option "18 · Satış iadesi"
+    - option "64 · Sipariş onay"
+    - option "85 · Nihai fatura"
+    - option "91 · Perakende satış"
+  - generic: Kaynak
+  - combobox "Kaynak":
+    - option "Tümü" [selected]
+    - option "Nihai fatura"
+    - option "Kapanmış / aktarılmış"
+    - option "Satış iadesi"
+  - generic: Doğrulama
+  - combobox "Doğrulama":
+    - option "Tümü" [selected]
+    - option "Faturayla doğrulandı"
+    - option "Oranla hesaplandı"
+    - option "İnceleme gerekli"
+    - option "Kapsam dışı"
+  - generic: Maliyet yöntemi
+  - combobox "Maliyet yöntemi":
+    - option "Tümü" [selected]
+    - option "Toplu alım stoku"
+    - option "İade hariç önceki son alım"
+    - option "İade hariç sonraki ilk alım"
+    - option "Orijinal satış maliyeti"
+    - option "İşçilik oranı"
+    - option "SRF / BARNACLE oranı"
+    - option "TSR oranı"
+    - option "YOL oranı"
+    - option "Alım bulunamadı"
+    - option "Kapsam dışı gelir"
+  - generic: İade kontrolü
+  - combobox "İade kontrolü":
+    - option "Tümü" [selected]
+    - option "İade ayıklananlar"
+    - option "İade kanıtı olmayanlar"
+  - generic "Denetim tablosunda yatay kaydırma"
+  - table:
+    - rowgroup:
+      - row "Detay Belge Stok / hizmet Satış net KDV hariç Satır maliyeti KDV hariç Brüt kâr KDV hariç Doğrulama":
+        - columnheader "Detay"
+        - columnheader "Belge"
+        - columnheader "Stok / hizmet"
+        - columnheader "Satış net KDV hariç":
+          - text: Satış net
+          - generic: KDV hariç
+        - columnheader "Satır maliyeti KDV hariç":
+          - text: Satır maliyeti
+          - generic: KDV hariç
+        - columnheader "Brüt kâr KDV hariç":
+          - text: Brüt kâr
+          - generic: KDV hariç
+        - columnheader "Doğrulama"
+    - rowgroup:
+      - row "Detayı aç 91/ME02026000003981 05.09.2026 KARGO KARGO - NAVLUN BEDELİ 700 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/ME02026000003981 05.09.2026":
+          - strong: 91/ME02026000003981
+          - generic: 05.09.2026
+        - cell "KARGO KARGO - NAVLUN BEDELİ":
+          - strong: KARGO
+          - generic: KARGO - NAVLUN BEDELİ
+        - cell "700 TL":
+          - strong: 700 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 91/ME02026000003981 05.09.2026 2606 CARBO CHEEK BLOCK 57MM 4.190,26 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/ME02026000003981 05.09.2026":
+          - strong: 91/ME02026000003981
+          - generic: 05.09.2026
+        - cell "2606 CARBO CHEEK BLOCK 57MM":
+          - strong: "2606"
+          - generic: CARBO CHEEK BLOCK 57MM
+        - cell "4.190,26 TL":
+          - strong: 4.190,26 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 91/PRK-38959 05.09.2026 128990-42580 RW PUMP LIP SEAL, YANMAR 658,78 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38959 05.09.2026":
+          - strong: 91/PRK-38959
+          - generic: 05.09.2026
+        - cell "128990-42580 RW PUMP LIP SEAL, YANMAR":
+          - strong: 128990-42580
+          - generic: RW PUMP LIP SEAL, YANMAR
+        - cell "658,78 TL":
+          - strong: 658,78 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 91/PRK-38958 05.09.2026 BK4521 PAWL OIL, FOR SPRINGS & PAWLS, HARKEN 682,68 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38958 05.09.2026":
+          - strong: 91/PRK-38958
+          - generic: 05.09.2026
+        - cell "BK4521 PAWL OIL, FOR SPRINGS & PAWLS, HARKEN":
+          - strong: BK4521
+          - generic: PAWL OIL, FOR SPRINGS & PAWLS, HARKEN
+        - cell "682,68 TL":
+          - strong: 682,68 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 91/PRK-38958 05.09.2026 BK4513 WINCH GREASE WHITE, HARKEN 631,84 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38958 05.09.2026":
+          - strong: 91/PRK-38958
+          - generic: 05.09.2026
+        - cell "BK4513 WINCH GREASE WHITE, HARKEN":
+          - strong: BK4513
+          - generic: WINCH GREASE WHITE, HARKEN
+        - cell "631,84 TL":
+          - strong: 631,84 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 17/ME02026000003978 05.09.2026 2010PM PRIMARY FUEL FILTER, RACOR 30MIC 2.728,39 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/ME02026000003978 05.09.2026":
+          - strong: 17/ME02026000003978
+          - generic: 05.09.2026
+        - cell "2010PM PRIMARY FUEL FILTER, RACOR 30MIC":
+          - strong: 2010PM
+          - generic: PRIMARY FUEL FILTER, RACOR 30MIC
+        - cell "2.728,39 TL":
+          - strong: 2.728,39 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 17/ME02026000003978 05.09.2026 GM32809 OIL FILTER, KOHLER 3.594,57 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/ME02026000003978 05.09.2026":
+          - strong: 17/ME02026000003978
+          - generic: 05.09.2026
+        - cell "GM32809 OIL FILTER, KOHLER":
+          - strong: GM32809
+          - generic: OIL FILTER, KOHLER
+        - cell "3.594,57 TL":
+          - strong: 3.594,57 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 17/ME02026000003978 05.09.2026 GM48730 FUEL FILTER ELEMENT, KOHLER 6.139,05 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/ME02026000003978 05.09.2026":
+          - strong: 17/ME02026000003978
+          - generic: 05.09.2026
+        - cell "GM48730 FUEL FILTER ELEMENT, KOHLER":
+          - strong: GM48730
+          - generic: FUEL FILTER ELEMENT, KOHLER
+        - cell "6.139,05 TL":
+          - strong: 6.139,05 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 91/ME02026000003980 05.09.2026 9534.003.003.01 4FCT DIGITAL PANEL ASSY (EASY), OPACMARE 24.717,17 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/ME02026000003980 05.09.2026":
+          - strong: 91/ME02026000003980
+          - generic: 05.09.2026
+        - cell "9534.003.003.01 4FCT DIGITAL PANEL ASSY (EASY), OPACMARE":
+          - strong: 9534.003.003.01
+          - generic: 4FCT DIGITAL PANEL ASSY (EASY), OPACMARE
+        - cell "24.717,17 TL":
+          - strong: 24.717,17 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 91/ME02026000003980 05.09.2026 9534.003.001.01 EASY CONTROL PANEL 2 FCT, OPACMARE 47.974,23 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/ME02026000003980 05.09.2026":
+          - strong: 91/ME02026000003980
+          - generic: 05.09.2026
+        - cell "9534.003.001.01 EASY CONTROL PANEL 2 FCT, OPACMARE":
+          - strong: 9534.003.001.01
+          - generic: EASY CONTROL PANEL 2 FCT, OPACMARE
+        - cell "47.974,23 TL":
+          - strong: 47.974,23 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 91/PRK-38955 05.09.2026 COOLANT-PRO-5L GENUINE ENGINE COOLANT 5L, YANMAR 4.288,13 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38955 05.09.2026":
+          - strong: 91/PRK-38955
+          - generic: 05.09.2026
+        - cell "COOLANT-PRO-5L GENUINE ENGINE COOLANT 5L, YANMAR":
+          - strong: COOLANT-PRO-5L
+          - generic: GENUINE ENGINE COOLANT 5L, YANMAR
+        - cell "4.288,13 TL":
+          - strong: 4.288,13 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 91/PRK-38954 05.09.2026 7-1463 FLEXIBLE COUPLING (SE170), 20/20MM, SIDEPOWER 4.802,87 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38954 05.09.2026":
+          - strong: 91/PRK-38954
+          - generic: 05.09.2026
+        - cell "7-1463 FLEXIBLE COUPLING (SE170), 20/20MM, SIDEPOWER":
+          - strong: 7-1463
+          - generic: FLEXIBLE COUPLING (SE170), 20/20MM, SIDEPOWER
+        - cell "4.802,87 TL":
+          - strong: 4.802,87 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 91/PRK-38952 05.09.2026 129150-35170 OIL FILTER, YANMAR 236,39 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38952 05.09.2026":
+          - strong: 91/PRK-38952
+          - generic: 05.09.2026
+        - cell "129150-35170 OIL FILTER, YANMAR":
+          - strong: 129150-35170
+          - generic: OIL FILTER, YANMAR
+        - cell "236,39 TL":
+          - strong: 236,39 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 91/PRK-38951 05.09.2026 129150-35170 OIL FILTER, YANMAR 236,39 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38951 05.09.2026":
+          - strong: 91/PRK-38951
+          - generic: 05.09.2026
+        - cell "129150-35170 OIL FILTER, YANMAR":
+          - strong: 129150-35170
+          - generic: OIL FILTER, YANMAR
+        - cell "236,39 TL":
+          - strong: 236,39 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 91/PRK-38950 05.09.2026 129150-35170 OIL FILTER, YANMAR 236,39 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38950 05.09.2026":
+          - strong: 91/PRK-38950
+          - generic: 05.09.2026
+        - cell "129150-35170 OIL FILTER, YANMAR":
+          - strong: 129150-35170
+          - generic: OIL FILTER, YANMAR
+        - cell "236,39 TL":
+          - strong: 236,39 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 91/ME02026000003979 05.09.2026 MV-38023500 MASS COMBI ULTRA 24/3500 100A 3500W, MASTERVOLT 179.758,53 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/ME02026000003979 05.09.2026":
+          - strong: 91/ME02026000003979
+          - generic: 05.09.2026
+        - cell "MV-38023500 MASS COMBI ULTRA 24/3500 100A 3500W, MASTERVOLT":
+          - strong: MV-38023500
+          - generic: MASS COMBI ULTRA 24/3500 100A 3500W, MASTERVOLT
+        - cell "179.758,53 TL":
+          - strong: 179.758,53 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 91/PRK-38948 04.09.2026 128990-77600 GROMMET, YANMAR 1.391,7 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38948 04.09.2026":
+          - strong: 91/PRK-38948
+          - generic: 04.09.2026
+        - cell "128990-77600 GROMMET, YANMAR":
+          - strong: 128990-77600
+          - generic: GROMMET, YANMAR
+        - cell "1.391,7 TL":
+          - strong: 1.391,7 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 91/PRK-38947 04.09.2026 119305-35170 OIL FILTER, YANMAR 232,4 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38947 04.09.2026":
+          - strong: 91/PRK-38947
+          - generic: 04.09.2026
+        - cell "119305-35170 OIL FILTER, YANMAR":
+          - strong: 119305-35170
+          - generic: OIL FILTER, YANMAR
+        - cell "232,4 TL":
+          - strong: 232,4 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 91/PRK-38946 04.09.2026 3840525 OIL FILTER, VOLVO 1.321,81 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38946 04.09.2026":
+          - strong: 91/PRK-38946
+          - generic: 04.09.2026
+        - cell "3840525 OIL FILTER, VOLVO":
+          - strong: "3840525"
+          - generic: OIL FILTER, VOLVO
+        - cell "1.321,81 TL":
+          - strong: 1.321,81 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 91/ME02026000003975 04.09.2026 DS0006 TWIST DECK SHOWER MIX/GREY/AN 13.286,41 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/ME02026000003975 04.09.2026":
+          - strong: 91/ME02026000003975
+          - generic: 04.09.2026
+        - cell "DS0006 TWIST DECK SHOWER MIX/GREY/AN":
+          - strong: DS0006
+          - generic: TWIST DECK SHOWER MIX/GREY/AN
+        - cell "13.286,41 TL":
+          - strong: 13.286,41 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 91/PRK-38942 04.09.2026 3840525 OIL FILTER, VOLVO 1.321,81 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38942 04.09.2026":
+          - strong: 91/PRK-38942
+          - generic: 04.09.2026
+        - cell "3840525 OIL FILTER, VOLVO":
+          - strong: "3840525"
+          - generic: OIL FILTER, VOLVO
+        - cell "1.321,81 TL":
+          - strong: 1.321,81 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 91/PRK-38941 04.09.2026 129150-35170 OIL FILTER, YANMAR 232,4 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38941 04.09.2026":
+          - strong: 91/PRK-38941
+          - generic: 04.09.2026
+        - cell "129150-35170 OIL FILTER, YANMAR":
+          - strong: 129150-35170
+          - generic: OIL FILTER, YANMAR
+        - cell "232,4 TL":
+          - strong: 232,4 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 91/PRK-38940 04.09.2026 129150-35170 OIL FILTER, YANMAR 232,4 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38940 04.09.2026":
+          - strong: 91/PRK-38940
+          - generic: 04.09.2026
+        - cell "129150-35170 OIL FILTER, YANMAR":
+          - strong: 129150-35170
+          - generic: OIL FILTER, YANMAR
+        - cell "232,4 TL":
+          - strong: 232,4 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 91/ME02026000003974 04.09.2026 7-1463 FLEXIBLE COUPLING (SE170), 20/20MM, SIDEPOWER 4.061,78 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/ME02026000003974 04.09.2026":
+          - strong: 91/ME02026000003974
+          - generic: 04.09.2026
+        - cell "7-1463 FLEXIBLE COUPLING (SE170), 20/20MM, SIDEPOWER":
+          - strong: 7-1463
+          - generic: FLEXIBLE COUPLING (SE170), 20/20MM, SIDEPOWER
+        - cell "4.061,78 TL":
+          - strong: 4.061,78 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 91/ME02026000003976 04.09.2026 GM32809 OIL FILTER, KOHLER 9.417,74 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/ME02026000003976 04.09.2026":
+          - strong: 91/ME02026000003976
+          - generic: 04.09.2026
+        - cell "GM32809 OIL FILTER, KOHLER":
+          - strong: GM32809
+          - generic: OIL FILTER, KOHLER
+        - cell "9.417,74 TL":
+          - strong: 9.417,74 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 91/MA02026000000740 04.09.2026 120322-33050 HEAT EXCHANGER DIVIDER O-RING, YANMAR 1.049,24 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/MA02026000000740 04.09.2026":
+          - strong: 91/MA02026000000740
+          - generic: 04.09.2026
+        - cell "120322-33050 HEAT EXCHANGER DIVIDER O-RING, YANMAR":
+          - strong: 120322-33050
+          - generic: HEAT EXCHANGER DIVIDER O-RING, YANMAR
+        - cell "1.049,24 TL":
+          - strong: 1.049,24 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 91/PRK-38934 04.09.2026 BK4512 WINCH SERVICE KIT, HARKEN 3.065,7 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38934 04.09.2026":
+          - strong: 91/PRK-38934
+          - generic: 04.09.2026
+        - cell "BK4512 WINCH SERVICE KIT, HARKEN":
+          - strong: BK4512
+          - generic: WINCH SERVICE KIT, HARKEN
+        - cell "3.065,7 TL":
+          - strong: 3.065,7 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 91/ME02026000003977 04.09.2026 15W40-5L GENUINE DIESEL ENGINE OIL 15W40 5L, YANMAR 6.010,08 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/ME02026000003977 04.09.2026":
+          - strong: 91/ME02026000003977
+          - generic: 04.09.2026
+        - cell "15W40-5L GENUINE DIESEL ENGINE OIL 15W40 5L, YANMAR":
+          - strong: 15W40-5L
+          - generic: GENUINE DIESEL ENGINE OIL 15W40 5L, YANMAR
+        - cell "6.010,08 TL":
+          - strong: 6.010,08 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 91/ME02026000003977 04.09.2026 129670-42610 IMPELLER KIT, YANMAR 11.083,68 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/ME02026000003977 04.09.2026":
+          - strong: 91/ME02026000003977
+          - generic: 04.09.2026
+        - cell "129670-42610 IMPELLER KIT, YANMAR":
+          - strong: 129670-42610
+          - generic: IMPELLER KIT, YANMAR
+        - cell "11.083,68 TL":
+          - strong: 11.083,68 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 91/ME02026000003977 04.09.2026 129150-35170 OIL FILTER, YANMAR 984,31 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/ME02026000003977 04.09.2026":
+          - strong: 91/ME02026000003977
+          - generic: 04.09.2026
+        - cell "129150-35170 OIL FILTER, YANMAR":
+          - strong: 129150-35170
+          - generic: OIL FILTER, YANMAR
+        - cell "984,31 TL":
+          - strong: 984,31 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 91/ME02026000003977 04.09.2026 129A00-55810 FUEL FILTER, YANMAR 10.890,58 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/ME02026000003977 04.09.2026":
+          - strong: 91/ME02026000003977
+          - generic: 04.09.2026
+        - cell "129A00-55810 FUEL FILTER, YANMAR":
+          - strong: 129A00-55810
+          - generic: FUEL FILTER, YANMAR
+        - cell "10.890,58 TL":
+          - strong: 10.890,58 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 91/MA02026000000739 04.09.2026 828254 25MM. PROPELLER SHAFT SEAL, VOLVO 8.376,28 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/MA02026000000739 04.09.2026":
+          - strong: 91/MA02026000000739
+          - generic: 04.09.2026
+        - cell "828254 25MM. PROPELLER SHAFT SEAL, VOLVO":
+          - strong: "828254"
+          - generic: 25MM. PROPELLER SHAFT SEAL, VOLVO
+        - cell "8.376,28 TL":
+          - strong: 8.376,28 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 91/PRK-38932 04.09.2026 E2200 22MM ENDSTOP LOW BEAM SET OF 2, HARKEN 620,96 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38932 04.09.2026":
+          - strong: 91/PRK-38932
+          - generic: 04.09.2026
+        - cell "E2200 22MM ENDSTOP LOW BEAM SET OF 2, HARKEN":
+          - strong: E2200
+          - generic: 22MM ENDSTOP LOW BEAM SET OF 2, HARKEN
+        - cell "620,96 TL":
+          - strong: 620,96 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 91/PRK-38931 04.09.2026 0309-0717 SWITCH, PRESSURE ASSEMBLY, ONAN 6.662,8 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38931 04.09.2026":
+          - strong: 91/PRK-38931
+          - generic: 04.09.2026
+        - cell "0309-0717 SWITCH, PRESSURE ASSEMBLY, ONAN":
+          - strong: 0309-0717
+          - generic: SWITCH, PRESSURE ASSEMBLY, ONAN
+        - cell "6.662,8 TL":
+          - strong: 6.662,8 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 17/ME02026000003972 04.09.2026 A94127300 46 WINCH JAWS, HARKEN 1.702,48 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/ME02026000003972 04.09.2026":
+          - strong: 17/ME02026000003972
+          - generic: 04.09.2026
+        - cell "A94127300 46 WINCH JAWS, HARKEN":
+          - strong: A94127300
+          - generic: 46 WINCH JAWS, HARKEN
+        - cell "1.702,48 TL":
+          - strong: 1.702,48 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 91/PRK-38929 04.09.2026 Z-288 80MM. MAST BASE HALYARD BLOCK, Z SPARS 8.766,47 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38929 04.09.2026":
+          - strong: 91/PRK-38929
+          - generic: 04.09.2026
+        - cell "Z-288 80MM. MAST BASE HALYARD BLOCK, Z SPARS":
+          - strong: Z-288
+          - generic: 80MM. MAST BASE HALYARD BLOCK, Z SPARS
+        - cell "8.766,47 TL":
+          - strong: 8.766,47 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 91/PRK-38925 04.09.2026 DPZT AKÜ DEPOZİTO BEDELİ 571,33 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38925 04.09.2026":
+          - strong: 91/PRK-38925
+          - generic: 04.09.2026
+        - cell "DPZT AKÜ DEPOZİTO BEDELİ":
+          - strong: DPZT
+          - generic: AKÜ DEPOZİTO BEDELİ
+        - cell "571,33 TL":
+          - strong: 571,33 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 91/PRK-38925 04.09.2026 MV-62001300 AGM AKÜ 12V 130Ah, MASTERVOLT 145.253,35 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38925 04.09.2026":
+          - strong: 91/PRK-38925
+          - generic: 04.09.2026
+        - cell "MV-62001300 AGM AKÜ 12V 130Ah, MASTERVOLT":
+          - strong: MV-62001300
+          - generic: AGM AKÜ 12V 130Ah, MASTERVOLT
+        - cell "145.253,35 TL":
+          - strong: 145.253,35 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 91/ME02026000003971 04.09.2026 129A00-55810 FUEL FILTER, YANMAR 5.445,29 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/ME02026000003971 04.09.2026":
+          - strong: 91/ME02026000003971
+          - generic: 04.09.2026
+        - cell "129A00-55810 FUEL FILTER, YANMAR":
+          - strong: 129A00-55810
+          - generic: FUEL FILTER, YANMAR
+        - cell "5.445,29 TL":
+          - strong: 5.445,29 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 91/ME02026000003971 04.09.2026 129670-42610 IMPELLER KIT, YANMAR 5.541,84 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/ME02026000003971 04.09.2026":
+          - strong: 91/ME02026000003971
+          - generic: 04.09.2026
+        - cell "129670-42610 IMPELLER KIT, YANMAR":
+          - strong: 129670-42610
+          - generic: IMPELLER KIT, YANMAR
+        - cell "5.541,84 TL":
+          - strong: 5.541,84 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 91/ME02026000003971 04.09.2026 129150-35170 OIL FILTER, YANMAR 492,15 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/ME02026000003971 04.09.2026":
+          - strong: 91/ME02026000003971
+          - generic: 04.09.2026
+        - cell "129150-35170 OIL FILTER, YANMAR":
+          - strong: 129150-35170
+          - generic: OIL FILTER, YANMAR
+        - cell "492,15 TL":
+          - strong: 492,15 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 91/ME02026000003971 04.09.2026 121857-55710 FUEL FILTER SEPERATOR, YANMAR 4.492,6 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/ME02026000003971 04.09.2026":
+          - strong: 91/ME02026000003971
+          - generic: 04.09.2026
+        - cell "121857-55710 FUEL FILTER SEPERATOR, YANMAR":
+          - strong: 121857-55710
+          - generic: FUEL FILTER SEPERATOR, YANMAR
+        - cell "4.492,6 TL":
+          - strong: 4.492,6 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 91/PRK-38926 04.09.2026 X03431748 RW PUMP BALL BEARING, YANMAR 535,73 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38926 04.09.2026":
+          - strong: 91/PRK-38926
+          - generic: 04.09.2026
+        - cell "X03431748 RW PUMP BALL BEARING, YANMAR":
+          - strong: X03431748
+          - generic: RW PUMP BALL BEARING, YANMAR
+        - cell "535,73 TL":
+          - strong: 535,73 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 91/PRK-38926 04.09.2026 X03431760 COOLING PUMP(SEA WATER) BALL BEARING, YANMAR 1.898,55 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38926 04.09.2026":
+          - strong: 91/PRK-38926
+          - generic: 04.09.2026
+        - cell "X03431760 COOLING PUMP(SEA WATER) BALL BEARING, YANMAR":
+          - strong: X03431760
+          - generic: COOLING PUMP(SEA WATER) BALL BEARING, YANMAR
+        - cell "1.898,55 TL":
+          - strong: 1.898,55 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 91/PRK-38926 04.09.2026 128990-42580 RW PUMP LIP SEAL, YANMAR 1.295,32 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38926 04.09.2026":
+          - strong: 91/PRK-38926
+          - generic: 04.09.2026
+        - cell "128990-42580 RW PUMP LIP SEAL, YANMAR":
+          - strong: 128990-42580
+          - generic: RW PUMP LIP SEAL, YANMAR
+        - cell "1.295,32 TL":
+          - strong: 1.295,32 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 17/ME02026000003970 04.09.2026 128270-12540 ELEMENT-AIR INTAKE, 2GM-3GM 686,96 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/ME02026000003970 04.09.2026":
+          - strong: 17/ME02026000003970
+          - generic: 04.09.2026
+        - cell "128270-12540 ELEMENT-AIR INTAKE, 2GM-3GM":
+          - strong: 128270-12540
+          - generic: ELEMENT-AIR INTAKE, 2GM-3GM
+        - cell "686,96 TL":
+          - strong: 686,96 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 17/ME02026000003970 04.09.2026 128995-42450A V-BELT, RW PUMP, 3YM30AE M/21 233,26 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/ME02026000003970 04.09.2026":
+          - strong: 17/ME02026000003970
+          - generic: 04.09.2026
+        - cell "128995-42450A V-BELT, RW PUMP, 3YM30AE M/21":
+          - strong: 128995-42450A
+          - generic: V-BELT, RW PUMP, 3YM30AE M/21
+        - cell "233,26 TL":
+          - strong: 233,26 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 17/ME02026000003970 04.09.2026 119305-35170 OIL FILTER, YANMAR 820,25 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/ME02026000003970 04.09.2026":
+          - strong: 17/ME02026000003970
+          - generic: 04.09.2026
+        - cell "119305-35170 OIL FILTER, YANMAR":
+          - strong: 119305-35170
+          - generic: OIL FILTER, YANMAR
+        - cell "820,25 TL":
+          - strong: 820,25 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 17/ME02026000003970 04.09.2026 128990-77580 DC ALTERNATOR V-RIBBED BELT (6PK998), YANMAR 834,78 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/ME02026000003970 04.09.2026":
+          - strong: 17/ME02026000003970
+          - generic: 04.09.2026
+        - cell "128990-77580 DC ALTERNATOR V-RIBBED BELT (6PK998), YANMAR":
+          - strong: 128990-77580
+          - generic: DC ALTERNATOR V-RIBBED BELT (6PK998), YANMAR
+        - cell "834,78 TL":
+          - strong: 834,78 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+      - row "Detayı aç 17/ME02026000003970 04.09.2026 129673-44131 CAP, HEAT EXCHANGER, 2-3YM, YANMAR 1.458,94 TL — — Faturayla doğrulandı":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/ME02026000003970 04.09.2026":
+          - strong: 17/ME02026000003970
+          - generic: 04.09.2026
+        - cell "129673-44131 CAP, HEAT EXCHANGER, 2-3YM, YANMAR":
+          - strong: 129673-44131
+          - generic: CAP, HEAT EXCHANGER, 2-3YM, YANMAR
+        - cell "1.458,94 TL":
+          - strong: 1.458,94 TL
+        - cell "—"
+        - cell "—"
+        - cell "Faturayla doğrulandı":
+          - generic: Faturayla doğrulandı
+  - text: Sayfa boyutu
+  - combobox "Sayfa boyutu":
+    - option "25"
+    - option "50" [selected]
+    - option "100"
+  - generic: 1–50 / 22.224
+  - button "Önceki" [disabled]:
+    - text: Önceki
+  - button "Sonraki":
+    - text: Sonraki
+  - paragraph: "Kaynak: CPM STKHAR, STKKRT, CARKRT ve EFAGLN. Tip 9/609 belgeler e-Fatura iade kanıtından geçirilir; müşteri iadeleri maliyet adayı olamaz. CPM’e veri yazılmaz."
+- generic: Servis

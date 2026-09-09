@@ -24,6 +24,7 @@ import {
 } from "@tabler/icons-react";
 import { calculateDepartmentDistribution } from "./distribution";
 import { MetricCard } from "./components/ui/MetricCard.jsx";
+import { FinancialVisibilityPanel } from "./components/FinancialVisibilityPanel.jsx";
 import {
   formatEur,
   formatInteger,
@@ -211,11 +212,14 @@ export function SummaryPage({
   ));
   const reviewLines = costReviewLines !== null
     ? costReviewLines
-    : reviewPeriods.reduce((total, row) => total + Number(row.uncoveredCostLines || 0), 0);
+    : reviewPeriods.length > 0
+      ? reviewPeriods.reduce((total, row) => total + Number(row.uncoveredCostLines || 0), 0)
+      : null;
   const unlinkedReturnLines = reviewPeriods.reduce(
     (total, row) => total + Number(row.unlinkedReturnLines || 0),
     0,
   );
+  const reviewQueueCount = reviewLines === null ? null : reviewLines + unlinkedReturnLines;
   const reviewNetSales = canonicalMetric?.scope?.costReview?.netSales ?? null;
   const canonicalCoverage = finiteNumber(canonicalMetric?.costCoveragePct);
   const eligible = distribution.filter((employee) => employee.eligible).length;
@@ -338,6 +342,8 @@ export function SummaryPage({
             {canonicalCoverage != null && <span>Maliyet kapsamı: {formatPercent(canonicalCoverage)}</span>}
           </section>
 
+          <FinancialVisibilityPanel metric={canonicalMetric} title="Kârlılık ve marj görünürlüğü" />
+
           <section className="nexus-metric-grid" aria-label="Yönetim göstergeleri">
             <MetricCard
               title="Net Ciro"
@@ -350,9 +356,9 @@ export function SummaryPage({
               onClick={() => onNavigate?.("sales")}
             />
             <MetricCard
-              title="Brüt Kâr"
-              value={<div className="label-value"><strong>{isCostReviewPending ? "İncelemede" : formatEur(totalProfitEur)}</strong></div>}
-              secondaryValue={isCostReviewPending ? "WAC maliyet kapsamı bekleniyor" : "Canonical EUR kâr"}
+              title={isCostReviewPending ? "Geçici Brüt Kâr · TRY" : "Brüt Kâr"}
+              value={<div className="label-value"><strong>{isCostReviewPending ? formatMoney(canonicalMetric?.try?.profit) : formatEur(totalProfitEur)}</strong></div>}
+              secondaryValue={isCostReviewPending ? "Eksik maliyetler hesaba katılmamıştır" : "Canonical EUR kâr"}
               subtitle="Resmî maliyet kanıtı"
               icon={IconTrendingUp}
               badge={isCostReviewPending ? "Kapalı" : "WAC kanıtlı"}
@@ -360,8 +366,8 @@ export function SummaryPage({
               onClick={() => onNavigate?.("sales")}
             />
             <MetricCard
-              title="Ortalama Brüt Marj"
-              value={<div className="label-value"><strong>{isCostReviewPending ? "İncelemede" : `%${Number(grossMarginPct).toFixed(1)}`}</strong></div>}
+              title={isCostReviewPending ? "Geçici Brüt Marj" : "Ortalama Brüt Marj"}
+              value={<div className="label-value"><strong>{isCostReviewPending ? formatPercent(canonicalMetric?.try?.margin) : `%${Number(grossMarginPct).toFixed(1)}`}</strong></div>}
               secondaryValue={totalProfitTry != null ? `${formatMoney(totalProfitTry)} kaynak TRY kâr` : "Canonical TRY kâr bekleniyor"}
               subtitle="Canonical TRY marjı"
               icon={IconReceipt2}
@@ -371,7 +377,7 @@ export function SummaryPage({
             />
             <MetricCard
               title="İnceleme Kuyruğu"
-              value={<div className="label-value"><strong>{formatInteger(reviewLines + unlinkedReturnLines)}</strong></div>}
+              value={<div className="label-value"><strong>{formatInteger(reviewQueueCount, "—")}</strong></div>}
               secondaryValue={`${formatInteger(actionQueue.length)} karar başlığı`}
               subtitle="Maliyet, kur veya iade kanıtı"
               icon={IconAlertTriangle}
@@ -477,8 +483,7 @@ export function SummaryPage({
             </aside>
           </section>
 
-          {departmentRows.length > 0 && (
-            <section className="panel" aria-labelledby="summary-departments-title" style={{ marginBottom: 16 }}>
+          <section className="panel" aria-labelledby="summary-departments-title" style={{ marginBottom: 16 }}>
               <div className="panel-heading">
                 <div>
                   <p className="eyebrow">Ticari mercek</p>
@@ -489,7 +494,11 @@ export function SummaryPage({
                   Detay <IconArrowRight aria-hidden="true" size={16} />
                 </button>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+              {departmentRows.length === 0 ? (
+                <div className="report-state report-state--empty" role="status">
+                  Departman kırılımı bu yönetici özeti payload’ında taşınmıyor; tahmin üretilmedi. Ayrıntılı departman endpoint’ini açın.
+                </div>
+              ) : <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
                 {departmentRows.map((item) => (
                   <article key={item.id} style={{ padding: 14, border: "1px solid var(--line)", borderRadius: 8 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--muted)", fontSize: 12 }}>
@@ -499,9 +508,8 @@ export function SummaryPage({
                     <strong style={{ display: "block", marginTop: 8, fontSize: 20 }}>{item.currency === "EUR" ? formatEur(item.value) : formatMoney(item.value)}</strong>
                   </article>
                 ))}
-              </div>
-            </section>
-          )}
+              </div>}
+          </section>
 
           <section className="summary-shortcuts" aria-label="Detay ekranları">
             <button type="button" onClick={() => onNavigate?.("sales")}>

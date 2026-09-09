@@ -50,14 +50,6 @@ function monthOf(value) {
   return Number.isFinite(parsed.getTime()) ? parsed.getMonth() + 1 : 0;
 }
 
-function isExcludedIncomeKey(productKey) {
-  return ["KOMISYON", "GD0187", "GD0079", "PDI"].includes(productKey);
-}
-
-function isExcludedIncome(productCode) {
-  return isExcludedIncomeKey(key(productCode));
-}
-
 function normalizeDepot(value) {
   const normalized = key(value);
   if (!normalized) return { code: "—", name: "Belirsiz" };
@@ -341,7 +333,6 @@ export function buildDepartmentAnalysis({
 
   for (const economic of economicRows) {
     const productKey = key(economic.productCode);
-    if (usesLedger && isExcludedIncomeKey(productKey)) continue;
     const rootId = String(economic.rootId);
     const evidenceRows = lineageByRoot.get(rootId) || [];
     if (!usesLedger) {

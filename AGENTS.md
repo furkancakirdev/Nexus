@@ -23,7 +23,7 @@ Bu dosya, Marlin Nexus deposunun kalıcı ve proje-özel kurallarının tek ger�
 
 ## Çalışma biçimi
 
-- Önce yalnızca görevin gerektirdiği dosyaları, çağıranları ve ilgili sözleşmeleri oku. Basit bir düzeltmede tüm repo haritasını veya ilgisiz dokümanları okutma.
+- Önce yalnızca görevin gerektirdiği dosyaları, çağıranları ve ilgili sözleşmeleri oku. Basit bir düzeltmede tüm repo haritasını veya ilgisiz dokümanları okutma; rehberlik, güvenlik/finans sınırları dışında gereksiz okuma veya tören adımlarını zorunlu kılmamalıdır.
 - Üç veya daha fazla adıma, veri akışı değişikliğine, entegrasyona veya mimari karara giren işlerde kapsam, hedef dosyalar, riskler ve doğrulama ölçütleri kısa bir planla netleştirilir.
 - Bağımsız araştırma veya doğrulama işleri ayrılabilir; ortak dosyalarda çakışma yaratılmaz ve her alt iş kanıtlanabilir çıktı üretir.
 - Beklenmeyen test kırılması, güvenlik bulgusu veya kapsam sapmasında yaklaşımı zorlamak yerine durumu raporla, nedeni belirle ve planı güncelle.
@@ -80,10 +80,10 @@ Bu dosya, Marlin Nexus deposunun kalıcı ve proje-özel kurallarının tek ger�
 - `tasks/lessons.md`: kalıcı, tekrar kullanılabilir dersler
 - `.temp_files/`: geçici inceleme ve üretilmiş çıktılar; kalıcı SSOT değildir
 
-## Codex Astra + Luna orkestrasyonu
+## Codex orkestrasyonu
 
-- Çok dosyalı, birden fazla modülü etkileyen, araştırma/uygulama/doğrulama ayrımı gerektiren veya kullanıcının alt ajan istediği görevlerde `astra-orchestrator` skill'i kullanılabilir.
-- Plus plan kurulumunda kök orkestratör ve rutin alt ajanlar GPT-5.6 Luna'dır; kök Luna işi koordine eder, bütünleştirir ve son doğrulamayı yapar.
+- Çok dosyalı, birden fazla modülü etkileyen, araştırma/uygulama/doğrulama ayrımı gerektiren veya kullanıcının alt ajan istediği görevlerde `astra-orchestrator` skill'i kullanılabilir; küçük ve yerel işlerde orkestrasyon zorunlu değildir.
+- Model seçimi ve alt ajan sayısı çalışma zamanı/configürasyon konusudur; mevcut hostta bulunmayan bir modeli veya rolü zorunlu kılma, rutin iş için gereksiz paralellik oluşturma.
 - `explorer` ve `researcher` salt-okunur kanıt toplar; `worker` yalnızca açıkça atanmış dar kapsamı değiştirir; `tester` hedefli doğrulama yapar; `reviewer` bağımsız son inceleme yapar.
 - Alt ajanlara CPM yazma, üretime deploy, secret işlemi veya dış sisteme yazma yetkisi verilmez. Mevcut Marlin güvenlik, read-only CPM, finansal kanıt ve fail-closed kuralları her zaman önceliklidir.
 - Orkestrasyon küçük tek dosya düzeltmelerinde zorunlu değildir; gereksiz paralellik ve aynı dosyada eşzamanlı yazım yapılmaz.

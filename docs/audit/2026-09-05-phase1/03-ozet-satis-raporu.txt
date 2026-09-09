@@ -1,0 +1,137 @@
+- banner:
+  - link "Marlin Nexus Yönetim Sistemi":
+    - /url: "#top"
+    - strong: Marlin Nexus
+    - generic: Yönetim Sistemi
+  - navigation "Ana menü":
+    - button "Genel Bakış"
+    - button "Satış Analizi"
+    - button "Departman Analizi"
+    - button "Denetim"
+    - button "Stok"
+    - button "Havuz"
+    - button "Ayarlar"
+  - combobox "Yıl":
+    - option "2024"
+    - option "2025"
+    - option "2026" [selected]
+  - button "Görünüm ayarları":
+  - button "Çıkış yap":
+- main:
+  - paragraph: Üst Düzey Yönetim Paneli
+  - heading "Genel Bakış" [level=1]
+  - paragraph: 2026 yılı ticari ciro, çoklu dövizli WAC kârlılığı ve operasyonel göstergeleri.
+  - generic: CPM Canlı
+  - generic "Temel Yönetim Göstergeleri":
+    - button "Net Ciro 228.973.335 TL KDV hariç ticari hasılat TRY Tabanlı 9 dönem fatura toplamı":
+      - generic: Net Ciro
+      - strong: 228.973.335 TL
+      - generic: KDV hariç ticari hasılat
+      - generic: TRY Tabanlı
+      - generic: 9 dönem fatura toplamı
+    - button "Brüt Kâr İncelemede Maliyet kapsamı bekleniyor Kapsam Bekleniyor Gerçek alım faturası kanıtı":
+      - generic: Brüt Kâr
+      - strong: İncelemede
+      - generic: Maliyet kapsamı bekleniyor
+      - generic: Kapsam Bekleniyor
+      - generic: Gerçek alım faturası kanıtı
+    - generic: Ortalama Brüt Marj
+    - strong: Hesaplanıyor
+    - generic: Alım kanıtları inceleniyor
+    - generic: WAC Bekleniyor
+    - generic: Liste ve perakende marj tabanı
+    - button "Net Dağıtım Havuzu 0 TL 22 personel hak kazandı Havuz Departman hedef bandı":
+      - generic: Net Dağıtım Havuzu
+      - strong: 0 TL
+      - generic: 22 personel hak kazandı
+      - generic: Havuz
+      - generic: Departman hedef bandı
+  - strong: 9 dönemde maliyet veya döviz kuru incelemesi bekleniyor
+  - paragraph: Alım faturası veya kur kanıtı eksik satırlar kârı yanıltıcı göstermemek için askıya alınmıştır.
+  - button "Denetim Ekranında İncele":
+    - text: Denetim Ekranında İncele
+  - paragraph: Yönetici Analiz Raporu
+  - heading "Dönemsel Yönetim Özeti" [level=2]
+  - combobox:
+    - option "Yönetim Özeti"
+    - option "Satış Raporu" [selected]
+    - option "Kârlılık Raporu"
+    - option "Maliyet Raporu"
+    - option "İskonto & İade"
+  - combobox:
+    - option "Ocak" [selected]
+    - option "Şubat"
+    - option "Mart"
+    - option "Nisan"
+    - option "Mayıs"
+    - option "Haziran"
+    - option "Temmuz"
+    - option "Ağustos"
+    - option "Eylül"
+  - combobox:
+    - option "Ocak" [selected]
+    - option "Şubat"
+    - option "Mart"
+    - option "Nisan"
+    - option "Mayıs"
+    - option "Haziran"
+    - option "Temmuz"
+    - option "Ağustos"
+    - option "Eylül"
+  - button "Yazdır"
+  - paragraph: Seçilen dönemde fatura satışları 268.043.465 TL olarak gerçekleşti. 2.383.414 TL satış iadesi ve 36.686.716 TL fatura iskontosu düşüldükten sonra net ticari ciro kesinleşti.
+  - text: Devam eden aylar tamamlanmış ay gibi yorumlanmaz; rapor seçilen veri aralığıyla sınırlıdır.
+  - heading "Aylık Satış ve Kârlılık Trendi" [level=2]
+  - paragraph: CPM net satış ve hareketli ortalama maliyete göre brüt kâr seyri
+  - img "Aylık satış ve kârlılık grafiği":
+    - list:
+      - img "Kâr legend icon"
+      - text: Kâr
+      - img "Satış legend icon"
+      - text: Satış
+    - application:
+      - generic: Ocak
+      - generic: Şubat
+      - generic: Mart
+      - generic: Nisan
+      - generic: Mayıs
+      - generic: Haziran
+      - generic: Temmuz
+      - generic: Ağustos
+      - generic: Eylül
+      - generic: "0"
+      - generic: 15 Mn
+      - generic: 30 Mn
+      - generic: 45 Mn
+      - generic: 60 Mn
+  - list "Aylık satış ve kârlılık serileri":
+    - generic: Satış
+    - generic: Kâr
+  - complementary:
+    - strong: Operasyonel Durum
+    - generic: "9"
+    - button "9 dönem maliyet incelemesi var Doğrulanmamış veya negatif stok satırları.":
+      - strong: 9 dönem maliyet incelemesi var
+      - generic: Doğrulanmamış veya negatif stok satırları.
+    - button "Departman Gelir Dağılımı Servis ve Yedek Parça ticari sorumluları.":
+      - strong: Departman Gelir Dağılımı
+      - generic: Servis ve Yedek Parça ticari sorumluları.
+    - button "Stok Muavin Defteri Kronolojik hareketler, alım-satım dökümü.":
+      - strong: Stok Muavin Defteri
+      - generic: Kronolojik hareketler, alım-satım dökümü.
+  - button "Satış Analizi Döviz sepeti, iskonto ve brüt marj":
+    - strong: Satış Analizi
+    - generic: Döviz sepeti, iskonto ve brüt marj
+  - button "Departman Analizi Servis, Yedek Parça, Ticari Sorumlular":
+    - strong: Departman Analizi
+    - generic: Servis, Yedek Parça, Ticari Sorumlular
+  - button "Stok Modülü Muavin defter, alım/satım kronolojisi":
+    - strong: Stok Modülü
+    - generic: Muavin defter, alım/satım kronolojisi
+  - button "Veri Denetimi WAC doğrulama ve maliyet kontrolü":
+    - strong: Veri Denetimi
+    - generic: WAC doğrulama ve maliyet kontrolü
+  - button "Havuz & Dağıtım Personel payları ve kâr şelalesi":
+    - strong: Havuz & Dağıtım
+    - generic: Personel payları ve kâr şelalesi
+- generic: "0"

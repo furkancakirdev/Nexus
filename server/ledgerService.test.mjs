@@ -1595,7 +1595,7 @@ test("ledger pilot kartları audit ve departmanda yönetilen maliyet yöntemiyle
   });
 });
 
-test("kapsam dışı gelir audit içinde kalır fakat overview ve departman toplamına girmez", async () => {
+test("eski kapsam kodu audit, overview ve departman toplamına dahil edilir", async () => {
   const ledger = apiFixtureLedger();
   const excluded = {
     ...ledger.rows[0],
@@ -1633,20 +1633,19 @@ test("kapsam dışı gelir audit içinde kalır fakat overview ve departman topl
 
     assert.equal(overview.rows.reduce((sum, row) => (
       sum + row.sales - row.returns - row.discounts
-    ), 0), 250);
-    assert.equal(department.totals.netSales, 250);
-    assert.equal(audit.summary.totalRows, 1);
-    assert.equal(audit.rows[0].costMethod, "excludedIncome");
-    assert.equal(audit.summary.filteredNetAmount, 500);
+    ), 0), 750);
+    assert.equal(department.totals.netSales, 750);
+    assert.equal(audit.summary.totalRows, 0);
+    assert.equal(audit.summary.filteredNetAmount, 0);
     assert.equal(audit.summary.analysisNetAmount, 0);
-    assert.equal(audit.summary.excludedNetAmount, 500);
+    assert.equal(audit.summary.excludedNetAmount, 0);
     assert.equal(fullAudit.summary.filteredNetAmount, 750);
-    assert.equal(fullAudit.summary.analysisNetAmount, 250);
-    assert.equal(fullAudit.summary.excludedNetAmount, 500);
+    assert.equal(fullAudit.summary.analysisNetAmount, 750);
+    assert.equal(fullAudit.summary.excludedNetAmount, 0);
     assert.equal(fullAudit.reconciliation.difference, 0);
     assert.equal(overview.reconciliation.difference, 0);
     assert.equal(department.reconciliation.difference, 0);
-    assert.equal(overview.reconciliation.excludedNetSales, 500);
+    assert.equal(overview.reconciliation.excludedNetSales, 0);
   });
 });
 

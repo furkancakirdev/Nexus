@@ -194,6 +194,8 @@ test("role isolation authenticates sessions and restricts reporting, operations,
   t.after(() => new Promise((resolve) => server.close(resolve)));
 
   assert.equal((await fetch(`${baseUrl}/api/overview`)).status, 401);
+  assert.equal((await fetch(`${baseUrl}/API/overview`)).status, 401);
+  assert.equal((await fetch(`${baseUrl}/Api/build-info`)).status, 401);
   assert.equal((await fetch(`${baseUrl}/api/health`)).status, 200);
   for (const route of ["/api/sales-cases", "/api/inventory-research"]) {
     assert.equal((await fetch(`${baseUrl}${route}`)).status, 401);

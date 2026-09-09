@@ -46,8 +46,14 @@ function dateKey(value) {
     return `${year}-${month}-${day}`;
   }
   const normalized = text(value);
-  const match = /^(\d{4}-\d{2}-\d{2})/.exec(normalized);
-  return match?.[1] || null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})(?:$|T|\s)/.exec(normalized);
+  if (!match) return null;
+  const [, year, month, day] = match;
+  const candidate = new Date(`${year}-${month}-${day}T00:00:00Z`);
+  if (candidate.getUTCFullYear() !== Number(year)
+    || candidate.getUTCMonth() + 1 !== Number(month)
+    || candidate.getUTCDate() !== Number(day)) return null;
+  return `${year}-${month}-${day}`;
 }
 
 function conversionReview(productCurrency, reviewReason) {
@@ -232,14 +238,14 @@ function validateMovement(movement, { requireProductCode = false } = {}) {
   if (!finitePrimitive(movement?.quantity) || movement.quantity <= 0) {
     throw new TypeError("Stok hareketi miktarı pozitif sayı olmalıdır.");
   }
-  if (["opening", "purchase"].includes(kind)
+  if (kind === "purchase"
     && (!finitePrimitive(movement?.unitCostTryExVat) || movement.unitCostTryExVat <= 0)) {
-    throw new TypeError(`${kind === "opening" ? "Açılış" : "Alım"} hareketi KDV hariç birim maliyet taşımalıdır.`);
+    throw new TypeError("Alım hareketi KDV hariç birim maliyet taşımalıdır.");
   }
-  if (["opening", "purchase"].includes(kind)
+  if (kind === "purchase"
     && movement?.unitCostCurrencyExVat != null
     && (!finitePrimitive(movement.unitCostCurrencyExVat) || movement.unitCostCurrencyExVat <= 0)) {
-    throw new TypeError(`${kind === "opening" ? "Açılış" : "Alım"} hareketi ürün dövizinde geçerli birim maliyet taşımalıdır.`);
+    throw new TypeError("Alım hareketi ürün dövizinde geçerli birim maliyet taşımalıdır.");
   }
   if (kind === "saleReturn") {
     if (!text(movement?.originalSaleId)) {
@@ -320,18 +326,28 @@ export function buildOfficialMovementCosts(movements = [], options = {}) {
 
     if (movement.kind === "opening") {
       state.stockQuantity += movement.quantity;
-      state.stockValueTryExVat += movement.quantity * movement.unitCostTryExVat;
-      state.weightedUnitCostTryExVat = state.stockValueTryExVat / state.stockQuantity;
-      if (finitePrimitive(movement.unitCostCurrencyExVat)) {
-        state.stockValueCurrencyExVat = (state.stockValueCurrencyExVat || 0)
-          + movement.quantity * movement.unitCostCurrencyExVat;
-        state.weightedUnitCostCurrencyExVat = state.stockValueCurrencyExVat / state.stockQuantity;
-      } else {
+      if (!finitePrimitive(movement.unitCostTryExVat) || movement.unitCostTryExVat <= 0) {
+        state.stockValueTryExVat = null;
+        state.weightedUnitCostTryExVat = null;
         state.stockValueCurrencyExVat = null;
         state.weightedUnitCostCurrencyExVat = null;
+        officialCostStatus = "review";
+        reviewReason = "opening-cost-unknown";
+      } else {
+        state.stockValueTryExVat = (state.stockValueTryExVat || 0)
+          + movement.quantity * movement.unitCostTryExVat;
+        state.weightedUnitCostTryExVat = state.stockValueTryExVat / state.stockQuantity;
+        if (finitePrimitive(movement.unitCostCurrencyExVat)) {
+          state.stockValueCurrencyExVat = (state.stockValueCurrencyExVat || 0)
+            + movement.quantity * movement.unitCostCurrencyExVat;
+          state.weightedUnitCostCurrencyExVat = state.stockValueCurrencyExVat / state.stockQuantity;
+        } else {
+          state.stockValueCurrencyExVat = null;
+          state.weightedUnitCostCurrencyExVat = null;
+        }
+        officialCostStatus = "covered";
+        reviewReason = null;
       }
-      officialCostStatus = "covered";
-      reviewReason = null;
     } else if (movement.kind === "purchase") {
       const deficit = Math.max(0, -state.stockQuantity);
       const appliedToDeficit = Math.min(deficit, movement.quantity);
@@ -504,9 +520,12 @@ export function buildOfficialMovementCosts(movements = [], options = {}) {
     }
 
     if (movement.kind !== "saleReturn" && movement.kind !== "purchaseReturn") {
-      state.weightedUnitCostTryExVat = state.stockQuantity > 0
+      state.weightedUnitCostTryExVat = state.stockQuantity > 0 && state.stockValueTryExVat != null
         ? state.stockValueTryExVat / state.stockQuantity
-        : state.weightedUnitCostTryExVat;
+        : null;
+      state.weightedUnitCostCurrencyExVat = state.stockQuantity > 0 && state.stockValueCurrencyExVat != null
+        ? state.stockValueCurrencyExVat / state.stockQuantity
+        : null;
     }
     if (movement.kind === "sale" && beforeUnitCost != null && appliedUnitCostTryExVat == null) {
       appliedUnitCostTryExVat = beforeUnitCost;
@@ -616,7 +635,7 @@ export function buildComparableYearWac({ year, movements = [], priorClosingWac =
       continue;
     }
     validKeys.add(key);
-    if (["opening", "purchase"].includes(kind)) {
+    if (kind === "purchase") {
       const unitCostTryExVat = Number(row?.unitCostTryExVat);
       const unitCostCurrencyExVat = row?.unitCostCurrencyExVat == null
         ? null
@@ -625,8 +644,7 @@ export function buildComparableYearWac({ year, movements = [], priorClosingWac =
       const validCurrencyCost = productCurrency === "TRY"
         || (Number.isFinite(unitCostCurrencyExVat) && unitCostCurrencyExVat > 0);
       if (!validTryCost || !validCurrencyCost) {
-        reviewRows.push(comparableReviewRow(normalized, kind === "purchase" ? "unpriced" : "review",
-          kind === "purchase" ? "unpriced" : "opening-cost-unknown"));
+        reviewRows.push(comparableReviewRow(normalized, "unpriced", "unpriced"));
         continue;
       }
       hasCostedOpening.add(key);

@@ -1,0 +1,64 @@
+- banner:
+  - link "Marlin Nexus Yönetim Sistemi":
+    - /url: "#top"
+    - strong: Marlin Nexus
+    - generic: Yönetim Sistemi
+  - navigation "Ana menü":
+    - button "Genel Bakış"
+    - button "Satış Analizi"
+    - button "Departman Analizi"
+    - button "Denetim"
+    - button "Stok" [active]
+    - button "Havuz"
+    - button "Ayarlar"
+  - combobox "Yıl":
+    - option "2024"
+    - option "2025"
+    - option "2026" [selected]
+  - button "Görünüm ayarları":
+  - button "Çıkış yap":
+- main:
+  - paragraph: Kanıtlı stok araştırması
+  - heading "Stok Kartı ve Hareket Defteri" [level=1]
+  - paragraph: Ürün bazında KDV hariç perakende fiyatı, alım faturaları, Halkbank satış kuru kanıtı ve hareket kronolojisi.
+  - text: Kaynak kullanılamıyor
+  - complementary:
+    - textbox:
+      - /placeholder: Ürün kodu veya adı ile ara…
+    - strong: Ürünler
+    - generic: "0"
+    - paragraph: CPM defteri okunuyor…
+  - text: Ürün seçilmedi
+  - heading "Araştırmak için bir ürün seçin" [level=2]
+  - paragraph: CPM stok kartı ve nihai defter kanıtı
+  - text: Ürün seçilmedi
+  - button "CSV İndir" [disabled]:
+    - text: CSV İndir
+  - article:
+    - generic: Toplam Hareket
+    - strong: "0"
+    - paragraph: 0 adet işlem
+  - article:
+    - generic: KDV Hariç Perakende Fiyat
+    - strong: —
+    - paragraph: Ürün stok kartı fiyatı
+  - article:
+    - generic: Son Döviz Birim Maliyeti
+    - strong: —
+    - paragraph: Halkbank satış kuru ile
+  - article:
+    - generic: Ürün Liste Brüt Marjı
+    - strong: —
+    - paragraph: 0 benzersiz fatura gözlemi
+  - heading "Fatura ve Stok Hareket Defteri" [level=2]
+  - paragraph: 0 hareket listeleniyor · Alım, satış ve iade kanıtları
+  - group "Görünüm biçimi":
+    - button "Muavin Defter"
+    - button "Denetim Tablosu"
+  - combobox "Hareket türü filtresi":
+    - option "Tüm hareketler" [selected]
+    - option "Yalnız Alımlar (9/609)"
+    - option "Yalnız Satışlar"
+    - option "Yalnız İadeler"
+  - paragraph: Bu ürün için hareket kaydı bulunamadı.
+- generic: Servis

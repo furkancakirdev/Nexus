@@ -1,0 +1,345 @@
+- banner:
+  - link "Marlin Nexus Yönetim Sistemi":
+    - /url: "#top"
+    - strong: Marlin Nexus
+    - generic: Yönetim Sistemi
+  - navigation "Ana menü":
+    - button "Genel Bakış"
+    - button "Satış Analizi"
+    - button "Departman Analizi"
+    - button "Denetim"
+    - button "Stok"
+    - button "Havuz"
+    - button "Ayarlar"
+  - combobox "Yıl":
+    - option "2024"
+    - option "2025"
+    - option "2026" [selected]
+  - button "Görünüm ayarları":
+  - button "Çıkış yap":
+- main:
+  - paragraph: Ticari performans ve kaynak kanıtı
+  - heading "Departman Analizi" [level=1]
+  - paragraph: Servis ve Yedek Parça Satış sonuçlarını ticari sorumluya göre karşılaştırın; depo ve belge kullanıcısını teslimat bağlamı olarak izleyin.
+  - text: CPM canlı · salt okunur
+  - button "Yenile":
+    - text: Yenile
+  - region "Departman analizi kontrolleri":
+    - group "Departman":
+      - button "Tümü"
+      - button "Servis":
+        - text: Servis
+      - button "Yedek Parça":
+        - text: Yedek Parça
+      - button "İnceleme"
+    - generic: Dönem
+    - combobox "Dönem":
+      - option "2026 geneli" [selected]
+      - option "Ocak"
+      - option "Şubat"
+      - option "Mart"
+      - option "Nisan"
+      - option "Mayıs"
+      - option "Haziran"
+      - option "Temmuz"
+      - option "Ağustos"
+      - option "Eylül"
+      - option "Ekim"
+      - option "Kasım"
+      - option "Aralık"
+    - text: Toplu raporla brüt/net uzlaşıyor
+  - article:
+    - generic: Net satış
+    - strong: 229.254.911 TL
+    - paragraph: Brüt 268.370.488 TL · KDV hariç
+  - article:
+    - generic: Esas brüt kâr
+    - strong: İncelemede
+    - paragraph: WAC maliyeti bekleniyor
+  - article:
+    - generic: Maliyet kapsamı
+    - strong: "%95,0"
+    - paragraph: 21.046 / 22.145 satır
+  - article:
+    - generic: Satış belgeleri
+    - strong: "5.801"
+    - paragraph: 1.194 farklı cari
+  - article:
+    - generic: Çapraz-depo satış
+    - strong: 53.652.609 TL
+    - paragraph: 534 belge · %23,4
+  - article:
+    - generic: Teyitli atıf
+    - strong: "%0,0"
+    - paragraph: "Kullanıcı eşlemesi: 161.838.851 TL"
+  - navigation "Departman analizi görünümleri":
+    - button "Genel Bakış"
+    - button "Sorumlu, Ürün & Müşteri"
+    - button "Belge Defteri"
+    - button "CPM Pilot İzleme" [active]
+  - article:
+    - generic: İlk gerçek sipariş
+    - strong: Algılandı
+    - paragraph: Yeni satış siparişi kaydedildikten sonra Yenile düğmesiyle kontrol edin.
+  - article:
+    - generic: Nexus sınırı
+    - strong: Salt okunur
+    - paragraph: CPM alanları yalnız okunur; atıf ve analiz Nexus’ta üretilir.
+  - article:
+    - generic: Kaynak zinciri kapsamı
+    - strong: "%26,7"
+    - paragraph: Siparişten teslimat ve faturaya bağlanan net satış oranı.
+  - article:
+    - generic: Çapraz-depo
+    - strong: 53.652.609 TL
+    - paragraph: Ticari departman ile teslimat deposu farklı olan satışlar.
+  - heading "Yeni CPM Atıf Akışı" [level=2]
+  - paragraph: Az önce eklenen alanların Nexus tarafından nasıl yorumlandığı
+  - generic: "1"
+  - strong: Satış Siparişi
+  - generic: SATICINO + MASRAFKOD
+  - generic: "2"
+  - strong: Kaynak Bağlantısı
+  - generic: SONKAYNAK*
+  - generic: "3"
+  - strong: Teslimat
+  - generic: DEPOKOD · MRK/YTM
+  - generic: "4"
+  - strong: Nexus Analizi
+  - generic: Ciro, maliyet, kâr, kanıt
+  - heading "Algılanan Gerçek Pilot Siparişleri" [level=2]
+  - paragraph: "`SSP-00979` silindi ve kalıcı dışlama listesinde; burada yalnız yeni gerçek siparişler görünür."
+  - button "Şimdi kontrol et":
+    - text: Şimdi kontrol et
+  - table:
+    - rowgroup:
+      - row "Sipariş Tarih Müşteri Ticari sorumlu Departman Teslimat deposu Durum":
+        - columnheader "Sipariş"
+        - columnheader "Tarih"
+        - columnheader "Müşteri"
+        - columnheader "Ticari sorumlu"
+        - columnheader "Departman"
+        - columnheader "Teslimat deposu"
+        - columnheader "Durum"
+    - rowgroup:
+      - row "B2B-05723 04.09.2026 A001 Belirsiz Yedek Parça Satış Merkez Depo İncele":
+        - rowheader "B2B-05723"
+        - cell "04.09.2026"
+        - cell "A001"
+        - cell "Belirsiz":
+          - strong: Belirsiz
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Merkez Depo"
+        - cell "İncele":
+          - generic: İncele
+      - row "B2B-05722 04.09.2026 DBS023 Belirsiz Yedek Parça Satış Merkez Depo İncele":
+        - rowheader "B2B-05722"
+        - cell "04.09.2026"
+        - cell "DBS023"
+        - cell "Belirsiz":
+          - strong: Belirsiz
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Merkez Depo"
+        - cell "İncele":
+          - generic: İncele
+      - row "B2B-05721 04.09.2026 A2936 Belirsiz Yedek Parça Satış Merkez Depo İncele":
+        - rowheader "B2B-05721"
+        - cell "04.09.2026"
+        - cell "A2936"
+        - cell "Belirsiz":
+          - strong: Belirsiz
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Merkez Depo"
+        - cell "İncele":
+          - generic: İncele
+      - row "B2B-05720 04.09.2026 DBS024 Belirsiz Yedek Parça Satış Merkez Depo İncele":
+        - rowheader "B2B-05720"
+        - cell "04.09.2026"
+        - cell "DBS024"
+        - cell "Belirsiz":
+          - strong: Belirsiz
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Merkez Depo"
+        - cell "İncele":
+          - generic: İncele
+      - row "B2B-05719 04.09.2026 DBS008 Belirsiz Yedek Parça Satış Merkez Depo İncele":
+        - rowheader "B2B-05719"
+        - cell "04.09.2026"
+        - cell "DBS008"
+        - cell "Belirsiz":
+          - strong: Belirsiz
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Merkez Depo"
+        - cell "İncele":
+          - generic: İncele
+      - row "B2B-05718 03.09.2026 A001 Belirsiz Yedek Parça Satış Merkez Depo İncele":
+        - rowheader "B2B-05718"
+        - cell "03.09.2026"
+        - cell "A001"
+        - cell "Belirsiz":
+          - strong: Belirsiz
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Merkez Depo"
+        - cell "İncele":
+          - generic: İncele
+      - row "B2B-05716 02.09.2026 A3670 Belirsiz Yedek Parça Satış Merkez Depo İncele":
+        - rowheader "B2B-05716"
+        - cell "02.09.2026"
+        - cell "A3670"
+        - cell "Belirsiz":
+          - strong: Belirsiz
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Merkez Depo"
+        - cell "İncele":
+          - generic: İncele
+      - row "B2B-05715 02.09.2026 DBS024 Belirsiz Yedek Parça Satış Merkez Depo İncele":
+        - rowheader "B2B-05715"
+        - cell "02.09.2026"
+        - cell "DBS024"
+        - cell "Belirsiz":
+          - strong: Belirsiz
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Merkez Depo"
+        - cell "İncele":
+          - generic: İncele
+      - row "B2B-05714 02.09.2026 DBS023 Belirsiz Yedek Parça Satış Merkez Depo İncele":
+        - rowheader "B2B-05714"
+        - cell "02.09.2026"
+        - cell "DBS023"
+        - cell "Belirsiz":
+          - strong: Belirsiz
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Merkez Depo"
+        - cell "İncele":
+          - generic: İncele
+      - row "B2B-05713 02.09.2026 S001 Belirsiz Yedek Parça Satış Merkez Depo İncele":
+        - rowheader "B2B-05713"
+        - cell "02.09.2026"
+        - cell "S001"
+        - cell "Belirsiz":
+          - strong: Belirsiz
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Merkez Depo"
+        - cell "İncele":
+          - generic: İncele
+      - row "B2B-05712 02.09.2026 A001 Belirsiz Yedek Parça Satış Merkez Depo İncele":
+        - rowheader "B2B-05712"
+        - cell "02.09.2026"
+        - cell "A001"
+        - cell "Belirsiz":
+          - strong: Belirsiz
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Merkez Depo"
+        - cell "İncele":
+          - generic: İncele
+      - row "B2B-05711 02.09.2026 DBS005 Belirsiz Yedek Parça Satış Merkez Depo İncele":
+        - rowheader "B2B-05711"
+        - cell "02.09.2026"
+        - cell "DBS005"
+        - cell "Belirsiz":
+          - strong: Belirsiz
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Merkez Depo"
+        - cell "İncele":
+          - generic: İncele
+      - row "B2B-05710 02.09.2026 A001 Belirsiz Yedek Parça Satış Merkez Depo İncele":
+        - rowheader "B2B-05710"
+        - cell "02.09.2026"
+        - cell "A001"
+        - cell "Belirsiz":
+          - strong: Belirsiz
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Merkez Depo"
+        - cell "İncele":
+          - generic: İncele
+      - row "B2B-05709 01.09.2026 DBS022 Belirsiz Yedek Parça Satış Merkez Depo İncele":
+        - rowheader "B2B-05709"
+        - cell "01.09.2026"
+        - cell "DBS022"
+        - cell "Belirsiz":
+          - strong: Belirsiz
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Merkez Depo"
+        - cell "İncele":
+          - generic: İncele
+      - row "B2B-05708 01.09.2026 DBS001 Belirsiz Yedek Parça Satış Merkez Depo İncele":
+        - rowheader "B2B-05708"
+        - cell "01.09.2026"
+        - cell "DBS001"
+        - cell "Belirsiz":
+          - strong: Belirsiz
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Merkez Depo"
+        - cell "İncele":
+          - generic: İncele
+      - row "B2B-05707 01.09.2026 DBS005 Belirsiz Yedek Parça Satış Merkez Depo İncele":
+        - rowheader "B2B-05707"
+        - cell "01.09.2026"
+        - cell "DBS005"
+        - cell "Belirsiz":
+          - strong: Belirsiz
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Merkez Depo"
+        - cell "İncele":
+          - generic: İncele
+      - row "B2B-05705 01.09.2026 S001 Belirsiz Yedek Parça Satış Merkez Depo İncele":
+        - rowheader "B2B-05705"
+        - cell "01.09.2026"
+        - cell "S001"
+        - cell "Belirsiz":
+          - strong: Belirsiz
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Merkez Depo"
+        - cell "İncele":
+          - generic: İncele
+      - row "B2B-05704 01.09.2026 DBS024 Belirsiz Yedek Parça Satış Merkez Depo İncele":
+        - rowheader "B2B-05704"
+        - cell "01.09.2026"
+        - cell "DBS024"
+        - cell "Belirsiz":
+          - strong: Belirsiz
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Merkez Depo"
+        - cell "İncele":
+          - generic: İncele
+      - row "B2B-05703 31.08.2026 S046 Belirsiz Yedek Parça Satış Merkez Depo İncele":
+        - rowheader "B2B-05703"
+        - cell "31.08.2026"
+        - cell "S046"
+        - cell "Belirsiz":
+          - strong: Belirsiz
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Merkez Depo"
+        - cell "İncele":
+          - generic: İncele
+      - row "B2B-05702 31.08.2026 DBS018 Belirsiz Yedek Parça Satış Merkez Depo İncele":
+        - rowheader "B2B-05702"
+        - cell "31.08.2026"
+        - cell "DBS018"
+        - cell "Belirsiz":
+          - strong: Belirsiz
+        - cell "Yedek Parça Satış":
+          - generic: Yedek Parça Satış
+        - cell "Merkez Depo"
+        - cell "İncele":
+          - generic: İncele
+- generic: Servis

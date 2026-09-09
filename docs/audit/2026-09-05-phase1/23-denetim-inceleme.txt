@@ -1,0 +1,886 @@
+- banner:
+  - link "Marlin Nexus Yönetim Sistemi":
+    - /url: "#top"
+    - strong: Marlin Nexus
+    - generic: Yönetim Sistemi
+  - navigation "Ana menü":
+    - button "Genel Bakış"
+    - button "Satış Analizi"
+    - button "Departman Analizi"
+    - button "Denetim"
+    - button "Stok"
+    - button "Havuz"
+    - button "Ayarlar"
+  - combobox "Yıl":
+    - option "2024"
+    - option "2025"
+    - option "2026" [selected]
+  - button "Görünüm ayarları":
+  - button "Çıkış yap":
+- main:
+  - paragraph: Finansal izlenebilirlik
+  - heading "CPM Denetim Merkezi" [level=1]
+  - paragraph: Hesaplamaya giren, oranla değerlendirilen, dışlanan ve inceleme bekleyen tüm belge satırlarını doğrulayın.
+  - generic: CPM canlı · salt okunur
+  - article:
+    - generic: Filtrelenen satır
+    - strong: "1.099"
+    - paragraph: 4.018.464 TL net hareket · kapsam dışı dahil
+    - generic: "Kapsam dışı: 0,00 TL"
+  - article:
+    - generic: Doğrulanan
+    - strong: "0"
+    - paragraph: 0 fatura · 0 oran
+  - article:
+    - generic: İnceleme / iade kontrolü
+    - strong: "1.099"
+    - paragraph: 0 satırda müşteri iadesi maliyetten ayıklandı
+  - article:
+    - generic: Kapsam dışı
+    - strong: "0"
+    - paragraph: Kâra ve havuza alınmaz
+  - heading "Belge ve Hesap Satırları" [level=2]
+  - paragraph: 2026 · sayfa 1/22 · 1.099 sonuç
+  - button "Tüm filtreli sonucu indir":
+    - text: Tüm filtreli sonucu indir
+  - textbox:
+    - /placeholder: Evrak no, stok kodu, ürün veya alım faturası ara
+  - generic: Ay
+  - combobox "Ay":
+    - option "Tümü" [selected]
+    - option "Ocak"
+    - option "Şubat"
+    - option "Mart"
+    - option "Nisan"
+    - option "Mayıs"
+    - option "Haziran"
+    - option "Temmuz"
+    - option "Ağustos"
+    - option "Eylül"
+    - option "Ekim"
+    - option "Kasım"
+    - option "Aralık"
+  - generic: Belge
+  - combobox "Belge":
+    - option "Tümü" [selected]
+    - option "13 · Teklif"
+    - option "14 · Satış siparişi"
+    - option "15 · Satış irsaliyesi"
+    - option "17 · Satış faturası"
+    - option "18 · Satış iadesi"
+    - option "64 · Sipariş onay"
+    - option "85 · Nihai fatura"
+    - option "91 · Perakende satış"
+  - generic: Kaynak
+  - combobox "Kaynak":
+    - option "Tümü" [selected]
+    - option "Nihai fatura"
+    - option "Kapanmış / aktarılmış"
+    - option "Satış iadesi"
+  - generic: Doğrulama
+  - combobox "Doğrulama":
+    - option "Tümü"
+    - option "Faturayla doğrulandı"
+    - option "Oranla hesaplandı"
+    - option "İnceleme gerekli" [selected]
+    - option "Kapsam dışı"
+  - generic: Maliyet yöntemi
+  - combobox "Maliyet yöntemi":
+    - option "Tümü" [selected]
+    - option "Toplu alım stoku"
+    - option "İade hariç önceki son alım"
+    - option "İade hariç sonraki ilk alım"
+    - option "Orijinal satış maliyeti"
+    - option "İşçilik oranı"
+    - option "SRF / BARNACLE oranı"
+    - option "TSR oranı"
+    - option "YOL oranı"
+    - option "Alım bulunamadı"
+    - option "Kapsam dışı gelir"
+  - generic: İade kontrolü
+  - combobox "İade kontrolü":
+    - option "Tümü" [selected]
+    - option "İade ayıklananlar"
+    - option "İade kanıtı olmayanlar"
+  - button "Temizle (1)":
+    - text: Temizle (1)
+  - generic "Denetim tablosunda yatay kaydırma"
+  - table:
+    - rowgroup:
+      - row "Detay Belge Stok / hizmet Satış net KDV hariç Satır maliyeti KDV hariç Brüt kâr KDV hariç Doğrulama":
+        - columnheader "Detay"
+        - columnheader "Belge"
+        - columnheader "Stok / hizmet"
+        - columnheader "Satış net KDV hariç":
+          - text: Satış net
+          - generic: KDV hariç
+        - columnheader "Satır maliyeti KDV hariç":
+          - text: Satır maliyeti
+          - generic: KDV hariç
+        - columnheader "Brüt kâr KDV hariç":
+          - text: Brüt kâr
+          - generic: KDV hariç
+        - columnheader "Doğrulama"
+    - rowgroup:
+      - row "Detayı aç 91/PRK-38932 04.09.2026 E2200 22MM ENDSTOP LOW BEAM SET OF 2, HARKEN 620,96 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38932 04.09.2026":
+          - strong: 91/PRK-38932
+          - generic: 04.09.2026
+        - cell "E2200 22MM ENDSTOP LOW BEAM SET OF 2, HARKEN":
+          - strong: E2200
+          - generic: 22MM ENDSTOP LOW BEAM SET OF 2, HARKEN
+        - cell "620,96 TL":
+          - strong: 620,96 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 91/PRK-38929 04.09.2026 Z-288 80MM. MAST BASE HALYARD BLOCK, Z SPARS 8.766,47 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38929 04.09.2026":
+          - strong: 91/PRK-38929
+          - generic: 04.09.2026
+        - cell "Z-288 80MM. MAST BASE HALYARD BLOCK, Z SPARS":
+          - strong: Z-288
+          - generic: 80MM. MAST BASE HALYARD BLOCK, Z SPARS
+        - cell "8.766,47 TL":
+          - strong: 8.766,47 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 91/PRK-38926 04.09.2026 X03431760 COOLING PUMP(SEA WATER) BALL BEARING, YANMAR 1.898,55 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38926 04.09.2026":
+          - strong: 91/PRK-38926
+          - generic: 04.09.2026
+        - cell "X03431760 COOLING PUMP(SEA WATER) BALL BEARING, YANMAR":
+          - strong: X03431760
+          - generic: COOLING PUMP(SEA WATER) BALL BEARING, YANMAR
+        - cell "1.898,55 TL":
+          - strong: 1.898,55 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 17/ME02026000003965 04.09.2026 121575-91250 IGNITION SWITCH WITH KEY, YANMAR 10.992,94 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/ME02026000003965 04.09.2026":
+          - strong: 17/ME02026000003965
+          - generic: 04.09.2026
+        - cell "121575-91250 IGNITION SWITCH WITH KEY, YANMAR":
+          - strong: 121575-91250
+          - generic: IGNITION SWITCH WITH KEY, YANMAR
+        - cell "10.992,94 TL":
+          - strong: 10.992,94 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 91/ME02026000003962 03.09.2026 8950G TOUCHPANEL 12/24V, SIDE POWER 10.953,85 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/ME02026000003962 03.09.2026":
+          - strong: 91/ME02026000003962
+          - generic: 03.09.2026
+        - cell "8950G TOUCHPANEL 12/24V, SIDE POWER":
+          - strong: 8950G
+          - generic: TOUCHPANEL 12/24V, SIDE POWER
+        - cell "10.953,85 TL":
+          - strong: 10.953,85 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 91/ME02026000003960 03.09.2026 163100-18900 CLEANER, AIR CMP 17.899,13 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/ME02026000003960 03.09.2026":
+          - strong: 91/ME02026000003960
+          - generic: 03.09.2026
+        - cell "163100-18900 CLEANER, AIR CMP":
+          - strong: 163100-18900
+          - generic: CLEANER, AIR CMP
+        - cell "17.899,13 TL":
+          - strong: 17.899,13 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 17/PRK-38897 03.09.2026 CEF10615K RW PUMP IMPELLER, CEF 4.177,93 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/PRK-38897 03.09.2026":
+          - strong: 17/PRK-38897
+          - generic: 03.09.2026
+        - cell "CEF10615K RW PUMP IMPELLER, CEF":
+          - strong: CEF10615K
+          - generic: RW PUMP IMPELLER, CEF
+        - cell "4.177,93 TL":
+          - strong: 4.177,93 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 17/ME02026000003950 02.09.2026 129107-44590 FRESH WATER FILLER CAP, YANMAR 3.288,93 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/ME02026000003950 02.09.2026":
+          - strong: 17/ME02026000003950
+          - generic: 02.09.2026
+        - cell "129107-44590 FRESH WATER FILLER CAP, YANMAR":
+          - strong: 129107-44590
+          - generic: FRESH WATER FILLER CAP, YANMAR
+        - cell "3.288,93 TL":
+          - strong: 3.288,93 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 17/PRK-38853 02.09.2026 0893 65 CONTACT SW SPRAY WASHING 200ML, WÜRTH 547,14 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/PRK-38853 02.09.2026":
+          - strong: 17/PRK-38853
+          - generic: 02.09.2026
+        - cell "0893 65 CONTACT SW SPRAY WASHING 200ML, WÜRTH":
+          - strong: 0893 65
+          - generic: CONTACT SW SPRAY WASHING 200ML, WÜRTH
+        - cell "547,14 TL":
+          - strong: 547,14 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 17/PRK-38853 02.09.2026 0893 60 CONTACT OL OXIDE REMOVER 200ML, WÜRTH 547,15 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/PRK-38853 02.09.2026":
+          - strong: 17/PRK-38853
+          - generic: 02.09.2026
+        - cell "0893 60 CONTACT OL OXIDE REMOVER 200ML, WÜRTH":
+          - strong: 0893 60
+          - generic: CONTACT OL OXIDE REMOVER 200ML, WÜRTH
+        - cell "547,15 TL":
+          - strong: 547,15 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 91/ME02026000003935 01.09.2026 120650-13520 JOINT, EXHAUST PIPE 8.783,26 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/ME02026000003935 01.09.2026":
+          - strong: 91/ME02026000003935
+          - generic: 01.09.2026
+        - cell "120650-13520 JOINT, EXHAUST PIPE":
+          - strong: 120650-13520
+          - generic: JOINT, EXHAUST PIPE
+        - cell "8.783,26 TL":
+          - strong: 8.783,26 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 17/ME02026000003932 01.09.2026 GM18793 IMPELLER, CSW PUMP, KOHLER 87.897,05 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/ME02026000003932 01.09.2026":
+          - strong: 17/ME02026000003932
+          - generic: 01.09.2026
+        - cell "GM18793 IMPELLER, CSW PUMP, KOHLER":
+          - strong: GM18793
+          - generic: IMPELLER, CSW PUMP, KOHLER
+        - cell "87.897,05 TL":
+          - strong: 87.897,05 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 91/PRK-38809 01.09.2026 MP-315310 CONTROL BOX FOR TUNNEL THRUSTER, MAX-POWER 12.243,86 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38809 01.09.2026":
+          - strong: 91/PRK-38809
+          - generic: 01.09.2026
+        - cell "MP-315310 CONTROL BOX FOR TUNNEL THRUSTER, MAX-POWER":
+          - strong: MP-315310
+          - generic: CONTROL BOX FOR TUNNEL THRUSTER, MAX-POWER
+        - cell "12.243,86 TL":
+          - strong: 12.243,86 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 18/MEF2026000000067 31.08.2026 177 1/4\" (6.35MM) TORLON BALL BEARING 21 PKG, HARKEN −2.583,56 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "18/MEF2026000000067 31.08.2026":
+          - strong: 18/MEF2026000000067
+          - generic: 31.08.2026
+        - cell "177 1/4\" (6.35MM) TORLON BALL BEARING 21 PKG, HARKEN":
+          - strong: "177"
+          - generic: 1/4" (6.35MM) TORLON BALL BEARING 21 PKG, HARKEN
+        - cell "−2.583,56 TL":
+          - strong: −2.583,56 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 85/ME02026000003915 31.08.2026 177074-02500 OIL DIPSTICK, YANMAR 2.589,03 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "85/ME02026000003915 31.08.2026":
+          - strong: 85/ME02026000003915
+          - generic: 31.08.2026
+        - cell "177074-02500 OIL DIPSTICK, YANMAR":
+          - strong: 177074-02500
+          - generic: OIL DIPSTICK, YANMAR
+        - cell "2.589,03 TL":
+          - strong: 2.589,03 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 17/PRK-38804 31.08.2026 0893 65 CONTACT SW SPRAY WASHING 200ML, WÜRTH 644,16 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/PRK-38804 31.08.2026":
+          - strong: 17/PRK-38804
+          - generic: 31.08.2026
+        - cell "0893 65 CONTACT SW SPRAY WASHING 200ML, WÜRTH":
+          - strong: 0893 65
+          - generic: CONTACT SW SPRAY WASHING 200ML, WÜRTH
+        - cell "644,16 TL":
+          - strong: 644,16 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 17/PRK-38804 31.08.2026 0893 60 CONTACT OL OXIDE REMOVER 200ML, WÜRTH 644,16 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/PRK-38804 31.08.2026":
+          - strong: 17/PRK-38804
+          - generic: 31.08.2026
+        - cell "0893 60 CONTACT OL OXIDE REMOVER 200ML, WÜRTH":
+          - strong: 0893 60
+          - generic: CONTACT OL OXIDE REMOVER 200ML, WÜRTH
+        - cell "644,16 TL":
+          - strong: 644,16 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 91/PRK-38799 31.08.2026 0893 60 CONTACT OL OXIDE REMOVER 200ML, WÜRTH 643,97 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38799 31.08.2026":
+          - strong: 91/PRK-38799
+          - generic: 31.08.2026
+        - cell "0893 60 CONTACT OL OXIDE REMOVER 200ML, WÜRTH":
+          - strong: 0893 60
+          - generic: CONTACT OL OXIDE REMOVER 200ML, WÜRTH
+        - cell "643,97 TL":
+          - strong: 643,97 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 91/ME02026000003896 31.08.2026 129271-91120A PANEL WITH COVERFOIL, YANMAR 3.853,69 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/ME02026000003896 31.08.2026":
+          - strong: 91/ME02026000003896
+          - generic: 31.08.2026
+        - cell "129271-91120A PANEL WITH COVERFOIL, YANMAR":
+          - strong: 129271-91120A
+          - generic: PANEL WITH COVERFOIL, YANMAR
+        - cell "3.853,69 TL":
+          - strong: 3.853,69 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 91/MA02026000000726 29.08.2026 0239916B QUICK ELEKTRİKLİ IRGAT MOTORU 2000W - 24V 42.564,16 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/MA02026000000726 29.08.2026":
+          - strong: 91/MA02026000000726
+          - generic: 29.08.2026
+        - cell "0239916B QUICK ELEKTRİKLİ IRGAT MOTORU 2000W - 24V":
+          - strong: 0239916B
+          - generic: QUICK ELEKTRİKLİ IRGAT MOTORU 2000W - 24V
+        - cell "42.564,16 TL":
+          - strong: 42.564,16 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 91/MA02026000000724 29.08.2026 50-1180A ALU.ANODE SP550HYD, SIDE-POWER 9.313,68 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/MA02026000000724 29.08.2026":
+          - strong: 91/MA02026000000724
+          - generic: 29.08.2026
+        - cell "50-1180A ALU.ANODE SP550HYD, SIDE-POWER":
+          - strong: 50-1180A
+          - generic: ALU.ANODE SP550HYD, SIDE-POWER
+        - cell "9.313,68 TL":
+          - strong: 9.313,68 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 18/YTM2026000000347 28.08.2026 5-1260 THRUSTER PROPELLER (SE50 / Ø 137MM.), SIDE-POWER −2.235,82 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "18/YTM2026000000347 28.08.2026":
+          - strong: 18/YTM2026000000347
+          - generic: 28.08.2026
+        - cell "5-1260 THRUSTER PROPELLER (SE50 / Ø 137MM.), SIDE-POWER":
+          - strong: 5-1260
+          - generic: THRUSTER PROPELLER (SE50 / Ø 137MM.), SIDE-POWER
+        - cell "−2.235,82 TL":
+          - strong: −2.235,82 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 17/PRK-38742 28.08.2026 0893 106 028 12 H-HHS 2000 SPRAY GREASE, WÜRTH 512,46 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/PRK-38742 28.08.2026":
+          - strong: 17/PRK-38742
+          - generic: 28.08.2026
+        - cell "0893 106 028 12 H-HHS 2000 SPRAY GREASE, WÜRTH":
+          - strong: 0893 106 028 12
+          - generic: H-HHS 2000 SPRAY GREASE, WÜRTH
+        - cell "512,46 TL":
+          - strong: 512,46 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 17/ME02026000003876 28.08.2026 119574-44150 ZINC ANODE, YANMAR 11.683,84 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/ME02026000003876 28.08.2026":
+          - strong: 17/ME02026000003876
+          - generic: 28.08.2026
+        - cell "119574-44150 ZINC ANODE, YANMAR":
+          - strong: 119574-44150
+          - generic: ZINC ANODE, YANMAR
+        - cell "11.683,84 TL":
+          - strong: 11.683,84 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 91/PRK-38727 27.08.2026 ARD1138 24VDC-150A SOLENOID (MAHLE), BESENZONI 4.989,37 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/PRK-38727 27.08.2026":
+          - strong: 91/PRK-38727
+          - generic: 27.08.2026
+        - cell "ARD1138 24VDC-150A SOLENOID (MAHLE), BESENZONI":
+          - strong: ARD1138
+          - generic: 24VDC-150A SOLENOID (MAHLE), BESENZONI
+        - cell "4.989,37 TL":
+          - strong: 4.989,37 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 17/PRK-38695 27.08.2026 0893 106 028 12 H-HHS 2000 SPRAY GREASE, WÜRTH 493,48 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/PRK-38695 27.08.2026":
+          - strong: 17/PRK-38695
+          - generic: 27.08.2026
+        - cell "0893 106 028 12 H-HHS 2000 SPRAY GREASE, WÜRTH":
+          - strong: 0893 106 028 12
+          - generic: H-HHS 2000 SPRAY GREASE, WÜRTH
+        - cell "493,48 TL":
+          - strong: 493,48 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 17/PRK-38695 27.08.2026 1701164 BRONZE THRU-HULL FITTING 1 1/4\", GROCO 7.278,72 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/PRK-38695 27.08.2026":
+          - strong: 17/PRK-38695
+          - generic: 27.08.2026
+        - cell "1701164 BRONZE THRU-HULL FITTING 1 1/4\", GROCO":
+          - strong: "1701164"
+          - generic: BRONZE THRU-HULL FITTING 1 1/4", GROCO
+        - cell "7.278,72 TL":
+          - strong: 7.278,72 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 17/PRK-38695 27.08.2026 1701214 BRONZE HOSE FITTING 1 1/4\", GROCO 3.187,14 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/PRK-38695 27.08.2026":
+          - strong: 17/PRK-38695
+          - generic: 27.08.2026
+        - cell "1701214 BRONZE HOSE FITTING 1 1/4\", GROCO":
+          - strong: "1701214"
+          - generic: BRONZE HOSE FITTING 1 1/4", GROCO
+        - cell "3.187,14 TL":
+          - strong: 3.187,14 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 17/PRK-38695 27.08.2026 1701224 BRONZE ELBOW HOSE FITTING 1 1/4\", GROCO 4.874,8 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/PRK-38695 27.08.2026":
+          - strong: 17/PRK-38695
+          - generic: 27.08.2026
+        - cell "1701224 BRONZE ELBOW HOSE FITTING 1 1/4\", GROCO":
+          - strong: "1701224"
+          - generic: BRONZE ELBOW HOSE FITTING 1 1/4", GROCO
+        - cell "4.874,8 TL":
+          - strong: 4.874,8 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 17/PRK-38695 27.08.2026 1701211 BRONZE HOSE FITTING 1/2\", GROCO 353,23 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/PRK-38695 27.08.2026":
+          - strong: 17/PRK-38695
+          - generic: 27.08.2026
+        - cell "1701211 BRONZE HOSE FITTING 1/2\", GROCO":
+          - strong: "1701211"
+          - generic: BRONZE HOSE FITTING 1/2", GROCO
+        - cell "353,23 TL":
+          - strong: 353,23 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 17/PRK-38695 27.08.2026 1701221 BRONZE ELBOW HOSE FITTING 1/2\", GROCO 353,24 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/PRK-38695 27.08.2026":
+          - strong: 17/PRK-38695
+          - generic: 27.08.2026
+        - cell "1701221 BRONZE ELBOW HOSE FITTING 1/2\", GROCO":
+          - strong: "1701221"
+          - generic: BRONZE ELBOW HOSE FITTING 1/2", GROCO
+        - cell "353,24 TL":
+          - strong: 353,24 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 17/PRK-38695 27.08.2026 0893 65 CONTACT SW SPRAY WASHING 200ML, WÜRTH 580,06 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/PRK-38695 27.08.2026":
+          - strong: 17/PRK-38695
+          - generic: 27.08.2026
+        - cell "0893 65 CONTACT SW SPRAY WASHING 200ML, WÜRTH":
+          - strong: 0893 65
+          - generic: CONTACT SW SPRAY WASHING 200ML, WÜRTH
+        - cell "580,06 TL":
+          - strong: 580,06 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 17/PRK-38695 27.08.2026 0893 60 CONTACT OL OXIDE REMOVER 200ML, WÜRTH 580,06 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/PRK-38695 27.08.2026":
+          - strong: 17/PRK-38695
+          - generic: 27.08.2026
+        - cell "0893 60 CONTACT OL OXIDE REMOVER 200ML, WÜRTH":
+          - strong: 0893 60
+          - generic: CONTACT OL OXIDE REMOVER 200ML, WÜRTH
+        - cell "580,06 TL":
+          - strong: 580,06 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 17/PRK-38695 27.08.2026 121857-55760 FUEL FILTER BODY WASHER, YANMAR 163,33 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/PRK-38695 27.08.2026":
+          - strong: 17/PRK-38695
+          - generic: 27.08.2026
+        - cell "121857-55760 FUEL FILTER BODY WASHER, YANMAR":
+          - strong: 121857-55760
+          - generic: FUEL FILTER BODY WASHER, YANMAR
+        - cell "163,33 TL":
+          - strong: 163,33 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 17/PRK-38695 27.08.2026 BA9903 TURBO RENS 550 ML, OPAR 2.597,28 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/PRK-38695 27.08.2026":
+          - strong: 17/PRK-38695
+          - generic: 27.08.2026
+        - cell "BA9903 TURBO RENS 550 ML, OPAR":
+          - strong: BA9903
+          - generic: TURBO RENS 550 ML, OPAR
+        - cell "2.597,28 TL":
+          - strong: 2.597,28 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 18/OZE2026000000016 26.08.2026 50-1270 RH PROPELLER SP550TC −80.240,48 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "18/OZE2026000000016 26.08.2026":
+          - strong: 18/OZE2026000000016
+          - generic: 26.08.2026
+        - cell "50-1270 RH PROPELLER SP550TC":
+          - strong: 50-1270 RH
+          - generic: PROPELLER SP550TC
+        - cell "−80.240,48 TL":
+          - strong: −80.240,48 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 17/MA02026000000712 26.08.2026 GM18793 IMPELLER, CSW PUMP, KOHLER 142.578,27 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/MA02026000000712 26.08.2026":
+          - strong: 17/MA02026000000712
+          - generic: 26.08.2026
+        - cell "GM18793 IMPELLER, CSW PUMP, KOHLER":
+          - strong: GM18793
+          - generic: IMPELLER, CSW PUMP, KOHLER
+        - cell "142.578,27 TL":
+          - strong: 142.578,27 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 17/MA02026000000712 26.08.2026 GM88686 V-BELT, KOHLER 38.045,09 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/MA02026000000712 26.08.2026":
+          - strong: 17/MA02026000000712
+          - generic: 26.08.2026
+        - cell "GM88686 V-BELT, KOHLER":
+          - strong: GM88686
+          - generic: V-BELT, KOHLER
+        - cell "38.045,09 TL":
+          - strong: 38.045,09 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 17/PRK-38673 26.08.2026 GM52600S 24VDC ALTERNATOR ASSY (ISKRA), KOHLER 47.025,3 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/PRK-38673 26.08.2026":
+          - strong: 17/PRK-38673
+          - generic: 26.08.2026
+        - cell "GM52600S 24VDC ALTERNATOR ASSY (ISKRA), KOHLER":
+          - strong: GM52600S
+          - generic: 24VDC ALTERNATOR ASSY (ISKRA), KOHLER
+        - cell "47.025,3 TL":
+          - strong: 47.025,3 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 17/PRK-38673 26.08.2026 0893 106 028 12 H-HHS 2000 SPRAY GREASE, WÜRTH 521,05 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/PRK-38673 26.08.2026":
+          - strong: 17/PRK-38673
+          - generic: 26.08.2026
+        - cell "0893 106 028 12 H-HHS 2000 SPRAY GREASE, WÜRTH":
+          - strong: 0893 106 028 12
+          - generic: H-HHS 2000 SPRAY GREASE, WÜRTH
+        - cell "521,05 TL":
+          - strong: 521,05 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 17/PRK-38673 26.08.2026 GM46681 FUEL INJECTOR SEALING RING, KOHLER 1.367,35 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/PRK-38673 26.08.2026":
+          - strong: 17/PRK-38673
+          - generic: 26.08.2026
+        - cell "GM46681 FUEL INJECTOR SEALING RING, KOHLER":
+          - strong: GM46681
+          - generic: FUEL INJECTOR SEALING RING, KOHLER
+        - cell "1.367,35 TL":
+          - strong: 1.367,35 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 17/PRK-38673 26.08.2026 BA9903 TURBO RENS 550 ML, OPAR 5.487,88 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/PRK-38673 26.08.2026":
+          - strong: 17/PRK-38673
+          - generic: 26.08.2026
+        - cell "BA9903 TURBO RENS 550 ML, OPAR":
+          - strong: BA9903
+          - generic: TURBO RENS 550 ML, OPAR
+        - cell "5.487,88 TL":
+          - strong: 5.487,88 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 91/MA02026000000708 25.08.2026 728171-23100 CONNECTING ROD ASSY, 1-2-3 GM 16.513,21 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/MA02026000000708 25.08.2026":
+          - strong: 91/MA02026000000708
+          - generic: 25.08.2026
+        - cell "728171-23100 CONNECTING ROD ASSY, 1-2-3 GM":
+          - strong: 728171-23100
+          - generic: CONNECTING ROD ASSY, 1-2-3 GM
+        - cell "16.513,21 TL":
+          - strong: 16.513,21 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 17/ME02026000003811 25.08.2026 MAR4007 COVER, RW PUMP, KOHLER 1.159,6 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/ME02026000003811 25.08.2026":
+          - strong: 17/ME02026000003811
+          - generic: 25.08.2026
+        - cell "MAR4007 COVER, RW PUMP, KOHLER":
+          - strong: MAR4007
+          - generic: COVER, RW PUMP, KOHLER
+        - cell "1.159,6 TL":
+          - strong: 1.159,6 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 17/PRK-38608 24.08.2026 OSC/52.207.30 30X40X120MM. RUBBER CUTLASS BEARING, OSCULATI 2.208,42 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/PRK-38608 24.08.2026":
+          - strong: 17/PRK-38608
+          - generic: 24.08.2026
+        - cell "OSC/52.207.30 30X40X120MM. RUBBER CUTLASS BEARING, OSCULATI":
+          - strong: OSC/52.207.30
+          - generic: 30X40X120MM. RUBBER CUTLASS BEARING, OSCULATI
+        - cell "2.208,42 TL":
+          - strong: 2.208,42 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 17/ME02026000003806 24.08.2026 24141-322060 SAILDRIVE PROPSHAFT BEARING (SD40/50), YANMAR 3.347,04 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/ME02026000003806 24.08.2026":
+          - strong: 17/ME02026000003806
+          - generic: 24.08.2026
+        - cell "24141-322060 SAILDRIVE PROPSHAFT BEARING (SD40/50), YANMAR":
+          - strong: 24141-322060
+          - generic: SAILDRIVE PROPSHAFT BEARING (SD40/50), YANMAR
+        - cell "3.347,04 TL":
+          - strong: 3.347,04 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 91/ME02026000003804 24.08.2026 375 X-TREME ANGLE FAIRLEAD, HARKEN 1.842,71 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/ME02026000003804 24.08.2026":
+          - strong: 91/ME02026000003804
+          - generic: 24.08.2026
+        - cell "375 X-TREME ANGLE FAIRLEAD, HARKEN":
+          - strong: "375"
+          - generic: X-TREME ANGLE FAIRLEAD, HARKEN
+        - cell "1.842,71 TL":
+          - strong: 1.842,71 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 18/SWA2026000000006 22.08.2026 3-0601 COMPLETE DRIVELEG, SIDE POWER −23.548,37 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "18/SWA2026000000006 22.08.2026":
+          - strong: 18/SWA2026000000006
+          - generic: 22.08.2026
+        - cell "3-0601 COMPLETE DRIVELEG, SIDE POWER":
+          - strong: 3-0601
+          - generic: COMPLETE DRIVELEG, SIDE POWER
+        - cell "−23.548,37 TL":
+          - strong: −23.548,37 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 91/MA02026000000703 22.08.2026 MODEL 98B-24 DUŞ POMPASI / TAVASI 800 GPH / 24V 13.400,58 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "91/MA02026000000703 22.08.2026":
+          - strong: 91/MA02026000000703
+          - generic: 22.08.2026
+        - cell "MODEL 98B-24 DUŞ POMPASI / TAVASI 800 GPH / 24V":
+          - strong: MODEL 98B-24
+          - generic: DUŞ POMPASI / TAVASI 800 GPH / 24V
+        - cell "13.400,58 TL":
+          - strong: 13.400,58 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+      - row "Detayı aç 17/PRK-38523 20.08.2026 128790-77580 BELT ALTERNATOR 6 PK 995 1.106,63 TL — — İnceleme gerekli":
+        - cell "Detayı aç":
+          - button "Detayı aç":
+        - rowheader "17/PRK-38523 20.08.2026":
+          - strong: 17/PRK-38523
+          - generic: 20.08.2026
+        - cell "128790-77580 BELT ALTERNATOR 6 PK 995":
+          - strong: 128790-77580
+          - generic: BELT ALTERNATOR 6 PK 995
+        - cell "1.106,63 TL":
+          - strong: 1.106,63 TL
+        - cell "—"
+        - cell "—"
+        - cell "İnceleme gerekli":
+          - generic: İnceleme gerekli
+  - text: Sayfa boyutu
+  - combobox "Sayfa boyutu":
+    - option "25"
+    - option "50" [selected]
+    - option "100"
+  - generic: 1–50 / 1.099
+  - button "Önceki" [disabled]:
+    - text: Önceki
+  - button "Sonraki":
+    - text: Sonraki
+  - paragraph: "Kaynak: CPM STKHAR, STKKRT, CARKRT ve EFAGLN. Tip 9/609 belgeler e-Fatura iade kanıtından geçirilir; müşteri iadeleri maliyet adayı olamaz. CPM’e veri yazılmaz."
+- generic: Servis

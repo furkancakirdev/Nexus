@@ -4,6 +4,7 @@ import {
   buildInvoiceReconciliation,
   buildSourceRowProvenanceDiagnostic,
 } from "./ledgerApi.mjs";
+import { buildDepartmentAnalysis } from "./departmentAnalysis.mjs";
 
 function row(overrides = {}) {
   return {
@@ -93,12 +94,13 @@ test("Nexus görünümü CPM kaynağından saparsa uzlaştırma inceleme durumun
   assert.equal(result.breakdown[0].difference, 10);
 });
 
-test("kapsam dışı gelir satırları resmi uzlaştırmadan ayrılır", () => {
-  const result = buildInvoiceReconciliation({ rows: [row(), row({ productCode: "KOMISYON", grossAmount: 50, netAmount: 50, signedNetSales: 50, signedVatAmount: 10, signedInvoiceTotalInclVat: 60 })] });
+test("eski kapsam kodları resmi uzlaştırmaya ve gelir toplamına dahil edilir", () => {
+  const result = buildInvoiceReconciliation({ rows: [row(), row({ productCode: "KOMISYON", grossAmount: 50, discountAmount: 0, netAmount: 50, signedNetSales: 50, signedVatAmount: 10, signedInvoiceTotalInclVat: 60 })] });
   assert.equal(result.status, "matched");
-  assert.equal(result.source.netSales, 100);
-  assert.equal(result.excludedIncome.netSales, 50);
+  assert.equal(result.source.netSales, 150);
+  assert.equal(result.excludedIncome.netSales, 0);
   assert.equal(result.rawSource.netSales, 150);
+  assert.deepEqual(result.excludedIncomeCodes, []);
 });
 
 test("source-row provenance bağımsız CPM kanıtı yoksa diagnostic'i fail-closed döndürür", () => {
@@ -127,8 +129,8 @@ test("source-row provenance bağımsız CPM kanıtı yoksa diagnostic'i fail-clo
     rows: 2,
     nullSourceRowIds: 0,
     duplicateSourceRowIds: 0,
-    includedRows: 1,
-    excludedIncomeRows: 1,
+    includedRows: 2,
+    excludedIncomeRows: 0,
     unmatchedRows: 2,
   });
   assert.deepEqual(result.rows.map(({ sourceRowId, disposition, matchStatus }) => ({
@@ -137,7 +139,7 @@ test("source-row provenance bağımsız CPM kanıtı yoksa diagnostic'i fail-clo
     matchStatus,
   })), [
     { sourceRowId: "STK-1", disposition: "included", matchStatus: "not-independently-verified" },
-    { sourceRowId: "STK-2", disposition: "excluded-income", matchStatus: "not-independently-verified" },
+    { sourceRowId: "STK-2", disposition: "included", matchStatus: "not-independently-verified" },
   ]);
 });
 
@@ -153,9 +155,29 @@ test("source-row provenance her tutarı açık bir kapsam sınıfına taşır", 
 
   assert.deepEqual(result.rows.map((item) => item.scopeClassification), [
     "commercial-revenue",
-    "non-commercial-income",
+    "commercial-revenue",
     "test-document",
   ]);
+});
+
+test("dört eski gelir kodu departman toplamında ve kişi kırılımında tutulur", () => {
+  const codes = ["KOMISYON", "GD-0187", "PDI", "GD-0079"];
+  const rows = codes.map((productCode, index) => row({
+    rootId: `INCOME-${index}`,
+    productCode,
+    netAmount: 100,
+    grossAmount: 100,
+    signedNetSales: 100,
+    department: "service",
+    commercialOwner: "OWNER",
+    attributionConfidence: "confirmed",
+    financeV2: { costStatus: "review", reviewReason: "missing-cost", productCurrency: "TRY" },
+  }));
+  const analysis = buildDepartmentAnalysis({ year: 2026, ledger: { rows } });
+  assert.equal(analysis.detailRows.length, 4);
+  assert.equal(analysis.totals.netSales, 400);
+  assert.equal(analysis.departments.find((item) => item.id === "service").netSales, 400);
+  assert.equal(analysis.ownerEvidenceTotals.find((item) => item.id === "OWNER").netSales, 400);
 });
 
 test("source-row provenance anahtarı null veya duplicate ise matched iddiasını reddeder", () => {

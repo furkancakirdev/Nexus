@@ -2,9 +2,23 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   DEFAULT_SETTINGS,
+  SETTINGS_REGISTRY,
   normalizeSettings,
   serializeSettings,
 } from "./settingsPolicy.mjs";
+
+test("settings registry keys exist in defaults and preserve boolean round-trips", () => {
+  const keys = SETTINGS_REGISTRY.toggles.map(({ key }) => key);
+  assert.equal(new Set(keys).size, keys.length);
+  for (const key of keys) assert.equal(typeof DEFAULT_SETTINGS[key], "boolean");
+  const source = Object.fromEntries(keys.map((key) => [key, !DEFAULT_SETTINGS[key]]));
+  const normalized = normalizeSettings(source);
+  const serialized = serializeSettings(source);
+  for (const key of keys) {
+    assert.equal(normalized[key], source[key]);
+    assert.equal(serialized[key], source[key]);
+  }
+});
 
 const validPolicy = {
   id: "manual-margin-1",

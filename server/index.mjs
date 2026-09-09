@@ -41,6 +41,9 @@ import {
 } from "./tcmbRateSource.mjs";
 import { resolveOfficialRateRows } from "./officialRateResolver.mjs";
 import { buildHistoricalFinancialEvidence } from "../shared/historicalFinancialEvidence.mjs";
+import { buildInventoryEvidenceImpact } from "./inventoryEvidenceImpact.mjs";
+import { cpmInvoiceAuditSql } from "./cpmInvoiceAuditSql.mjs";
+import { buildCpmInvoiceAuditPayload } from "./cpmInvoiceAudit.mjs";
 import { cpmMovementCandidateSql, dvzharRateCandidateSql, stkhArType81SampleSql, stkhArType81SummarySql, stkhArType82SampleSql, stkhArType82SummarySql, stkkrtPriceCandidateSql, stksymDevirSampleSql, stksymDevirSummarySql, stksymSalesOverlapSummarySql, stksymStkhArDocumentMatchSummarySql, stksymStkhArMatchReasonSummarySql, stksymStkhArMatchSummarySql } from "./inventoryOpeningResearchSql.mjs";
 
 export function normalizeStoredAppState(state) {
@@ -163,7 +166,8 @@ async function loadFinalInvoiceLedger(year) {
   const movementEvidence = summarizeCpmMovementCandidates({ rows: movementRows });
   const movementCandidates = buildCpmWacMovementCandidates({
     rows: movementRows,
-    excludeUnlinkedReturnBeforeYear: year,
+    // Önceki yılların iadeleri taşınan stok miktarı ve maliyeti etkileyebilir.
+    // Doğrulanmış açılış uzlaşması olmadan yıl sınırıyla kapsamdan çıkarılmaz.
   });
   const rateCandidates = buildCpmExchangeRateCandidates({
     rows: rateRows,
@@ -252,7 +256,6 @@ async function loadFinalInvoiceLedger(year) {
     years: [2024, 2025],
   });
   const movementContractVerified = String(process.env.CPM_INVENTORY_SOURCE_CONTRACT_VERIFIED).toLowerCase() === "true";
-  const sourceVerified = movementContractVerified;
   const excludedMovementRowCount = (movementCandidates.reviewCounts.invalidCostRows || 0)
     + (movementCandidates.reviewCounts.invalidMovementRows || 0)
     + (movementCandidates.reviewCounts.unlinkedReturnRows || 0)
@@ -261,27 +264,33 @@ async function loadFinalInvoiceLedger(year) {
   const movementEvidenceComplete = movementEvidence.mappedRowCount === movementRows.length
     && movementEvidence.movementRowCount === movementCandidates.candidateMovementCount + excludedMovementRowCount
     && movementCandidates.reviewCounts.invalidMovementRows === 0
-    && movementCandidates.reviewCounts.unlinkedReturnRows === 0
     && movementCandidates.reviewCounts.missingDepotCount === 0;
+  // An environment flag is intent, not proof. The source may be marked
+  // verified only after the current candidate movement evidence is complete.
+  const sourceVerified = movementContractVerified && movementEvidenceComplete;
   const historicalCurrencyComplete = historicalEvidence.movements.length === movementCandidates.candidateMovementCount
     && historicalEvidence.movements.every((movement) => {
       const productCurrency = String(movement.productCurrency || "").trim().toUpperCase();
       if (!/^[A-Z]{3}$/.test(productCurrency)) return false;
-      if (!["opening", "purchase"].includes(movement.kind) || productCurrency === "TRY") return true;
+      if (movement.kind !== "purchase" || productCurrency === "TRY") return true;
       return Number.isFinite(Number(movement.unitCostCurrencyExVat))
         && Number(movement.unitCostCurrencyExVat) > 0;
     });
+  // Açılış/devir maliyeti CPM'de zorunlu bir kaynak değildir. Resmî WAC,
+  // doğrulanabilir alış faturalarından hareketli ağırlıklı ortalama ile kurulur;
+  // açılış satırı eksikse yalnız ilgili satır ve öncesindeki maliyetsiz satışlar review kalır.
   const costMovements = movementCandidates.movements
-    .filter((movement) => ["opening", "purchase"].includes(movement.kind));
+    .filter((movement) => movement.kind === "purchase");
   const historicalCostMovements = historicalEvidence.movements
-    .filter((movement) => ["opening", "purchase"].includes(movement.kind));
+    .filter((movement) => movement.kind === "purchase");
   const historicalCostEvidenceComplete = costMovements.length > 0
     && historicalCostMovements.length === costMovements.length
     && historicalCostMovements.every((movement) => Number.isFinite(Number(movement.unitCostTryExVat))
       && Number(movement.unitCostTryExVat) > 0)
     && historicalEvidence.costReviewCounts.review === 0;
+  // Geçersiz maliyetli alış satırları resmi WAC adaylarından hariç tutulur ve
+  // review olarak raporlanır; doğrulanmış purchase kapsamını global olarak kilitlemez.
   const costEvidenceComplete = movementEvidenceComplete
-    && movementCandidates.reviewCounts.invalidCostRows === 0
     && historicalCostEvidenceComplete
     && historicalEvidence.exchangeRateCount > 0;
   const marginEvidenceComplete = movementEvidenceComplete
@@ -301,9 +310,9 @@ async function loadFinalInvoiceLedger(year) {
     inventorySource: {
       status: sourceVerified ? "verified" : "candidate",
       ...(sourceVerified ? { contractVersion: 1 } : {}),
-      financialStatus: sourceVerified && rateCandidates.status === "verified" && historicalEvidenceComplete
+      financialStatus: sourceVerified && rateCandidates.status === "verified" && costEvidenceComplete
         ? "ready" : "blocked",
-      reviewReason: "movement-source-not-verified",
+      reviewReason: sourceVerified ? null : movementCandidates.reviewReason || "movement-source-not-verified",
       // Tarihsel fiyat/kur ile zenginleştirilmiş hareketler candidate olarak
       // saklanır; source.status/financialStatus gate'i açılmadan official WAC'a
       // bağlanmaz. Verified geçişte aynı enriched satırlar EUR maliyetini taşır.
@@ -321,6 +330,7 @@ async function loadFinalInvoiceLedger(year) {
         candidateMovementCount: movementCandidates.candidateMovementCount,
         movementReviewReasonDetailed: movementCandidates.reviewReason,
         movementReviewCounts: movementCandidates.reviewCounts,
+        movementImpact: buildInventoryEvidenceImpact({ rows: movementRows }),
         movementEvidenceComplete,
         movementReviewReasons: movementCandidates.reviewReasons,
         movementUnlinkedReturnReasons: movementCandidates.unlinkedReturnReasons,
@@ -363,6 +373,38 @@ const ledgerService = injectedLedgerService || createLedgerService({ loadYear: l
 
 async function getStoredAppState() {
   return normalizeStoredAppState(await stateStore.read());
+}
+
+async function loadCpmInvoiceAudit(year, { page, pageSize, offset } = {}) {
+  const pool = await getPool();
+  if (!pool) return null;
+
+  const company = process.env.CPM_SQL_COMPANY || "01";
+  const startDate = new Date(Date.UTC(year, 0, 1));
+  const endDate = new Date(Date.UTC(year + 1, 0, 1));
+  const result = await withReadOnlyCpmTransaction({
+    transactionFactory: async () => new sql.Transaction(pool),
+    isolationLevel: sql.ISOLATION_LEVEL.READ_COMMITTED,
+    executeRead: executeCpmReadOnlyQuery,
+    run: async ({ request, execute }) => {
+      request.input("company", sql.VarChar(3), company);
+      request.input("startDate", sql.DateTime2, startDate);
+      request.input("endDate", sql.DateTime2, endDate);
+      request.input("offset", sql.Int, offset);
+      request.input("pageSize", sql.Int, pageSize);
+      return execute({ queryId: "invoice-audit-bounded-v1", query: cpmInvoiceAuditSql });
+    },
+  });
+
+  const recordsets = result?.recordsets || [];
+  return buildCpmInvoiceAuditPayload({
+    year,
+    page,
+    pageSize,
+    totalRows: recordsets[1]?.[0]?.totalRows,
+    summaryRows: recordsets[0] || [],
+    rows: recordsets[2] || [],
+  });
 }
 
 async function loadSourceProvenance(year, canonicalSnapshot = null, ledgerVersion = null) {
@@ -476,6 +518,7 @@ const departmentTargetLoader = createDepartmentTargetLoader({
     departmentTargetLoader,
     sourceProvenanceLoader: loadSourceProvenance,
     inventoryOpeningResearchLoader: loadInventoryOpeningResearch,
+    rawInvoiceAuditLoader: loadCpmInvoiceAudit,
   });
   const realApprovalRouter = injectedApprovalRouter || createApprovalRouter({
   store: stateStore,
@@ -494,24 +537,26 @@ const departmentTargetLoader = createDepartmentTargetLoader({
 
   app.post("/api/session/login", auth.login);
   app.use((request, response, next) => {
-    if (!request.path.startsWith("/api/") || request.path === "/api/health") return next();
+    const normalizedPath = String(request.path || "").toLowerCase();
+    if (!normalizedPath.startsWith("/api/") || normalizedPath === "/api/health") return next();
     return auth.middleware(request, response, next);
   });
   app.get("/api/session", (request, response) => response.json({ user: request.user }));
   app.post("/api/session/logout", auth.logout);
   app.use((request, response, next) => {
-    if (!request.path.startsWith("/api/") || request.path.startsWith("/api/session") || request.path === "/api/health") return next();
-    const capability = request.path.startsWith("/api/app-state")
+    const normalizedPath = String(request.path || "").toLowerCase();
+    if (!normalizedPath.startsWith("/api/") || normalizedPath.startsWith("/api/session") || normalizedPath === "/api/health") return next();
+    const capability = normalizedPath.startsWith("/api/app-state")
       ? CAPABILITIES.SETTINGS_MANAGE
-      : request.path.startsWith("/api/approvals")
+      : normalizedPath.startsWith("/api/approvals")
         ? CAPABILITIES.APPROVALS_MANAGE
-        : request.path === "/api/ledger-refresh"
+        : normalizedPath === "/api/ledger-refresh"
           ? CAPABILITIES.OPERATIONS_READ
-          : ["/api/overview", "/api/reconciliation/invoices", "/api/reconciliation/invoices/source-rows", "/api/department-analysis", "/api/department-targets", "/api/audit-ledger", "/api/audit-samples", "/api/build-info", "/api/readiness", "/api/research/inventory-opening-evidence"].includes(request.path)
+          : ["/api/overview", "/api/reconciliation/invoices", "/api/reconciliation/invoices/source-rows", "/api/reconciliation/raw-invoices", "/api/department-analysis", "/api/department-targets", "/api/audit-ledger", "/api/audit-samples", "/api/build-info", "/api/readiness", "/api/research/inventory-opening-evidence"].includes(normalizedPath)
             ? CAPABILITIES.REPORTING_READ
-            : ["/api/modules"].includes(request.path)
+            : ["/api/modules"].includes(normalizedPath)
               ? CAPABILITIES.REPORTING_READ
-            : ["/api/sales-cases", "/api/inventory-research"].includes(request.path)
+            : ["/api/sales-cases", "/api/inventory-research"].includes(normalizedPath)
               ? CAPABILITIES.OPERATIONS_READ
             : null;
     if (!capability) return response.status(403).json({ error: "API rotası için yetki politikası tanımlı değil." });

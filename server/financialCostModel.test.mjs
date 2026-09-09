@@ -11,7 +11,7 @@ import {
   buildComparableYearWac,
 } from "../shared/financialCostModel.mjs";
 
-test("karşılaştırmalı yıl bilinmeyen açılışı covered yapmaz", () => {
+test("maliyetsiz açılış satırı purchase WAC kapsamını engellemez", () => {
   const result = buildComparableYearWac({
     year: 2025,
     movements: [
@@ -23,15 +23,21 @@ test("karşılaştırmalı yıl bilinmeyen açılışı covered yapmaz", () => {
         id: "S-BEFORE", productCode: "P-1", depotCode: "D-1", productCurrency: "EUR",
         kind: "sale", date: "2025-01-02", quantity: 2,
       },
+      {
+        id: "P-2025", productCode: "P-1", depotCode: "D-1", productCurrency: "EUR",
+        kind: "purchase", date: "2025-01-03", quantity: 10,
+        unitCostTryExVat: 100, unitCostCurrencyExVat: 2.5,
+      },
     ],
   });
 
-  assert.equal(result.rows.length, 2);
+  assert.equal(result.rows.length, 3);
   assert.equal(result.rows[0].costStatus, "review");
-  assert.equal(result.rows[0].financialStatus, "blocked");
   assert.equal(result.rows[0].reviewReason, "opening-cost-unknown");
   assert.equal(result.rows[1].costStatus, "review");
-  assert.equal(result.coveredRows, 0);
+  assert.equal(result.rows[1].reviewReason, "opening-cost-unknown");
+  assert.equal(result.rows[2].costStatus, "covered");
+  assert.equal(result.coveredRows, 1);
 });
 
 test("karşılaştırmalı yıl kapanış WAC'ı yalnız ürün-depo-döviz anahtarında taşır", () => {
@@ -266,12 +272,13 @@ test("resmi WAC aynı ürün ve depoda farklı para birimlerini birbirine karı�
 });
 
 test("eksik açılış maliyeti sıfıra çevrilmez ve satırı incelemeye bırakır", () => {
-  assert.throws(
-    () => buildOfficialMovementCosts([
-      { id: "O-1", productCode: "P-1", kind: "opening", date: "2026-01-01", quantity: 10 },
-    ]),
-    /açılış.*birim maliyet/i,
-  );
+  const [opening] = buildOfficialMovementCosts([
+    { id: "O-1", productCode: "P-1", kind: "opening", date: "2026-01-01", quantity: 10 },
+  ]);
+
+  assert.equal(opening.officialLineCostTryExVat, null);
+  assert.equal(opening.officialCostStatus, "review");
+  assert.equal(opening.reviewReason, "opening-cost-unknown");
 });
 
 test("aynı gün hareketlerinde kaynak sırası kimlik sırasının önüne geçer", () => {
@@ -431,6 +438,21 @@ test("KDV hariç perakende fiyat ile döviz maliyetinden ürün liste brüt marj
     exchangeDate: "2026-08-01",
     exchangeSourceId: "CPM-FX-42",
   });
+});
+
+test("geçersiz takvim tarihi marj gözlemini incelemeye bırakır", () => {
+  const result = calculateProductMarginObservation({
+    productCode: "GD-INVALID-DATE",
+    productCurrency: "TRY",
+    retailUnitPriceCurrencyExVat: 150,
+    purchaseDate: "2026-02-30",
+    purchaseQuantity: 1,
+    purchaseNetAmountTryExVat: 100,
+  });
+
+  assert.equal(result.purchaseDate, null);
+  assert.equal(result.productListGrossMarginPct, null);
+  assert.equal(result.reviewReason, "missing-purchase-date");
 });
 
 test("fatura tarihi ile kur tarihi farklıysa marjı incelemeye bırakır", () => {

@@ -1,0 +1,190 @@
+- banner:
+  - link "Marlin Nexus Yönetim Sistemi":
+    - /url: "#top"
+    - strong: Marlin Nexus
+    - generic: Yönetim Sistemi
+  - navigation "Ana menü":
+    - button "Genel Bakış"
+    - button "Satış Analizi"
+    - button "Departman Analizi"
+    - button "Denetim"
+    - button "Stok"
+    - button "Havuz"
+    - button "Ayarlar"
+  - combobox "Yıl":
+    - option "2024"
+    - option "2025"
+    - option "2026" [selected]
+  - button "Görünüm ayarları":
+  - button "Çıkış yap":
+- main:
+  - paragraph: Ticari performans ve kaynak kanıtı
+  - heading "Departman Analizi" [level=1]
+  - paragraph: Servis ve Yedek Parça Satış sonuçlarını ticari sorumluya göre karşılaştırın; depo ve belge kullanıcısını teslimat bağlamı olarak izleyin.
+  - text: CPM canlı · salt okunur
+  - button "Yenile":
+    - text: Yenile
+  - region "Departman analizi kontrolleri":
+    - group "Departman":
+      - button "Tümü"
+      - button "Servis":
+        - text: Servis
+      - button "Yedek Parça":
+        - text: Yedek Parça
+      - button "İnceleme"
+    - generic: Dönem
+    - combobox "Dönem":
+      - option "2026 geneli" [selected]
+      - option "Ocak"
+      - option "Şubat"
+      - option "Mart"
+      - option "Nisan"
+      - option "Mayıs"
+      - option "Haziran"
+      - option "Temmuz"
+      - option "Ağustos"
+      - option "Eylül"
+      - option "Ekim"
+      - option "Kasım"
+      - option "Aralık"
+    - text: Toplu raporla brüt/net uzlaşıyor
+  - article:
+    - generic: Net satış
+    - strong: 229.254.911 TL
+    - paragraph: Brüt 268.370.488 TL · KDV hariç
+  - article:
+    - generic: Esas brüt kâr
+    - strong: İncelemede
+    - paragraph: WAC maliyeti bekleniyor
+  - article:
+    - generic: Maliyet kapsamı
+    - strong: "%95,0"
+    - paragraph: 21.046 / 22.145 satır
+  - article:
+    - generic: Satış belgeleri
+    - strong: "5.801"
+    - paragraph: 1.194 farklı cari
+  - article:
+    - generic: Çapraz-depo satış
+    - strong: 53.652.609 TL
+    - paragraph: 534 belge · %23,4
+  - article:
+    - generic: Teyitli atıf
+    - strong: "%0,0"
+    - paragraph: "Kullanıcı eşlemesi: 161.838.851 TL"
+  - navigation "Departman analizi görünümleri":
+    - button "Genel Bakış"
+    - button "Sorumlu, Ürün & Müşteri" [active]
+    - button "Belge Defteri"
+    - button "CPM Pilot İzleme"
+  - article:
+    - heading "Ticari Sorumlular" [level=2]
+    - paragraph: 91→85 riskli toplu işler kişi sıralamasına alınmaz · Tıklayarak defterde inceleyin
+    - paragraph: Teyitli ticari sorumlu verisi henüz yok.
+  - article:
+    - heading "En Çok Satılan Ürünler" [level=2]
+    - paragraph: Net satış değerine göre ilk 10
+    - generic: "1"
+    - strong: MARLİN İŞÇİLİK
+    - generic: İŞÇİLİK · ANONİM
+    - strong: 35.817.152 TL
+    - generic: Kâr 25.072.006 TL
+    - generic: "2"
+    - strong: SARF MALZEMELER
+    - generic: SRF · ANONİM
+    - strong: 12.759.261 TL
+    - generic: Kâr 4.465.741 TL
+    - generic: "3"
+    - strong: GENUINE DIESEL ENGINE OIL 15W40 5L, YANMAR
+    - generic: 15W40-5L · YANMAR
+    - strong: 3.586.271 TL
+    - generic: Kâr 1.660.153 TL
+    - generic: "4"
+    - strong: TAŞERON FİRMA İŞÇİLİĞİ
+    - generic: TSR · ANONİM
+    - strong: 3.372.803 TL
+    - generic: Kâr 1.180.481 TL
+    - generic: "5"
+    - strong: YOL ÜCRETİ
+    - generic: YOL · Marlin
+    - strong: 2.735.289 TL
+    - generic: Kâr 1.367.645 TL
+    - generic: "6"
+    - strong: DEC3500 CONTROLLER ASSY. W/ E-STOP (S.O.), KOHLER
+    - generic: GM92086 · KOHLER
+    - strong: 2.713.011 TL
+    - generic: Kâr 1.284.616 TL
+    - generic: "7"
+    - strong: ADC2100 CONTROLLER ASSY, KOHLER
+    - generic: GM34969 · KOHLER
+    - strong: 2.362.273 TL
+    - generic: Kâr 1.378.259 TL
+    - generic: "8"
+    - strong: 150HP. MARINE CR DIESEL ENGINE (BOBTAIL), YANMAR
+    - generic: 4LV150 · YANMAR5
+    - strong: 2.236.673 TL
+    - generic: Kâr 316.981 TL
+    - generic: "9"
+    - strong: IMPELLER KIT, YANMAR
+    - generic: 129670-42610 · YANMAR
+    - strong: 2.020.751 TL
+    - generic: Kâr 804.582 TL
+    - generic: "10"
+    - strong: SEA WATER PUMP ASSY, KOHLER
+    - generic: ED0065845820-S · KOHLER
+    - strong: 1.771.223 TL
+    - generic: Kâr 768.671 TL
+  - article:
+    - heading "En Yüksek Hacimli Müşteriler" [level=2]
+    - paragraph: Net satış değerine göre ilk 10
+    - generic: "1"
+    - strong: SENKRON JENERATÖR SİSTEMLERİ SANAYİ VE TİC.LTD.ŞTİ.
+    - generic: DBS015
+    - strong: 10.840.350 TL
+    - generic: 64 belge
+    - generic: "2"
+    - strong: WEST MARİNE DENİZ MOT. VE JEN. TEKNİK SERVİSİ SAN. VE TİC. A.Ş.
+    - generic: DBS024
+    - strong: 7.365.995 TL
+    - generic: 174 belge
+    - generic: "3"
+    - strong: İNO YACHTING GEMİCİLİK TUR. TİC. LTD. ŞTİ.
+    - generic: A2166
+    - strong: 6.611.293 TL
+    - generic: 15 belge
+    - generic: "4"
+    - strong: YORULMAZ YAT SERVİS TUR.İNŞ.TAŞ.İTH.İHR.SAN VE TİC.LTD.ŞTİ
+    - generic: DBS003
+    - strong: 5.897.550 TL
+    - generic: 144 belge
+    - generic: "5"
+    - strong: M/V CELEBRATE LIFE
+    - generic: "2732"
+    - strong: 3.807.170 TL
+    - generic: 1 belge
+    - generic: "6"
+    - strong: M/V ROUND MIDNIGHT
+    - generic: "1921"
+    - strong: 3.547.512 TL
+    - generic: 10 belge
+    - generic: "7"
+    - strong: AJK GAYRİMENKUL MENKUL İNŞ. SAN.VE TİC. A.Ş.
+    - generic: A1754
+    - strong: 3.460.173 TL
+    - generic: 2 belge
+    - generic: "8"
+    - strong: ÖZLEM YILMAZ
+    - generic: DBS023
+    - strong: 3.300.822 TL
+    - generic: 84 belge
+    - generic: "9"
+    - strong: M/V CIPITOUBA II
+    - generic: T533
+    - strong: 2.992.464 TL
+    - generic: 6 belge
+    - generic: "10"
+    - strong: VOLTECH MARİNE YAT. DEN. MLZ. TUR. SAN. TİC. LTD. ŞTİ.
+    - generic: DBS018
+    - strong: 2.815.398 TL
+    - generic: 134 belge
+- generic: Servis

@@ -20,7 +20,7 @@ import {
   IconX,
   IconUsers,
 } from "@tabler/icons-react";
-import { DEFAULT_SETTINGS } from "../shared/settingsPolicy.mjs";
+import { DEFAULT_SETTINGS, SETTINGS_REGISTRY } from "../shared/settingsPolicy.mjs";
 
 const tabs = [
   { id: "people", label: "Personel & Paylar", description: "Katsayı ve dağıtım", icon: IconUsers },
@@ -51,6 +51,20 @@ function NumberInput({ value, onChange, min = 0, max, suffix }) {
       {suffix && <b>{suffix}</b>}
     </span>
   );
+}
+
+function RegistryToggles({ section, draft, onChange }) {
+  return SETTINGS_REGISTRY.toggles
+    .filter((toggle) => toggle.section === section)
+    .map((toggle) => (
+      <Toggle
+        key={toggle.key}
+        checked={draft[toggle.key]}
+        onChange={(value) => onChange(toggle.key, value)}
+        label={toggle.label}
+        help={toggle.help}
+      />
+    ));
 }
 
 const EMPTY_EMPLOYEE = {
@@ -307,9 +321,8 @@ export function SettingsPage({ settings, onSave, connection, mode, annualProfit,
               <div className="settings-section__title"><IconDatabase /><div><h2>Maliyet ve Veri Güveni</h2><p>CPM verisinin hangi koşullarda kesinleşmiş sayılacağını belirleyin.</p></div></div>
               <div className="settings-card">
                 <div className="form-grid form-grid--3">
-                  <Field label="Maliyet yöntemi" help="STOK_MALIYET kullanılmaz; önce satıştan önceki son, yoksa satıştan sonraki en yakın aktif alım faturası kullanılır."><select value="lastPurchase" disabled><option value="lastPurchase">Doğrulanabilir net alım faturası</option></select></Field>
+                  <Field label="Maliyet yöntemi" help="Resmî maliyet hareketli ağırlıklı ortalama maliyet (WAC) kanıtına dayanır; bu alan yalnız geçiş uyumluluğu için salt okunurdur."><select value="wac" disabled><option value="wac">Hareketli ağırlıklı ortalama (WAC)</option></select></Field>
                   <Field label="Asgari maliyet kapsamı"><NumberInput value={draft.minimumCoverage} onChange={(v) => set("minimumCoverage", v)} min={60} max={100} suffix="%" /></Field>
-                  <Field label="Kur dönüşüm kuralı"><select value={draft.exchangeRateRule} onChange={(e) => set("exchangeRateRule", e.target.value)}><option value="document">Evrak tarihi kuru</option><option value="monthEnd">Ay sonu kuru</option><option value="centralBank">TCMB satış kuru</option></select></Field>
                   <Field label="Varsayılan para birimi"><select value={draft.reportingCurrencyDefault || "EUR"} onChange={(e) => set("reportingCurrencyDefault", e.target.value)}><option value="EUR">EUR (Halkbank Çapraz)</option><option value="TRY">TRY (Türk Lirası)</option></select></Field>
                 </div>
                 {!validation.coverage && <p className="field-error"><IconAlertTriangle size={15} /> Kapsam eşiği %60–%100 arasında olmalı.</p>}
@@ -331,11 +344,7 @@ export function SettingsPage({ settings, onSave, connection, mode, annualProfit,
                 {!validation.pilotRates && <p className="field-error"><IconAlertTriangle size={15} /> Pilot kart oranları %0–%100 arasında olmalı.</p>}
               </div>
               <div className="settings-card settings-card--toggles">
-                <Toggle checked={draft.negativeStockWeightByQuantity ?? true} onChange={(v) => set("negativeStockWeightByQuantity", v)} label="Negatif stokta alım adetleriyle ağırlıklandırma" help="Açıksa negatif stoğa düşen satışlarda marj, alım faturalarındaki adetlerle ağırlıklı ortalama olarak hesaplanır ve tüm satılan adetlere eşit uygulanır." />
-                <Toggle checked={draft.enableCrossDepotTracking ?? true} onChange={(v) => set("enableCrossDepotTracking", v)} label="Çapraz-depo sevkiyatlarını ayrı izle" help="Servis departmanının merkez depodan sevk edilen parçalarını ticari sahiplikten ayırmadan takip eder." />
-                <Toggle checked={draft.filterAccountingActors ?? true} onChange={(v) => set("filterAccountingActors", v)} label="Bircan ve muhasebe aktörlerini filtrele" help="Bircan veya cari kart benzeri aktörlerin ticari sorumlu sıralamalarına girmesini engeller." />
-                <Toggle checked={draft.requireManagementApprovalForManualCost} onChange={(v) => set("requireManagementApprovalForManualCost", v)} label="Manuel maliyette yönetim onayı zorunlu" help="Açıksa manuel girilen maliyetler yönetim onayı verilene kadar kesin havuz hesabına alınmaz. Kapalıysa kayıt, kaydedildiği anda hesaplamaya katılabilir." />
-                <Toggle checked={draft.requireManagementApprovalForManualMargin ?? true} onChange={(v) => set("requireManagementApprovalForManualMargin", v)} label="Manuel marjda yönetim onayı zorunlu" help="Varsayılan olarak açıktır. Bekleyen kararlar yönetim onayı verilmeden onaylı sayılmaz." />
+                <RegistryToggles section="cost" draft={draft} onChange={set} />
               </div>
               <div className="settings-card">
                 <h3>Eksik maliyet kanıtı için manuel marj</h3>
@@ -368,7 +377,7 @@ export function SettingsPage({ settings, onSave, connection, mode, annualProfit,
                   </tbody>
                 </table>
               </div>
-              <div className="readonly-banner"><IconLock /><div><strong>Faturayla kanıtlanan maliyet ve veri sınırı</strong><p>BARNACLE, SRF oranına bağlıdır. Diğer ürünlerde satıştan önceki son; bu yoksa satıştan sonraki en yakın aktif net alım faturası kullanılır. KOMİSYON, GD-0187, GD-0079 ve PDI kapsam dışıdır; alımı bulunmayan diğer gelir esas kâr ve havuzdan çıkarılır. CPM yalnızca SELECT sorgularıyla okunur.</p></div><span>{mode === "live" ? "Canlı CPM" : "Pilot veri"}</span></div>
+              <div className="readonly-banner"><IconLock /><div><strong>Faturayla kanıtlanan maliyet ve veri sınırı</strong><p>BARNACLE, SRF oranına bağlıdır. Diğer ürünlerde satıştan önceki son; bu yoksa satıştan sonraki en yakın aktif net alım faturası kullanılır. KOMİSYON, GD-0187, GD-0079 ve PDI gelir kapsamına dahil edilir; maliyet kanıtı bulunmayan satırlar esas kâr ve havuzdan önce incelemede tutulur. CPM yalnızca SELECT sorgularıyla okunur.</p></div><span>{mode === "live" ? "Canlı CPM" : "Pilot veri"}</span></div>
             </div>
           )}
 
@@ -415,10 +424,7 @@ export function SettingsPage({ settings, onSave, connection, mode, annualProfit,
                 </div>
               </div>
               <div className="settings-card settings-card--toggles">
-                <Toggle checked={draft.boardApproval} onChange={(v) => set("boardApproval", v)} label="Yönetim nihai dağıtım onayı" />
-                <Toggle checked={draft.lockAfterApproval} onChange={(v) => set("lockAfterApproval", v)} label="Nihai onay sonrası dönemi kilitle" />
-                <Toggle checked={draft.auditLog} onChange={(v) => set("auditLog", v)} label="Değişiklik ve onay günlüğü tut" />
-                <Toggle checked={draft.monthlyNotifications} onChange={(v) => set("monthlyNotifications", v)} label="Aylık kapanış bildirimleri" />
+                <RegistryToggles section="approval" draft={draft} onChange={set} />
               </div>
               <div className="readonly-banner"><IconShieldCheck/><div><strong>Tek aşamalı yetki</strong><p>Veri riskleri görünür kalır ancak departman bazlı ara onay oluşturulmaz. Yönetim, maliyet kararlarını ve dönem havuzunu aynı merkezden onaylar.</p></div><span>Yönetim</span></div>
             </div>

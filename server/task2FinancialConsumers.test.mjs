@@ -137,15 +137,15 @@ test("F-020 department metrics preserve byCurrency and canonical evidence counts
   assert.deepEqual(service.evidence, { coveredLines: 1, reviewLines: 1, excludedLines: 0 });
 });
 
-test("F-018 audit projections fail closed for review and excluded evidence", () => {
+test("F-018 audit projections fail closed for review while old income codes remain financial rows", () => {
   const review = filterAuditLedger({ rows: [row({
     financeV2: { lineCostTryExVat: null, costStatus: "review", productCurrency: "TRY", reviewReason: "missing-cost" },
   })] });
-  const excluded = filterAuditLedger({ rows: [row({ productCode: "KOMISYON" })] });
+  const includedIncome = filterAuditLedger({ rows: [row({ productCode: "KOMISYON" })] });
   assert.equal(review.rows[0].calculatedCost, null);
   assert.equal(review.rows[0].grossProfit, null);
-  assert.equal(excluded.rows[0].calculatedCost, null);
-  assert.equal(excluded.rows[0].grossProfit, null);
+  assert.equal(includedIncome.rows[0].calculatedCost, 400);
+  assert.equal(includedIncome.rows[0].grossProfit, 600);
 });
 
 test("overview does not count an explicit review cost as covered V2 evidence", () => {

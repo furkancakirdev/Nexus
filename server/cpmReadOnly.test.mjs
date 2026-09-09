@@ -13,11 +13,12 @@ import { sourceProvenanceByCanonicalIdsSql } from "./sourceProvenanceSql.mjs";
 import { cpmMovementCandidateSql, dvzharRateCandidateSql, stkhArType81SampleSql, stkhArType81SummarySql, stkhArType82SampleSql, stkhArType82SummarySql, stkkrtPriceCandidateSql, stksymDevirSampleSql } from "./inventoryOpeningResearchSql.mjs";
 import { stksymDevirSummarySql, stksymSalesOverlapSummarySql, stksymStkhArDocumentMatchSummarySql, stksymStkhArMatchReasonSummarySql, stksymStkhArMatchSummarySql } from "./inventoryOpeningResearchSql.mjs";
 import { settlementEvidenceSql } from "./settlementEvidenceSql.mjs";
+import { cpmInvoiceAuditSql } from "./cpmInvoiceAuditSql.mjs";
 
 const healthSql = "SELECT DB_NAME() AS databaseName";
 
 test("production CPM queries pass the local-temp-only structural guard", () => {
-  for (const query of [healthSql, salesCaseSql, finalInvoiceLedgerSql, sourceProvenanceSql, cpmMovementCandidateSql, dvzharRateCandidateSql, stkkrtPriceCandidateSql, stkhArType81SampleSql, stkhArType81SummarySql, stkhArType82SampleSql, stkhArType82SummarySql, stksymDevirSampleSql, stksymDevirSummarySql, stksymStkhArMatchSummarySql, stksymStkhArDocumentMatchSummarySql, stksymStkhArMatchReasonSummarySql, stksymSalesOverlapSummarySql, settlementEvidenceSql]) {
+  for (const query of [healthSql, salesCaseSql, finalInvoiceLedgerSql, sourceProvenanceSql, cpmMovementCandidateSql, dvzharRateCandidateSql, stkkrtPriceCandidateSql, stkhArType81SampleSql, stkhArType81SummarySql, stkhArType82SampleSql, stkhArType82SummarySql, stksymDevirSampleSql, stksymDevirSummarySql, stksymStkhArMatchSummarySql, stksymStkhArDocumentMatchSummarySql, stksymStkhArMatchReasonSummarySql, stksymSalesOverlapSummarySql, settlementEvidenceSql, cpmInvoiceAuditSql]) {
     assert.equal(assertCpmReadOnlySql(query), query);
   }
 });
@@ -135,6 +136,7 @@ test("production fingerprint registry executes the approved queries", async () =
   await executeCpmReadOnlyQuery({ request, queryId: "final-invoice-ledger-v1", query: finalInvoiceLedgerSql });
   await executeCpmReadOnlyQuery({ request, queryId: "source-provenance-candidates-v1", query: sourceProvenanceSql });
   await executeCpmReadOnlyQuery({ request, queryId: "source-provenance-canonical-ids-v1", query: sourceProvenanceByCanonicalIdsSql });
+  await executeCpmReadOnlyQuery({ request, queryId: "invoice-audit-bounded-v1", query: cpmInvoiceAuditSql });
   await executeCpmReadOnlyQuery({ request, queryId: "inventory-movement-candidate-v1", query: cpmMovementCandidateSql });
   await executeCpmReadOnlyQuery({ request, queryId: "exchange-rate-candidate-v1", query: dvzharRateCandidateSql });
   await executeCpmReadOnlyQuery({ request, queryId: "historical-price-candidate-v1", query: stkkrtPriceCandidateSql });
@@ -148,5 +150,5 @@ test("production fingerprint registry executes the approved queries", async () =
   await executeCpmReadOnlyQuery({ request, queryId: "inventory-opening-stksym-stkhar-document-match-summary-v1", query: stksymStkhArDocumentMatchSummarySql });
   await executeCpmReadOnlyQuery({ request, queryId: "inventory-opening-stksym-stkhar-match-reason-summary-v1", query: stksymStkhArMatchReasonSummarySql });
   await executeCpmReadOnlyQuery({ request, queryId: "inventory-opening-stksym-sales-overlap-summary-v1", query: stksymSalesOverlapSummarySql });
-  assert.deepEqual(received, [healthSql, salesCaseSql, finalInvoiceLedgerSql, sourceProvenanceSql, sourceProvenanceByCanonicalIdsSql, cpmMovementCandidateSql, dvzharRateCandidateSql, stkkrtPriceCandidateSql, stkhArType82SampleSql, stkhArType82SummarySql, stkhArType81SampleSql, stkhArType81SummarySql, stksymDevirSampleSql, stksymDevirSummarySql, stksymStkhArMatchSummarySql, stksymStkhArDocumentMatchSummarySql, stksymStkhArMatchReasonSummarySql, stksymSalesOverlapSummarySql]);
+  assert.deepEqual(received, [healthSql, salesCaseSql, finalInvoiceLedgerSql, sourceProvenanceSql, sourceProvenanceByCanonicalIdsSql, cpmInvoiceAuditSql, cpmMovementCandidateSql, dvzharRateCandidateSql, stkkrtPriceCandidateSql, stkhArType82SampleSql, stkhArType82SummarySql, stkhArType81SampleSql, stkhArType81SummarySql, stksymDevirSampleSql, stksymDevirSummarySql, stksymStkhArMatchSummarySql, stksymStkhArDocumentMatchSummarySql, stksymStkhArMatchReasonSummarySql, stksymSalesOverlapSummarySql]);
 });

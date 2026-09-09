@@ -51,7 +51,18 @@ import {
 import { normalizePilotEmployees } from "../shared/employeePolicy.mjs";
 import { NexusShell } from "./components/layout/NexusShell.jsx";
 
-const DEFAULT_APPEARANCE = { theme: "light", density: "comfortable", highContrast: false, reducedMotion: false, defaultPage: "summary" };
+const DEFAULT_APPEARANCE = { theme: "dark", density: "compact", highContrast: false, reducedMotion: false, defaultPage: "summary" };
+const REPORT_YEAR_STORAGE_KEY = "marlin-report-year";
+const API_REQUEST_TIMEOUT_MS = 120000;
+
+function readReportYear() {
+  try {
+    const stored = Number(localStorage.getItem(REPORT_YEAR_STORAGE_KEY));
+    return Number.isInteger(stored) && stored >= 2000 && stored <= 2100 ? stored : 2026;
+  } catch {
+    return 2026;
+  }
+}
 
 function normalizeAppearance(value = {}) {
   const appearance = { ...DEFAULT_APPEARANCE, ...value };
@@ -160,9 +171,20 @@ function LoginPage({ onLogin }) {
   );
 }
 
+async function fetchJsonWithTimeout(url, timeoutMs = API_REQUEST_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    const payload = await response.json().catch(() => ({}));
+    return { response, payload };
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
 async function fetchDepartmentTargetState(year) {
-  const response = await fetch(`/api/department-targets?year=${year}`);
-  const payload = await response.json();
+  const { response, payload } = await fetchJsonWithTimeout(`/api/department-targets?year=${year}`);
   return {
     rows: response.ok && Array.isArray(payload.rows) ? payload.rows : [],
     mode: response.ok ? payload.mode || "live" : "error",
@@ -205,7 +227,7 @@ export function App() {
     try { return JSON.parse(localStorage.getItem("marlin-cost-overrides") || "[]"); }
     catch { return []; }
   });
-  const [year, setYear] = useState(2026);
+  const [year, setYear] = useState(readReportYear);
   const [rows, setRows] = useState([]);
   const [eurRateSets, setEurRateSets] = useState({});
   const [canonicalMetric, setCanonicalMetric] = useState(null);
@@ -240,6 +262,9 @@ export function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(null);
+  useEffect(() => {
+    try { localStorage.setItem(REPORT_YEAR_STORAGE_KEY, String(year)); } catch { /* storage may be unavailable */ }
+  }, [year]);
   const signOut = async () => {
     try {
       await apiFetch("/api/session/logout", { method: "POST" });
@@ -251,9 +276,21 @@ export function App() {
   const effectivePage = session.status === "authenticated"
     ? firstAccessiblePage(session.user, activePage)
     : activePage;
+  useEffect(() => {
+    const onPopState = () => {
+      const requestedPage = new URLSearchParams(window.location.search).get("page");
+      const availablePages = new Set(NAV_ITEMS.map((item) => item.page));
+      if (availablePages.has(requestedPage)) setActivePage(requestedPage);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
   const navigate = (page) => {
     if (!canAccessPage(session.user, page)) return;
     setActivePage(page);
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.set("page", page);
+    window.history.pushState({ page }, "", nextUrl);
     setMobileNavOpen(false);
   };
   const refreshDepartmentTargets = useCallback(async () => {
@@ -332,34 +369,46 @@ export function App() {
     let cancelled = false;
     setMode("loading");
 
-    Promise.all([
-      fetch(`/api/overview?year=${year}`).then(async (response) => ({
-        ok: response.ok,
-        status: response.status,
-        payload: await response.json().catch(() => ({})),
-      })),
-      fetchDepartmentTargetState(year),
-    ]).then(([overviewResponse, targets]) => {
-      if (cancelled) return;
-      const overview = overviewStateForResponse(overviewResponse);
-      setRows(overview.rows);
-      setEurRateSets(overview.eurRateSets);
-      setCanonicalMetric(overview.canonicalMetric);
-      setMode(overview.mode);
-      setTargetState(targets);
-    }).catch(() => {
-      if (cancelled) return;
-      setRows([]);
-      setEurRateSets({});
-      setCanonicalMetric(null);
-      setMode("error");
-      setTargetState({
-        rows: [],
-        mode: "error",
-        error: "Departman hedefleri okunamadı.",
-        generatedAt: null,
-      });
-    });
+    const loadOverview = async () => {
+      try {
+        const { response, payload } = await fetchJsonWithTimeout(`/api/overview?year=${year}`);
+        if (cancelled) return;
+        const overview = overviewStateForResponse({
+          ok: response.ok,
+          status: response.status,
+          payload,
+        });
+        setRows(overview.rows);
+        setEurRateSets(overview.eurRateSets);
+        setCanonicalMetric(overview.canonicalMetric);
+        setMode(overview.mode);
+      } catch {
+        if (cancelled) return;
+        setRows([]);
+        setEurRateSets({});
+        setCanonicalMetric(null);
+        setMode("error");
+      }
+    };
+
+    const loadTargets = async () => {
+      try {
+        const targets = await fetchDepartmentTargetState(year);
+        if (!cancelled) setTargetState(targets);
+      } catch {
+        if (!cancelled) {
+          setTargetState({
+            rows: [],
+            mode: "error",
+            error: "Departman hedefleri zamanında okunamadı; yönetici özeti ayrı gösteriliyor.",
+            generatedAt: null,
+          });
+        }
+      }
+    };
+
+    void loadOverview();
+    void loadTargets();
 
     return () => { cancelled = true; };
   }, [session.status, year]);
@@ -391,7 +440,9 @@ export function App() {
       discounts: Number(row.discounts || 0) + pilotDiscounts,
       estimatedCost: Number(row.cost || 0) + pilotCost + manualCost,
       uncoveredNetSales: Number(row.reviewNetSales || 0) - resolvedUncoveredNet,
-      uncoveredCostLines: Math.max(0, Number(row.v2ReviewLines || 0) - manualDecisions.length),
+      uncoveredCostLines: row.v2ReviewLines == null
+        ? null
+        : Math.max(0, Number(row.v2ReviewLines) - manualDecisions.length),
       manualCost,
       manualCostLines: manualDecisions.length,
       pilotCost,
@@ -405,7 +456,12 @@ export function App() {
   const enrichedRows = useMemo(() => mergeMonthlyTargetPools(
     calculatedRows.map((row) => {
       const profit = row.profit ?? null;
-    const status = Number(row.uncoveredCostLines || 0) === 0 && Number(row.unlinkedReturnLines || 0) === 0
+    const status = row.uncoveredCostLines != null
+      && row.unlinkedReturnLines != null
+      && Number.isFinite(Number(row.uncoveredCostLines))
+      && Number.isFinite(Number(row.unlinkedReturnLines))
+      && Number(row.uncoveredCostLines) === 0
+      && Number(row.unlinkedReturnLines) === 0
       ? "Kesinleşmiş"
       : "Tahmini";
     return { ...row, profit, status };
@@ -611,7 +667,7 @@ export function App() {
       ) : effectivePage === "inventory" ? (
         <InventoryResearchPage year={year} mode={mode} />
       ) : effectivePage === "reports" ? (
-        <ReportsPage rows={calculatedRows} year={year} mode={mode} minimumCoverage={appSettings.minimumCoverage} pilotCardCostRates={appSettings.pilotCardCostRates} eurRateSets={eurRateSets} />
+        <ReportsPage rows={calculatedRows} year={year} mode={mode} minimumCoverage={appSettings.minimumCoverage} pilotCardCostRates={appSettings.pilotCardCostRates} eurRateSets={eurRateSets} canonicalMetric={canonicalMetric} />
       ) : effectivePage === "settings" ? (
         <SettingsPage
           settings={appSettings}

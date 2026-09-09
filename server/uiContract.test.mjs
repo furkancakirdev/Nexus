@@ -22,6 +22,19 @@ test("aktif ürün modülleri ilk plandaki yedi ekranla sınırlıdır", () => {
   );
 });
 
+test("settings page renders toggles from the shared registry", async () => {
+  const settingsSource = await source("src/SettingsPage.jsx");
+  const policySource = await source("shared/settingsPolicy.mjs");
+  assert.match(settingsSource, /SETTINGS_REGISTRY/);
+  assert.match(settingsSource, /RegistryToggles/);
+  assert.match(policySource, /export const SETTINGS_REGISTRY/);
+});
+
+test("navigation exposes only active registry modules", async () => {
+  const gateSource = await source("src/sessionGate.js");
+  assert.match(gateSource, /NAV_ITEMS = Object\.freeze\(MODULE_REGISTRY\.filter\(\(item\) => item\.active\)\)/);
+});
+
 test("Katkı ve Performans sayfası menüden yönlendirmeden ve görünüm ayarından kaldırılır", async () => {
   const appSource = await source("src/App.jsx");
 
@@ -358,6 +371,26 @@ test("finansal UI eksik kanıtı tahmini maliyet veya ham kârla doldurmaz", asy
   assert.match(departmentSource, /className=\{profitTone\(eur\.profit\)\}/);
 });
 
+test("kanıt engeline takılan TRY kâr ve marjı geçici etiketiyle görünür kılar", async () => {
+  const panelSource = await source("src/components/FinancialVisibilityPanel.jsx");
+  const summarySource = await source("src/SummaryPage.jsx");
+  const salesSource = await source("src/SalesPage.jsx");
+  const reportsSource = await source("src/ReportsPage.jsx");
+  const departmentSource = await source("src/DepartmentAnalysisPage.jsx");
+  const appSource = await source("src/App.jsx");
+
+  assert.match(panelSource, /Geçici brüt kâr · kaynak TRY/);
+  assert.match(panelSource, /Eksik maliyetler hesaba katılmamıştır/);
+  assert.match(panelSource, /Kesin marj değildir/);
+  assert.match(panelSource, /Eksik maliyet kapsamı/);
+  for (const sourceText of [summarySource, salesSource, reportsSource, departmentSource]) {
+    assert.match(sourceText, /<FinancialVisibilityPanel/);
+  }
+  assert.match(summarySource, /Geçici Brüt Kâr · TRY/);
+  assert.match(summarySource, /Geçici Brüt Marj/);
+  assert.match(appSource, /<ReportsPage[^>]+canonicalMetric=\{canonicalMetric\}/);
+});
+
 test("finansal UI mixed CPM/TCMB kur kaynağını Halkbank-only diye göstermemeli", async () => {
   const reportsSource = await source("src/ReportsPage.jsx");
   const salesSource = await source("src/SalesPage.jsx");
@@ -586,6 +619,28 @@ test("authenticated sessions without an accessible module fail closed before she
   assert.match(appSource, /Veri görünümü açılmadı/);
 });
 
+test("report year survives reload and slow CPM requests fail into a bounded UI state", async () => {
+  const appSource = await source("src/App.jsx");
+
+  assert.match(appSource, /REPORT_YEAR_STORAGE_KEY/);
+  assert.match(appSource, /localStorage\.setItem\(REPORT_YEAR_STORAGE_KEY, String\(year\)\)/);
+  assert.match(appSource, /new AbortController\(\)/);
+  assert.match(appSource, /API_REQUEST_TIMEOUT_MS = 120000/);
+  assert.match(appSource, /void loadOverview\(\);/);
+  assert.match(appSource, /void loadTargets\(\);/);
+  assert.doesNotMatch(appSource, /Promise\.allSettled\(\[\s*fetch\(`\/api\/overview/);
+});
+
+test("default appearance uses the Nautical Slate control-room theme and compact density", async () => {
+  const appSource = await source("src/App.jsx");
+  const stylesSource = await source("src/styles.css");
+
+  assert.match(appSource, /DEFAULT_APPEARANCE = \{ theme: "dark", density: "compact"/);
+  assert.match(stylesSource, /background: #0f172a/);
+  assert.match(stylesSource, /--blue: #0284c7/);
+  assert.match(stylesSource, /--teal: #0d9488/);
+});
+
 test("overview response policy never substitutes pilot finance data for blocked or empty responses", async (t) => {
   const vite = await createServer({ configFile: resolve(process.cwd(), "vite.config.mjs") });
   t.after(() => vite.close());
@@ -651,7 +706,7 @@ test("Reports brand semantic legend follows the active visible chart", async (t)
   t.after(() => vite.close());
   const reports = await vite.ssrLoadModule("/src/ReportsPage.jsx");
 
-  assert.equal(reports.isBrandChartVisible({ active: "summary", loading: false, error: null, brand: [{ name: "Acme" }] }), true);
+  assert.equal(reports.isBrandChartVisible({ active: "summary", loading: false, error: null, brand: [{ name: "Acme", netSales: 100 }] }), true);
   assert.equal(reports.isBrandChartVisible({ active: "brand", loading: false, error: null, brand: [{ name: "Acme" }] }), false);
   assert.equal(reports.isBrandChartVisible({ active: "summary", loading: true, error: null, brand: [{ name: "Acme" }] }), false);
   assert.equal(reports.isBrandChartVisible({ active: "summary", loading: false, error: null, brand: [] }), false);

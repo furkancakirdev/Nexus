@@ -275,7 +275,7 @@ test("CPM hareket adayları net alış maliyetini üretir ve iadeyi benzersiz ka
   });
 
   assert.equal(result.status, "candidate");
-  assert.equal(result.movements[0].unitCostTryExVat, 90);
+  assert.equal(result.movements[0].unitCostTryExVat, undefined);
   assert.equal(result.movements[1].unitCostTryExVat, 100);
   assert.equal(result.movements[2].kind, "sale");
   assert.equal(result.movements[2].netAmountTryExVat, undefined);
@@ -285,7 +285,7 @@ test("CPM hareket adayları net alış maliyetini üretir ve iadeyi benzersiz ka
   assert.equal(result.reviewCounts.unlinkedReturnRows, 0);
 });
 
-test("CPM yabancı kaynak maliyetini TRY diye etiketlemez ve ham döviz kanıtını korur", () => {
+test("CPM yerel net maliyetini fiyat dövizinden ayırır ve ham döviz kanıtını korur", () => {
   const result = buildCpmWacMovementCandidates({
     rows: [{
       id: "P-EUR", productCode: "P-EUR", depotCode: "D-1", movementDate: "2026-01-02",
@@ -295,24 +295,27 @@ test("CPM yabancı kaynak maliyetini TRY diye etiketlemez ve ham döviz kanıtı
     }],
   });
 
-  assert.equal(result.movements[0].unitCostTryExVat, null);
+  assert.equal(result.movements[0].unitCostTryExVat, 90);
   assert.deepEqual(result.movements[0].costEvidence, {
     sourceAmount: 180,
     sourceUnitPrice: 90,
-    sourceCurrency: "EUR",
-    sourceRate: 35,
+    sourceCurrency: "TRY",
+    sourceRate: 1,
+    amountBasis: "STKHAR.TUTAR-ISKONTO",
+    priceCurrency: "EUR",
+    priceRate: 35,
     transactionCurrency: null,
     transactionRate: null,
     documentDate: "2026-01-02",
     rateEvidence: {
-      source: null,
-      status: "review_required",
-      reason: "foreign-cost-awaiting-halkbank-rate",
+      source: "STKHAR.TUTAR-ISKONTO",
+      status: "verified",
+      method: "cpm-local-currency-amount",
     },
   });
-  assert.equal(result.reviewReasons["foreign-cost-awaiting-halkbank-rate"], 1);
+  assert.equal(result.reviewReasons["foreign-cost-awaiting-halkbank-rate"], undefined);
   assert.equal(result.reviewCounts.invalidCostRows, 0);
-  assert.equal(result.reviewCounts.pendingForeignCostRows, 1);
+  assert.equal(result.reviewCounts.pendingForeignCostRows, 0);
 });
 
 test("CPM hareket adayı ürün kartı dövizini maliyet hareketine taşır", () => {

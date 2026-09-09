@@ -1,0 +1,137 @@
+{
+  "buttons": [
+    "Yenile",
+    "Tümü",
+    "Servis",
+    "Yedek Parça",
+    "İnceleme",
+    "Genel Bakış",
+    "Sorumlu, Ürün & Müşteri",
+    "Belge Defteri",
+    "CPM Pilot İzleme"
+  ],
+  "failures": [
+    {
+      "bg": "[15,23,42]",
+      "fg": "rgb(96, 116, 143)",
+      "ratio": 3.73,
+      "size": 12,
+      "text": "Ticari performans ve kaynak kanıtı",
+      "weight": "700"
+    },
+    {
+      "bg": "[30,41,59]",
+      "fg": "rgb(17, 116, 66)",
+      "ratio": 2.51,
+      "size": 13,
+      "text": "—",
+      "weight": "700"
+    },
+    {
+      "bg": "[30,41,59]",
+      "fg": "rgb(17, 116, 66)",
+      "ratio": 2.51,
+      "size": 13,
+      "text": "—",
+      "weight": "700"
+    },
+    {
+      "bg": "[30,41,59]",
+      "fg": "rgb(17, 116, 66)",
+      "ratio": 2.51,
+      "size": 13,
+      "text": "—",
+      "weight": "700"
+    },
+    {
+      "bg": "[30,41,59]",
+      "fg": "rgb(186, 53, 64)",
+      "ratio": 2.56,
+      "size": 12,
+      "text": "-157.157 TL",
+      "weight": "400"
+    },
+    {
+      "bg": "[30,41,59]",
+      "fg": "rgb(186, 53, 64)",
+      "ratio": 2.56,
+      "size": 12,
+      "text": "-9.723.444 TL",
+      "weight": "400"
+    },
+    {
+      "bg": "[30,41,59]",
+      "fg": "rgb(17, 116, 66)",
+      "ratio": 2.51,
+      "size": 12,
+      "text": "—",
+      "weight": "400"
+    },
+    {
+      "bg": "[30,41,59]",
+      "fg": "rgb(186, 53, 64)",
+      "ratio": 2.56,
+      "size": 12,
+      "text": "-2.190.087 TL",
+      "weight": "400"
+    },
+    {
+      "bg": "[30,41,59]",
+      "fg": "rgb(186, 53, 64)",
+      "ratio": 2.56,
+      "size": 12,
+      "text": "-26.969.334 TL",
+      "weight": "400"
+    },
+    {
+      "bg": "[30,41,59]",
+      "fg": "rgb(17, 116, 66)",
+      "ratio": 2.51,
+      "size": 12,
+      "text": "—",
+      "weight": "400"
+    },
+    {
+      "bg": "[30,41,59]",
+      "fg": "rgb(186, 53, 64)",
+      "ratio": 2.56,
+      "size": 12,
+      "text": "-36.169 TL",
+      "weight": "400"
+    },
+    {
+      "bg": "[30,41,59]",
+      "fg": "rgb(186, 53, 64)",
+      "ratio": 2.56,
+      "size": 12,
+      "text": "-39.386 TL",
+      "weight": "400"
+    },
+    {
+      "bg": "[30,41,59]",
+      "fg": "rgb(17, 116, 66)",
+      "ratio": 2.51,
+      "size": 12,
+      "text": "—",
+      "weight": "400"
+    }
+  ],
+  "tables": [
+    {
+      "headers": [
+        "Departman",
+        "Brüt satış · TL",
+        "İade · TL",
+        "İskonto · TL",
+        "Net satış",
+        "Maliyet",
+        "Brüt kâr",
+        "Marj",
+        "Belge",
+        "Cari"
+      ],
+      "rows": 3,
+      "width": 1193
+    }
+  ]
+}

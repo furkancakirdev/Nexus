@@ -27,6 +27,7 @@ const PRODUCTION_FINGERPRINTS = Object.freeze({
   "exchange-rate-candidate-v1": "c95d7d6c082fb056811120210db8e1ed92c60d68854ff7cceae3714557a09ad6",
   "historical-price-candidate-v1": "a5c6a7bb41dfcbfce545c2c758a9528a8625082b996733eccb48560b3ddd48e1",
   "settlement-evidence-v1": "2cc9a58fe7cbe25d3cf666dcf2a67aab7a618b271e59c0956ddd90fa167b65d0",
+  "invoice-audit-bounded-v1": "85f3c038f3b9178a2df0c2e5e1003b0a8eb3b1796287ad3439547fef2f13e818",
 });
 
 const QUARANTINED_QUERY_IDS = new Set([

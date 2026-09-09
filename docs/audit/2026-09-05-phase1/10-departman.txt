@@ -1,0 +1,127 @@
+- banner:
+  - link "Marlin Nexus Yönetim Sistemi":
+    - /url: "#top"
+    - strong: Marlin Nexus
+    - generic: Yönetim Sistemi
+  - navigation "Ana menü":
+    - button "Genel Bakış"
+    - button "Satış Analizi"
+    - button "Departman Analizi" [active]
+    - button "Denetim"
+    - button "Stok"
+    - button "Havuz"
+    - button "Ayarlar"
+  - combobox "Yıl":
+    - option "2024"
+    - option "2025"
+    - option "2026" [selected]
+  - button "Görünüm ayarları":
+  - button "Çıkış yap":
+- main:
+  - paragraph: Ticari performans ve kaynak kanıtı
+  - heading "Departman Analizi" [level=1]
+  - paragraph: Servis ve Yedek Parça Satış sonuçlarını ticari sorumluya göre karşılaştırın; depo ve belge kullanıcısını teslimat bağlamı olarak izleyin.
+  - text: Bağlantı bekleniyor
+  - button "Yenile" [disabled]:
+    - text: Yenile
+  - region "Departman analizi kontrolleri":
+    - group "Departman":
+      - button "Tümü"
+      - button "Servis":
+        - text: Servis
+      - button "Yedek Parça":
+        - text: Yedek Parça
+      - button "İnceleme"
+    - generic: Dönem
+    - combobox "Dönem":
+      - option "2026 geneli" [selected]
+    - text: Uzlaşma için bağlantı bekleniyor
+  - strong: Gerçek departman rakamları henüz okunamıyor.
+  - paragraph: Sayfa ve veri sözleşmesi hazır. CPM salt-okunur bağlantısı geldiğinde aynı ekran gerçek sonuçları gösterecek; örnek finansal dağılım üretilmiyor.
+  - status: Departman verileri yükleniyor…
+  - article:
+    - generic: Net satış
+    - strong: —
+    - paragraph: Brüt — · KDV hariç
+  - article:
+    - generic: Esas brüt kâr
+    - strong: İncelemede
+    - paragraph: WAC maliyeti bekleniyor
+  - article:
+    - generic: Maliyet kapsamı
+    - strong: "%0,0"
+    - paragraph: 0 / 0 satır
+  - article:
+    - generic: Satış belgeleri
+    - strong: "0"
+    - paragraph: 0 farklı cari
+  - article:
+    - generic: Çapraz-depo satış
+    - strong: 0 TL
+    - paragraph: 0 belge · %0,0
+  - article:
+    - generic: Teyitli atıf
+    - strong: —
+    - paragraph: "Kullanıcı eşlemesi: —"
+  - navigation "Departman analizi görünümleri":
+    - button "Genel Bakış"
+    - button "Sorumlu, Ürün & Müşteri"
+    - button "Belge Defteri"
+    - button "CPM Pilot İzleme"
+  - article:
+    - heading "Aylık Net Satış ve Kâr" [level=2]
+    - paragraph: Ticari departman atfına göre KDV hariç trend
+    - generic: 2026 geneli
+    - strong: Grafik için gerçek veri bekleniyor
+    - generic: CPM bağlantısı geldiğinde aylık departman trendi burada oluşacak.
+  - article:
+    - heading "Kanıt Kalitesi" [level=2]
+    - paragraph: Departman atfının dayandığı CPM alanları
+    - strong: Teyitli atıf
+    - generic: —
+    - generic: Açık departman veya ticari sorumlu
+    - strong: Kullanıcı eşlemesi
+    - generic: —
+    - generic: — geçici atıf
+    - strong: Departman alanı
+    - generic: —
+    - generic: MASRAFKOD doğrudan dolu
+    - strong: Ticari sorumlu
+    - generic: —
+    - generic: SATICINO doğrudan dolu
+    - strong: Kaynak sipariş
+    - generic: —
+    - generic: Satış siparişine izlenebilir bağlantı
+    - strong: —
+    - generic: Yakın belge aday ipucu
+    - strong: —
+    - generic: Sahipsiz inceleme
+    - strong: —
+    - generic: 91→85 toplu işlem uyarısı
+    - strong: "0"
+    - generic: Dışlanan test satırı
+  - article:
+    - heading "Departman Karşılaştırması" [level=2]
+    - paragraph: Ciro, kârlılık ve operasyonel bağlam · EUR ana görünüm
+  - article:
+    - heading "Departman × Teslimat Deposu" [level=2]
+    - paragraph: Depo ciro sahibi değildir; teslimat desenini gösterir
+    - strong: Depo deseni için veri bekleniyor
+    - generic: Depo, ticari sorumluluğu değiştirmeden burada karşılaştırılacak.
+  - heading "Yönetim Karşılaştırma Tablosu" [level=2]
+  - paragraph: Net satış, maliyet ve kâr EUR; iade ve iskonto kaynak para birimi TL olarak korunur.
+  - table:
+    - rowgroup:
+      - row "Departman Brüt satış · TL İade · TL İskonto · TL Net satış Maliyet Brüt kâr Marj Belge Cari":
+        - columnheader "Departman"
+        - columnheader "Brüt satış · TL"
+        - columnheader "İade · TL"
+        - columnheader "İskonto · TL"
+        - columnheader "Net satış"
+        - columnheader "Maliyet"
+        - columnheader "Brüt kâr"
+        - columnheader "Marj"
+        - columnheader "Belge"
+        - columnheader "Cari"
+    - rowgroup
+- generic: Yedek Parça

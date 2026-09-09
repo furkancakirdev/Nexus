@@ -8,6 +8,11 @@ import {
 } from "../shared/settingsPolicy.mjs";
 import { buildDepartmentTargets } from "../shared/targetPolicy.mjs";
 
+test("legacy exchangeRateRule is ignored by the active settings contract", () => {
+  const result = normalizeSettings({ exchangeRateRule: "monthEnd" });
+  assert.equal("exchangeRateRule" in result, false);
+});
+
 test("eski kişi hedef ayarlarını kaldırırken canlı oranları korur", () => {
   const result = normalizeSettings({
     rates: { conservative: 3, base: 5, growth: 8 },
@@ -161,7 +166,6 @@ test("desteklenen politika alanlarının tür ve ürün sözleşmesini doğrular
     { pilotCardCostRates: { srf: 100.01 } },
     { minimumCoverage: 59.99 },
     { minimumCoverage: "85" },
-    { exchangeRateRule: "bilinmeyen" },
     { requireManagementApprovalForManualCost: 1 },
     { allocationMethod: "bilinmeyen" },
     { monthlyCloseDay: 29 },

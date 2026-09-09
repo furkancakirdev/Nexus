@@ -81,6 +81,7 @@ class ReleaseArtifactTests(unittest.TestCase):
             for relative, content in {
                 "server/index.mjs": "server",
                 "src/App.jsx": "src",
+                "dist/index.html": "dist",
                 "package.json": "{}",
                 "data/app-state.json": "state",
                 "secrets/cpm-credentials.txt": "secret",
@@ -92,7 +93,7 @@ class ReleaseArtifactTests(unittest.TestCase):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(content, encoding="utf-8")
             result = create_release_archive(root, root.parent / "release.tar.gz")
-            self.assertEqual(result["members"], ["package.json", "server/index.mjs", "src/App.jsx"])
+            self.assertEqual(result["members"], ["dist/index.html", "package.json", "server/index.mjs", "src/App.jsx"])
             with tarfile.open(result["archive_path"], "r:gz") as archive:
                 self.assertEqual(archive.getnames(), result["members"])
 

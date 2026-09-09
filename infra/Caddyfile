@@ -1,0 +1,9 @@
+{
+  auto_https off
+}
+
+:4318 {
+  tls /run/configs/nexus-tls-fullchain.pem /run/secrets/nexus-tls-privkey.pem
+  encode gzip
+  reverse_proxy marlin-profit-sharing:4318
+}

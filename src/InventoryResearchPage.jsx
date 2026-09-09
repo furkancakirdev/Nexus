@@ -615,9 +615,43 @@ export function InventoryResearchPage({ year, mode = "live", refreshToken = 0 })
                 <span>2026 öncesi eşleşmeyen satış iadesi · hesap dışı <strong>{integer.format(excludedHistoricalReturnCount)}</strong> satır</span>
               )}
               {Number(movementReviewCounts.unlinkedReturnRows) > 0 && (
-                <span>2026 eşleşmeyen satış iadesi · incelemede <strong>{integer.format(Number(movementReviewCounts.unlinkedReturnRows))}</strong> satır</span>
+                <span>Tüm kaynak yıllarında eşleşmeyen satış iadesi · incelemede <strong>{integer.format(Number(movementReviewCounts.unlinkedReturnRows))}</strong> satır</span>
               )}
             </div>
+          )}
+        </section>
+      )}
+
+      {movementEvidence.movementImpact && (
+        <section className="panel inventory-evidence-diagnostics" aria-label="Eksik kanıtın satışlara etkisi">
+          <div className="control-section-head">
+            <div>
+              <h2>Eksik kanıtın satışlara etkisi</h2>
+              <p>Eksik maliyet veya iade bağı, aynı ürün ve depodaki o gün ve sonraki satışları etkileyebilir. Önceki satışlar ayrıca sayılır.</p>
+            </div>
+          </div>
+          <div className="inventory-diagnostics-grid">
+            <span>İncelenen satış hareketi <strong>{integer.format(Number(movementEvidence.movementImpact.rawSaleRows || 0))}</strong></span>
+            <span>Eksik kanıttan etkilenebilen <strong>{integer.format(Number(movementEvidence.movementImpact.affectedSaleRows || 0))}</strong></span>
+            <span>Bu eksiklerle bağı saptanmayan <strong>{integer.format(Number(movementEvidence.movementImpact.noKnownBlockerSaleRows || 0))}</strong></span>
+            <span>Etkilenen ürün-depo <strong>{integer.format(Number(movementEvidence.movementImpact.affectedStockKeys || 0))}</strong></span>
+          </div>
+          <small>Bu sayılar tüm kaynak yıllarındaki ham hareketlerdir; nihai fatura toplamı değildir. Bağ saptanmaması tek başına maliyetin doğrulandığı anlamına gelmez. Açılış, döviz, fiyat ve depo transferi kanıtları ayrıca gereklidir.</small>
+          {Array.isArray(movementEvidence.movementImpact.scopes) && movementEvidence.movementImpact.scopes.length > 0 && (
+            <details>
+              <summary>Ürün ve depo bazında etkiyi göster</summary>
+              <div className="table-scroll" tabIndex={0} aria-label="Ürün depo etki tablosu">
+                <table>
+                  <thead><tr><th>Ürün</th><th>Depo</th><th>İlk belirsizlik</th><th>Eksik kayıt</th><th>Etkilenebilen satış hareketi</th><th>Daha önceki hareket</th></tr></thead>
+                  <tbody>{movementEvidence.movementImpact.scopes.map((scope) => (
+                    <tr key={`${scope.productCode}:${scope.depotCode}`}>
+                      <td>{scope.productCode}</td><td>{scope.depotCode}</td><td>{scope.firstUnresolvedDate || "Tarih belirsiz"}</td>
+                      <td>{integer.format(scope.unresolvedRowCount)}</td><td>{integer.format(scope.affectedSaleRowCount)}</td><td>{integer.format(scope.unaffectedEarlierSaleRowCount)}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            </details>
           )}
         </section>
       )}

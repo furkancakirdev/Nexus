@@ -1,0 +1,291 @@
+- banner:
+  - link "Marlin Nexus Yönetim Sistemi":
+    - /url: "#top"
+    - strong: Marlin Nexus
+    - generic: Yönetim Sistemi
+  - navigation "Ana menü":
+    - button "Genel Bakış"
+    - button "Satış Analizi" [active]
+    - button "Departman Analizi"
+    - button "Denetim"
+    - button "Stok"
+    - button "Havuz"
+    - button "Ayarlar"
+  - combobox "Yıl":
+    - option "2024"
+    - option "2025"
+    - option "2026" [selected]
+  - button "Görünüm ayarları":
+  - button "Çıkış yap":
+- main:
+  - paragraph: Satış ve kârlılık kokpiti
+  - heading "Satış Analizi ve Marj Defteri" [level=1]
+  - paragraph: 2026 yılı KDV hariç satışları, alım faturası ve kur kanıtlı maliyetleri ve kârlılık trendini izleyin.
+  - text: CPM canlı · salt okunur
+  - article:
+    - generic: Brüt satışlar · TL
+    - strong: 268.043.465 TL
+    - paragraph: Nihai + doğrulanmış faturalar
+  - article:
+    - generic: İadeler ve İskontolar · TL
+    - strong: −39.070.130 TL
+    - paragraph: İade 2.383.414 TL · İskonto 36.686.716 TL
+  - article:
+    - generic: Net satışlar
+    - strong: 228.973.335 TL
+    - paragraph: KDV hariç ticari hasılat
+  - article:
+    - generic: Satır Maliyeti
+    - strong: 22.869.690 TL
+    - paragraph: Alım faturası + Halkbank kuru kanıtı
+  - article:
+    - generic: Esas Brüt Kâr
+    - strong: İncelemede
+    - paragraph: Net kâr marjı WAC Bekleniyor
+  - article:
+    - generic: Ortalama Liste Brüt Marjı
+    - strong: —
+    - paragraph: Perakende fiyat − döviz maliyeti
+  - article:
+    - generic: Maliyet / Kur Kapsamı
+    - strong: —
+    - paragraph: 0 / 22.129 satır
+  - button "Daha az metrik göster" [expanded]
+  - article:
+    - heading "Aylık Satış, Maliyet ve Marj Trendi" [level=2]
+    - paragraph: Net Satış (bar), Maliyet (bar), Esas Brüt Kâr (line) ve Net Marj % (sağ eksen line) · TL
+    - generic: En yüksek dönem
+    - strong: Nisan · 40.947.942 TL
+    - list:
+      - img "Esas Brüt Kâr legend icon"
+      - text: Esas Brüt Kâr
+      - img "Liste Brüt Marjı % legend icon"
+      - text: Liste Brüt Marjı %
+      - img "Maliyet legend icon"
+      - text: Maliyet
+      - img "Net Kâr Marjı % legend icon"
+      - text: Net Kâr Marjı %
+      - img "Net Satış legend icon"
+      - text: Net Satış
+    - application:
+      - generic: Ocak
+      - generic: Şubat
+      - generic: Mart
+      - generic: Nisan
+      - generic: Mayıs
+      - generic: Haziran
+      - generic: Temmuz
+      - generic: Ağustos
+      - generic: Eylül
+      - generic: "0"
+      - generic: 15 Mn
+      - generic: 30 Mn
+      - generic: 45 Mn
+      - generic: 60 Mn
+  - article:
+    - heading "Gelir ve Kategori Dağılımı" [level=2]
+    - paragraph: Hizmet ve Parça bazında net ciro dökümü
+    - application:
+      - generic: "0"
+      - generic: 55 Mn
+      - generic: 110 Mn
+      - generic: 165 Mn
+      - generic: 220 Mn
+      - generic: Yedek Parça
+      - generic: İşçilik
+      - generic: Sörf / Hizmet
+      - generic: Yol / Seyahat
+      - generic: TSR / Taşeron
+  - heading "Döviz Sepeti" [level=2]
+  - paragraph: Satış, maliyet ve kâr stok kartı dövizinde ayrı tutulur; EUR ana görünüm Halkbank alış kurlarıyla hesaplanır.
+  - table:
+    - rowgroup:
+      - row "Döviz Net Satış Maliyet Brüt Kâr Satır":
+        - columnheader "Döviz"
+        - columnheader "Net Satış"
+        - columnheader "Maliyet"
+        - columnheader "Brüt Kâr"
+        - columnheader "Satır"
+    - rowgroup:
+      - row "İNCELEME Kur veya maliyet kanıtı eksik satırlar EUR toplamına dahil edilmez 22.129":
+        - rowheader "İNCELEME":
+          - strong: İNCELEME
+        - cell "Kur veya maliyet kanıtı eksik satırlar EUR toplamına dahil edilmez"
+        - cell "22.129"
+  - heading "Aylık Satış ve Kârlılık Defteri" [level=2]
+  - paragraph: 9 dönem gösteriliyor · KDV hariç uzlaşmalı defter
+  - combobox "Maliyet kapsam filtresi":
+    - option "Tüm dönemler" [selected]
+    - option "Kapsamı yeterli (>=%85)"
+    - option "Kapsam riski (<%85)"
+  - combobox "Satış sıralaması":
+    - option "Aya göre sırala" [selected]
+    - option "Net Satışa göre sırala"
+    - option "Kâra göre sırala"
+    - option "Net Marja göre sırala"
+    - option "Ürün Liste Marjına göre sırala"
+  - table:
+    - rowgroup:
+      - row "Ay Brüt Satış (TL) İade (TL) İskonto (TL) Net Satış (TL) Maliyet (TL) Esas Brüt Kâr (TL) Net Marj Liste Brüt Marjı Maliyet Kapsamı":
+        - columnheader "Ay"
+        - columnheader "Brüt Satış (TL)"
+        - columnheader "İade (TL)"
+        - columnheader "İskonto (TL)"
+        - columnheader "Net Satış (TL)"
+        - columnheader "Maliyet (TL)"
+        - columnheader "Esas Brüt Kâr (TL)"
+        - columnheader "Net Marj"
+        - columnheader "Liste Brüt Marjı"
+        - columnheader "Maliyet Kapsamı"
+    - rowgroup:
+      - row "Ocak 10.366.902 TL −23.390 TL −1.559.575 TL €0 — — — — %0,0":
+        - rowheader "Ocak":
+          - strong: Ocak
+        - cell "10.366.902 TL"
+        - cell "−23.390 TL"
+        - cell "−1.559.575 TL"
+        - cell "€0":
+          - strong: €0
+        - cell "—"
+        - cell "—":
+          - strong: —
+        - cell "—"
+        - cell "—":
+          - strong: —
+        - cell "%0,0"
+      - row "Şubat 18.271.631 TL −664.833 TL −2.667.198 TL €0 — — — — %0,0":
+        - rowheader "Şubat":
+          - strong: Şubat
+        - cell "18.271.631 TL"
+        - cell "−664.833 TL"
+        - cell "−2.667.198 TL"
+        - cell "€0":
+          - strong: €0
+        - cell "—"
+        - cell "—":
+          - strong: —
+        - cell "—"
+        - cell "—":
+          - strong: —
+        - cell "%0,0"
+      - row "Mart 30.704.747 TL −400.656 TL −3.836.829 TL €0 — — — — %0,0":
+        - rowheader "Mart":
+          - strong: Mart
+        - cell "30.704.747 TL"
+        - cell "−400.656 TL"
+        - cell "−3.836.829 TL"
+        - cell "€0":
+          - strong: €0
+        - cell "—"
+        - cell "—":
+          - strong: —
+        - cell "—"
+        - cell "—":
+          - strong: —
+        - cell "%0,0"
+      - row "Nisan 47.023.358 TL −106.657 TL −5.968.760 TL €0 — — — — %0,0":
+        - rowheader "Nisan":
+          - strong: Nisan
+        - cell "47.023.358 TL"
+        - cell "−106.657 TL"
+        - cell "−5.968.760 TL"
+        - cell "€0":
+          - strong: €0
+        - cell "—"
+        - cell "—":
+          - strong: —
+        - cell "—"
+        - cell "—":
+          - strong: —
+        - cell "%0,0"
+      - row "Mayıs 45.541.783 TL −388.795 TL −6.423.690 TL €0 — — — — %0,0":
+        - rowheader "Mayıs":
+          - strong: Mayıs
+        - cell "45.541.783 TL"
+        - cell "−388.795 TL"
+        - cell "−6.423.690 TL"
+        - cell "€0":
+          - strong: €0
+        - cell "—"
+        - cell "—":
+          - strong: —
+        - cell "—"
+        - cell "—":
+          - strong: —
+        - cell "%0,0"
+      - row "Haziran 42.916.925 TL −463.938 TL −5.031.508 TL €0 — — — — %0,0":
+        - rowheader "Haziran":
+          - strong: Haziran
+        - cell "42.916.925 TL"
+        - cell "−463.938 TL"
+        - cell "−5.031.508 TL"
+        - cell "€0":
+          - strong: €0
+        - cell "—"
+        - cell "—":
+          - strong: —
+        - cell "—"
+        - cell "—":
+          - strong: —
+        - cell "%0,0"
+      - row "Temmuz 34.174.051 TL −154.842 TL −4.104.250 TL €0 — — — — %0,0":
+        - rowheader "Temmuz":
+          - strong: Temmuz
+        - cell "34.174.051 TL"
+        - cell "−154.842 TL"
+        - cell "−4.104.250 TL"
+        - cell "€0":
+          - strong: €0
+        - cell "—"
+        - cell "—":
+          - strong: —
+        - cell "—"
+        - cell "—":
+          - strong: —
+        - cell "%0,0"
+      - row "Ağustos 35.511.264 TL −180.303 TL −6.324.854 TL €0 — — — — %0,0":
+        - rowheader "Ağustos":
+          - strong: Ağustos
+        - cell "35.511.264 TL"
+        - cell "−180.303 TL"
+        - cell "−6.324.854 TL"
+        - cell "€0":
+          - strong: €0
+        - cell "—"
+        - cell "—":
+          - strong: —
+        - cell "—"
+        - cell "—":
+          - strong: —
+        - cell "%0,0"
+      - row "Eylül 3.532.805 TL −0 TL −770.052 TL €0 — — — — %0,0":
+        - rowheader "Eylül":
+          - strong: Eylül
+        - cell "3.532.805 TL"
+        - cell "−0 TL"
+        - cell "−770.052 TL"
+        - cell "€0":
+          - strong: €0
+        - cell "—"
+        - cell "—":
+          - strong: —
+        - cell "—"
+        - cell "—":
+          - strong: —
+        - cell "%0,0"
+    - rowgroup:
+      - row "Toplam 268.043.465 TL −2.383.414 TL −36.686.716 TL 228.973.335 TL 22.869.690 TL — — — —":
+        - rowheader "Toplam"
+        - cell "268.043.465 TL"
+        - cell "−2.383.414 TL"
+        - cell "−36.686.716 TL"
+        - cell "228.973.335 TL":
+          - strong: 228.973.335 TL
+        - cell "22.869.690 TL"
+        - cell "—":
+          - strong: —
+        - cell "—"
+        - cell "—":
+          - strong: —
+        - cell "—"
+- generic: Yedek Parça
