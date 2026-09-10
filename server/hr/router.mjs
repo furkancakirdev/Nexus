@@ -16,7 +16,24 @@ export function createHrRouter({ requireCapability } = {}) {
     if (typeof requireCapability === "function") {
       return requireCapability(capability);
     }
-    return (req, res, next) => next();
+    return (_req, res) => res.status(403).json({ error: { code: "FORBIDDEN", message: "Bu işlem için yetki gerekli." } });
+  };
+
+  const authenticatedActor = (req, suppliedActor) => {
+    const actor = String(req.nexusUser?.username || "").trim();
+    if (!actor) {
+      const error = new Error("Kimlik doğrulama gerekli.");
+      error.status = 401;
+      error.code = "AUTHENTICATION_REQUIRED";
+      throw error;
+    }
+    if (suppliedActor && String(suppliedActor).trim() !== actor) {
+      const error = new Error("Onaylayan kullanıcı oturum kullanıcısıyla eşleşmiyor.");
+      error.status = 403;
+      error.code = "ACTOR_MISMATCH";
+      throw error;
+    }
+    return actor;
   };
 
   // Employees
@@ -110,22 +127,24 @@ export function createHrRouter({ requireCapability } = {}) {
   router.post("/leaves/approve", authorize("leave:approve"), async (req, res) => {
     try {
       const { requestId, approverId } = req.body;
-      const actor = approverId || req.nexusUser?.username;
+      const actor = authenticatedActor(req, approverId);
       const approved = await approveLeaveRequest({ requestId, approverId: actor });
       res.json({ request: approved });
     } catch (err) {
-      res.status(400).json({ error: { code: "LEAVE_APPROVE_FAILED", message: err.message } });
+      const status = err.status === 401 || err.status === 403 ? err.status : 400;
+      res.status(status).json({ error: { code: err.code || "LEAVE_APPROVE_FAILED", message: err.message } });
     }
   });
 
   router.post("/leaves/reject", authorize("leave:approve"), async (req, res) => {
     try {
       const { requestId, approverId, reason } = req.body;
-      const actor = approverId || req.nexusUser?.username;
+      const actor = authenticatedActor(req, approverId);
       const rejected = await rejectLeaveRequest({ requestId, approverId: actor, reason });
       res.json({ request: rejected });
     } catch (err) {
-      res.status(400).json({ error: { code: "LEAVE_REJECT_FAILED", message: err.message } });
+      const status = err.status === 401 || err.status === 403 ? err.status : 400;
+      res.status(status).json({ error: { code: err.code || "LEAVE_REJECT_FAILED", message: err.message } });
     }
   });
 
@@ -189,22 +208,24 @@ export function createHrRouter({ requireCapability } = {}) {
   router.post("/overtimes/approve", authorize("overtime:approve"), async (req, res) => {
     try {
       const { requestId, approverId } = req.body;
-      const actor = approverId || req.nexusUser?.username;
+      const actor = authenticatedActor(req, approverId);
       const approved = await approveOvertimeRequest({ requestId, approverId: actor });
       res.json({ overtime: approved });
     } catch (err) {
-      res.status(400).json({ error: { code: "OVERTIME_APPROVE_FAILED", message: err.message } });
+      const status = err.status === 401 || err.status === 403 ? err.status : 400;
+      res.status(status).json({ error: { code: err.code || "OVERTIME_APPROVE_FAILED", message: err.message } });
     }
   });
 
   router.post("/overtimes/reject", authorize("overtime:approve"), async (req, res) => {
     try {
       const { requestId, approverId, reason } = req.body;
-      const actor = approverId || req.nexusUser?.username;
+      const actor = authenticatedActor(req, approverId);
       const rejected = await rejectLeaveRequest({ requestId, approverId: actor, reason });
       res.json({ overtime: rejected });
     } catch (err) {
-      res.status(400).json({ error: { code: "OVERTIME_REJECT_FAILED", message: err.message } });
+      const status = err.status === 401 || err.status === 403 ? err.status : 400;
+      res.status(status).json({ error: { code: err.code || "OVERTIME_REJECT_FAILED", message: err.message } });
     }
   });
 
@@ -230,7 +251,7 @@ export function createHrRouter({ requireCapability } = {}) {
   router.post("/payrolls/approve", authorize("payroll:finalize"), async (req, res) => {
     try {
       const { draftId, actorUsername } = req.body;
-      const actor = actorUsername || req.nexusUser?.username;
+      const actor = authenticatedActor(req, actorUsername);
       const updated = await approvePayrollStep({ draftId, actorUsername: actor });
       res.json({ payroll: updated });
     } catch (err) {

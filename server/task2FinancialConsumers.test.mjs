@@ -271,7 +271,7 @@ test("Reports shows review totals and keeps source-currency baskets separate", a
   const source = await readFile(new URL("../src/ReportsPage.jsx", import.meta.url), "utf8");
   assert.match(source, /scope\?\.costReview\?\.netSales/);
   assert.match(source, /canonicalMetric\?\.byCurrency/);
-  assert.match(source, /İnceleme gerekli.*KDV hariç/s);
+  assert.match(source, /İnceleme tutarı.*Gerçek kâr ve marj kapsamı dışında/s);
   assert.match(source, /Kaynak dövizi/);
 });
 

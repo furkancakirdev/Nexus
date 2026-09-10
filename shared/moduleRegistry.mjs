@@ -3,9 +3,10 @@ export const MODULE_REGISTRY = Object.freeze([
   Object.freeze({ page: "summary", label: "Genel Bakış", requiredCapability: "reporting:read", active: true }),
   Object.freeze({ page: "sales", label: "Satış Analizi", requiredCapability: "reporting:read", active: true }),
   Object.freeze({ page: "departments", label: "Departman Analizi", requiredCapability: "reporting:read", active: true }),
-  Object.freeze({ page: "audit", label: "Denetim", requiredCapability: "reporting:read", active: true }),
-  Object.freeze({ page: "inventory", label: "Stok", requiredCapability: "operations:read", active: true }),
-  Object.freeze({ page: "ledger", label: "Havuz", requiredCapability: "reporting:read", active: true }),
+  // Ürün yüzeyleri geçici olarak kapalıdır; finansal ledger ve kanıt verisi korunur.
+  Object.freeze({ page: "audit", label: "Denetim", requiredCapability: "reporting:read", active: false }),
+  Object.freeze({ page: "inventory", label: "Stok", requiredCapability: "operations:read", active: false }),
+  Object.freeze({ page: "ledger", label: "Havuz", requiredCapability: "reporting:read", active: false }),
   Object.freeze({ page: "settings", label: "Ayarlar", requiredCapability: "settings:manage", active: true }),
 ]);
 

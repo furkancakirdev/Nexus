@@ -114,3 +114,59 @@ test("atomik yazım geçerli JSON bırakır ve geçici dosyayı temizler", async
     await assert.rejects(readFile(`${filePath}.tmp`, "utf8"), /ENOENT/);
   });
 });
+
+test("ayar kaydı monoton revision, fingerprint ve actor audit üretir", async () => {
+  await withStore(async (store) => {
+    const first = await store.saveSettings({
+      settings: { reportingCurrencyDefault: "EUR" },
+      employees: [],
+      costOverrides: [],
+      actor: "yonetici",
+      expectedRevision: 0,
+    });
+    const second = await store.saveSettings({
+      settings: { reportingCurrencyDefault: "EUR", minimumCoverage: 90 },
+      employees: [],
+      costOverrides: [],
+      actor: "yonetici",
+      expectedRevision: 1,
+    });
+
+    assert.equal(first.settingsRevision, 1);
+    assert.equal(second.settingsRevision, 2);
+    assert.match(second.settingsFingerprint, /^[a-f0-9]{64}$/u);
+    assert.equal(second.settingsHistory.length, 2);
+    assert.equal(second.settingsHistory.at(-1).actor, "yonetici");
+    assert.equal(second.auditEvents.at(-1).action, "settings-saved");
+  });
+});
+
+test("ayar rollback eski snapshotı yeni revision olarak atomik geri yükler", async () => {
+  await withStore(async (store) => {
+    await store.saveSettings({ settings: { minimumCoverage: 80 }, employees: [{ id: "A" }], costOverrides: [], expectedRevision: 0 });
+    await store.saveSettings({ settings: { minimumCoverage: 95 }, employees: [{ id: "B" }], costOverrides: [], expectedRevision: 1 });
+    const rolledBack = await store.rollbackSettings({ revision: 1, expectedRevision: 2, actor: "yonetici" });
+
+    assert.equal(rolledBack.settingsRevision, 3);
+    assert.equal(rolledBack.settings.minimumCoverage, 80);
+    assert.equal(rolledBack.employees[0].id, "A");
+    assert.equal(rolledBack.settingsHistory.at(-1).action, "rollback");
+    assert.equal(rolledBack.settingsHistory.at(-1).sourceRevision, 1);
+    assert.equal(rolledBack.auditEvents.at(-1).action, "settings-rolled-back");
+  });
+});
+
+test("eski revision üzerinden ayar yazma ve rollback fail-closed reddedilir", async () => {
+  await withStore(async (store) => {
+    await store.saveSettings({ settings: {}, employees: [], costOverrides: [], expectedRevision: 0 });
+
+    await assert.rejects(
+      store.saveSettings({ settings: {}, employees: [], costOverrides: [], expectedRevision: 0 }),
+      (error) => error?.code === "SETTINGS_REVISION_CONFLICT",
+    );
+    await assert.rejects(
+      store.rollbackSettings({ revision: 1, expectedRevision: 0 }),
+      (error) => error?.code === "SETTINGS_REVISION_CONFLICT",
+    );
+  });
+});

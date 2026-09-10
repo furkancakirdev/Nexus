@@ -1,3 +1,6 @@
+.nexus-shell__skip-link { position: fixed; top: 8px; left: 8px; z-index: 100; padding: 10px 14px; border-radius: 6px; color: #fff; background: #1d282b; transform: translateY(-200%); }
+.nexus-shell__skip-link:focus { transform: translateY(0); outline: 3px solid #f5c542; outline-offset: 2px; }
+
 .nexus-shell {
   --nexus-shell-sidebar: #263238;
   --nexus-shell-sidebar-deep: #1d282b;

@@ -10,6 +10,13 @@ export const CLIENT_CAPABILITIES = Object.freeze({
 // Envanter araştırması route sözleşmesi: page: "inventory", label: "Stok".
 export const NAV_ITEMS = Object.freeze(MODULE_REGISTRY.filter((item) => item.active));
 
+export function resolveRequestedPage(requestedPage, preferredPage = "summary") {
+  const availablePages = new Set(NAV_ITEMS.map((item) => item.page));
+  if (availablePages.has(requestedPage)) return requestedPage;
+  if (availablePages.has(preferredPage)) return preferredPage;
+  return NAV_ITEMS[0]?.page || null;
+}
+
 export function hasCapability(user, capability) {
   return user?.role === "admin"
     || (Array.isArray(user?.capabilities) && user.capabilities.includes(capability));

@@ -1,6 +1,5 @@
 import express from "express";
 import sql from "mssql";
-import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildSalesCaseModel, filterSalesCases, salesCaseSql } from "./salesCases.mjs";
@@ -13,11 +12,14 @@ import { createLedgerService } from "./ledgerService.mjs";
 import { createApprovalRouter } from "./approvalApi.mjs";
 import { createStateStore } from "./stateStore.mjs";
 import { serializeSettings } from "../shared/settingsPolicy.mjs";
+import { DEFAULT_SETTINGS } from "../shared/settingsPolicy.mjs";
 import { createAuth } from "./auth.mjs";
+import { installDiagnostics, installErrorHandler } from "./diagnostics.mjs";
+import { createObservability, installObservability } from "./observability.mjs";
 import { authorizeCapability, CAPABILITIES } from "./capabilities.mjs";
 import { buildReadinessPayload, buildRuntimeInfo } from "./releaseContract.mjs";
 import { modulesForCapabilities } from "../shared/moduleRegistry.mjs";
-import { buildCpmConnectionConfig } from "./cpmConnectionConfig.mjs";
+import { createCpmPoolProvider } from "./cpmPool.mjs";
 import { executeCpmReadOnlyQuery } from "./cpmReadOnly.mjs";
 import { withReadOnlyCpmTransaction } from "./cpmTransaction.mjs";
 import { executeSqlReadWithDeadlockRetry } from "./sqlReadRetry.mjs";
@@ -75,36 +77,15 @@ export function createApp({
   const dataFile = process.env.APP_STATE_FILE || path.join(rootDir, "data", "app-state.json");
   const stateStore = injectedStateStore || createStateStore(dataFile);
   const auth = authOptions?.middleware ? authOptions : createAuth(authOptions);
+  installDiagnostics(app);
+  const observability = createObservability();
+  installObservability(app, observability);
   app.use(express.json({ limit: "1mb" }));
+  app.get("/healthz", (_request, response) => response.status(200).json({ status: "ok" }));
 
-let poolPromise;
 const salesCaseCache = new Map();
 const SALES_CASE_CACHE_MS = 5 * 60 * 1000;
-
-async function getCredentials() {
-  if (process.env.CPM_SQL_USER && process.env.CPM_SQL_PASSWORD) {
-    return { user: process.env.CPM_SQL_USER, password: process.env.CPM_SQL_PASSWORD };
-  }
-
-  if (!process.env.CPM_CREDENTIAL_FILE) return null;
-  const raw = await readFile(process.env.CPM_CREDENTIAL_FILE, "utf8");
-  const [user, password] = raw.split(/\r?\n/).map((value) => value.trim());
-  if (!user || !password) throw new Error("Kimlik bilgisi dosyası iki dolu satır içermeli.");
-  return { user, password };
-}
-
-async function getPool() {
-  if (poolPromise) return poolPromise;
-  const credentials = await getCredentials();
-  if (!credentials) return null;
-
-  poolPromise = sql.connect(buildCpmConnectionConfig({ credentials })).catch((error) => {
-    poolPromise = undefined;
-    throw error;
-  });
-
-  return poolPromise;
-}
+const { getPool } = createCpmPoolProvider();
 
 async function getSalesCaseModel(year, forceRefresh = false) {
   const cached = salesCaseCache.get(year);
@@ -546,13 +527,17 @@ const departmentTargetLoader = createDepartmentTargetLoader({
   app.use((request, response, next) => {
     const normalizedPath = String(request.path || "").toLowerCase();
     if (!normalizedPath.startsWith("/api/") || normalizedPath.startsWith("/api/session") || normalizedPath === "/api/health") return next();
+    // Ürün yüzeyleri geçici olarak kapalı; çekirdek ledger/kanıt verisi silinmeden erişim fail-closed kalır.
+    if (["/api/audit-ledger", "/api/audit-samples", "/api/inventory-research", "/api/research/inventory-opening-evidence"].includes(normalizedPath)) {
+      return response.status(403).json({ error: "Bu ürün yüzeyi geçici olarak devre dışıdır." });
+    }
     const capability = normalizedPath.startsWith("/api/app-state")
       ? CAPABILITIES.SETTINGS_MANAGE
       : normalizedPath.startsWith("/api/approvals")
         ? CAPABILITIES.APPROVALS_MANAGE
         : normalizedPath === "/api/ledger-refresh"
           ? CAPABILITIES.OPERATIONS_READ
-          : ["/api/overview", "/api/reconciliation/invoices", "/api/reconciliation/invoices/source-rows", "/api/reconciliation/raw-invoices", "/api/department-analysis", "/api/department-targets", "/api/audit-ledger", "/api/audit-samples", "/api/build-info", "/api/readiness", "/api/research/inventory-opening-evidence"].includes(normalizedPath)
+          : ["/api/overview", "/api/reconciliation/invoices", "/api/reconciliation/invoices/source-rows", "/api/reconciliation/raw-invoices", "/api/department-analysis", "/api/department-targets", "/api/audit-ledger", "/api/audit-samples", "/api/build-info", "/api/readiness", "/api/metrics", "/api/research/inventory-opening-evidence"].includes(normalizedPath)
             ? CAPABILITIES.REPORTING_READ
             : ["/api/modules"].includes(normalizedPath)
               ? CAPABILITIES.REPORTING_READ
@@ -576,6 +561,17 @@ const departmentTargetLoader = createDepartmentTargetLoader({
       mode: "live",
       modules: modulesForCapabilities(request.user?.capabilities),
     });
+  });
+
+  app.get("/api/metrics", (_request, response) => {
+    response.setHeader("Cache-Control", "no-store");
+    return response.json(observability.snapshot({
+      cpm: {
+        configured: Boolean(process.env.CPM_CREDENTIAL_FILE || (process.env.CPM_SQL_USER && process.env.CPM_SQL_PASSWORD)),
+        connected: false,
+        readOnly: process.env.CPM_EFFECTIVE_READ_ONLY === "true",
+      },
+    }));
   });
 
   app.get("/api/readiness", async (request, response) => {
@@ -632,6 +628,7 @@ app.get("/api/health", async (request, response) => {
       database: result.recordset[0].databaseName,
     });
   } catch {
+    observability.recordDependencyFailure("cpm");
     return response.status(200).json({ connected: false, mode: "demo", readOnly: true });
   }
 });
@@ -679,6 +676,16 @@ app.get("/api/app-state", async (_request, response) => {
       settings: state.settings || null,
       employees: Array.isArray(state.employees) ? state.employees : null,
       costOverrides: Array.isArray(state.costOverrides) ? state.costOverrides : [],
+      settingsRevision: state.settingsRevision || 0,
+      settingsFingerprint: state.settingsFingerprint || null,
+      settingsHistory: (state.settingsHistory || []).map((entry) => ({
+        revision: entry.revision,
+        action: entry.action,
+        sourceRevision: entry.sourceRevision || null,
+        actor: entry.actor,
+        occurredAt: entry.occurredAt,
+        fingerprint: entry.fingerprint,
+      })).reverse(),
       savedAt: state.savedAt || null,
     });
   } catch (error) {
@@ -688,23 +695,88 @@ app.get("/api/app-state", async (_request, response) => {
 });
 
 app.put("/api/app-state", async (request, response) => {
-  const { settings, employees, costOverrides = [] } = request.body || {};
-  if (!settings || typeof settings !== "object" || !Array.isArray(employees) || !Array.isArray(costOverrides)) {
+  const { settings: settingsPayload, employees, costOverrides = [], expectedRevision } = request.body || {};
+  if (!settingsPayload || typeof settingsPayload !== "object" || !Array.isArray(employees) || !Array.isArray(costOverrides)) {
     return response.status(400).json({ error: "Geçersiz uygulama ayarı." });
   }
   try {
-    const state = await stateStore.update((current) => ({
-      ...current,
-      settings: serializeSettings(settings),
-      employees,
-      costOverrides,
-    }));
-    return response.json({ saved: true, savedAt: state.savedAt });
+    const settings = Object.keys(settingsPayload).length ? settingsPayload : DEFAULT_SETTINGS;
+    const state = typeof stateStore.saveSettings === "function"
+      ? await stateStore.saveSettings({
+        settings: serializeSettings(settings),
+        employees,
+        costOverrides,
+        expectedRevision,
+        actor: request.user?.username || request.user?.id || "Yönetim",
+      })
+      : await stateStore.update((current) => ({
+        ...current,
+        settings: serializeSettings(settings),
+        employees,
+        costOverrides,
+      }));
+    return response.json({
+      saved: true,
+      savedAt: state.savedAt,
+      settingsRevision: state.settingsRevision,
+      settingsFingerprint: state.settingsFingerprint,
+      settingsHistory: (state.settingsHistory || []).map((entry) => ({
+        revision: entry.revision,
+        action: entry.action,
+        sourceRevision: entry.sourceRevision || null,
+        actor: entry.actor,
+        occurredAt: entry.occurredAt,
+        fingerprint: entry.fingerprint,
+      })).reverse(),
+    });
   } catch (error) {
+    if (error?.code === "SETTINGS_REVISION_CONFLICT") {
+      return response.status(409).json({ error: error.message });
+    }
     if (error instanceof TypeError || error instanceof RangeError) {
       return response.status(400).json({ error: "Geçersiz uygulama ayarı." });
     }
     return response.status(500).json({ error: "Uygulama ayarları kaydedilemedi." });
+  }
+});
+
+app.post("/api/app-state/settings/rollback", async (request, response) => {
+  const revision = Number(request.body?.revision);
+  const expectedRevision = Number(request.body?.expectedRevision);
+  if (!Number.isInteger(revision) || !Number.isInteger(expectedRevision)) {
+    return response.status(400).json({ error: "Geçersiz ayar revisionı." });
+  }
+  try {
+    const state = await stateStore.rollbackSettings({
+      revision,
+      expectedRevision,
+      actor: request.user?.username || request.user?.id || "Yönetim",
+    });
+    return response.json({
+      rolledBack: true,
+      settings: state.settings,
+      employees: state.employees,
+      costOverrides: state.costOverrides,
+      savedAt: state.savedAt,
+      settingsRevision: state.settingsRevision,
+      settingsFingerprint: state.settingsFingerprint,
+      settingsHistory: (state.settingsHistory || []).map((entry) => ({
+        revision: entry.revision,
+        action: entry.action,
+        sourceRevision: entry.sourceRevision || null,
+        actor: entry.actor,
+        occurredAt: entry.occurredAt,
+        fingerprint: entry.fingerprint,
+      })).reverse(),
+    });
+  } catch (error) {
+    if (error?.code === "SETTINGS_REVISION_CONFLICT") {
+      return response.status(409).json({ error: error.message });
+    }
+    if (error instanceof TypeError || error instanceof RangeError) {
+      return response.status(400).json({ error: error.message });
+    }
+    return response.status(500).json({ error: "Ayar revisionı geri alınamadı." });
   }
 });
 
@@ -714,6 +786,7 @@ app.put("/api/app-state", async (request, response) => {
   return response.sendFile(path.join(rootDir, "dist", "index.html"));
   });
 
+  installErrorHandler(app);
   app.locals.ledgerService = ledgerService;
   return app;
 }

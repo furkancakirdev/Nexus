@@ -40,4 +40,20 @@ test("Overtime service calculates multipliers and handles approval rules", async
   // Manager approval
   const approved = await approveOvertimeRequest({ requestId: req1.id, approverId: "emp-002" });
   assert.equal(approved.status, "approved");
+
+  await assert.rejects(
+    () => createOvertimeRequest({ employeeId: "emp-001", date: "2026-05-19", hours: 8, isHoliday: true, reason: "19 Mayıs Tatili Nöbeti" }),
+    { message: "Aynı fazla mesai talebi zaten mevcut." },
+  );
+});
+
+test("concurrent overtime approvals permit exactly one state transition", async () => {
+  await resetHrMemoryStateForTest();
+  const request = await createOvertimeRequest({ employeeId: "emp-001", date: "2026-06-11", hours: 2, reason: "Eşzamanlı onay testi" });
+  const results = await Promise.allSettled([
+    approveOvertimeRequest({ requestId: request.id, approverId: "emp-002" }),
+    approveOvertimeRequest({ requestId: request.id, approverId: "emp-003" }),
+  ]);
+  assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
+  assert.equal(results.filter((result) => result.status === "rejected").length, 1);
 });

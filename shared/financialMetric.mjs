@@ -170,7 +170,21 @@ export function aggregateFinancialMetric(rows = [], options = {}) {
     status: "TAMAM",
     basisId: text(options.basisId) || null,
     scope: { included: emptyScope(), confirmed: emptyScope(), review: emptyScope(), costReview: emptyScope(), excluded: emptyScope() },
-    try: { netSales: 0, cost: 0, profit: 0, margin: null },
+    try: {
+      netSales: 0,
+      cost: 0,
+      profit: 0,
+      margin: null,
+      breakdown: {
+        grossSales: 0,
+        invoiceDiscounts: 0,
+        returns: 0,
+        netSales: 0,
+        movingAverageCost: 0,
+        realGrossProfit: 0,
+        realGrossMarginPct: null,
+      },
+    },
     byCurrency: emptyCurrencyBasket(),
     byPeriod: {},
     eur: { netSales: 0, cost: 0, profit: 0, margin: null, complete: true },
@@ -183,6 +197,11 @@ export function aggregateFinancialMetric(rows = [], options = {}) {
   const fallbackPeriod = text(options.period) || "TOTAL";
   const seenPeriods = new Set();
   const seenCurrencies = new Set();
+  const breakdownEvidence = {
+    grossSales: false,
+    invoiceDiscounts: false,
+    returns: false,
+  };
 
   for (const row of inputRows) {
     const netSales = numberOrZero(row?.signedNetSalesTry);
@@ -194,6 +213,18 @@ export function aggregateFinancialMetric(rows = [], options = {}) {
       const periodMetric = metric.byPeriod[period] ||= createPeriodMetric();
       periodMetric.evidence.excludedLines += 1;
       continue;
+    }
+
+    for (const [field, sourceField] of [
+      ["grossSales", "grossSalesTry"],
+      ["invoiceDiscounts", "discountsTry"],
+      ["returns", "returnsTry"],
+    ]) {
+      const value = numberOrNull(row?.[sourceField]);
+      if (value !== null) {
+        metric.try.breakdown[field] += value;
+        breakdownEvidence[field] = true;
+      }
     }
 
     const line = classifyLine(row);
@@ -268,6 +299,17 @@ export function aggregateFinancialMetric(rows = [], options = {}) {
     return total;
   }, metric.eurRevenue);
   if (!metric.eurRevenue.complete) metric.eurRevenue.netSales = null;
+  metric.try.breakdown = {
+    grossSales: breakdownEvidence.grossSales ? metric.try.breakdown.grossSales : null,
+    invoiceDiscounts: breakdownEvidence.invoiceDiscounts
+      ? metric.try.breakdown.invoiceDiscounts
+      : null,
+    returns: breakdownEvidence.returns ? metric.try.breakdown.returns : null,
+    netSales: metric.try.netSales,
+    movingAverageCost: metric.try.cost,
+    realGrossProfit: metric.try.profit,
+    realGrossMarginPct: metric.try.margin,
+  };
   metric.eurBreakdown = Object.values(metric.byPeriod).reduce((total, current) => {
     total.grossSales += current.eurBreakdown.grossSales;
     total.returns += current.eurBreakdown.returns;

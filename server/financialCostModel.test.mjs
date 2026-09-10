@@ -423,6 +423,7 @@ test("KDV hariç perakende fiyat ile döviz maliyetinden ürün liste brüt marj
 
   assert.equal(result.unitCostTryExVat, 100);
   assert.equal(result.unitCostCurrencyExVat, 2.5);
+  assert.equal(result.unitGrossProfitCurrencyExVat, 7.5);
   assert.equal(result.unitDiscountCurrencyExVat, 7.5);
   assert.equal(result.productListGrossMarginPct, 75);
   assert.equal(result.observationKey, "GD-0060|2026-08-01|CPM-FX-42");

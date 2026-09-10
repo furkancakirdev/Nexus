@@ -1,4 +1,4 @@
-import { readHrState, writeHrState } from "../hrStore.mjs";
+import { readHrState, updateHrState } from "../hrStore.mjs";
 
 const MINIMUM_WAGE_GROSS_2026 = 20002.50;
 const SGK_TABAN = MINIMUM_WAGE_GROSS_2026;
@@ -108,81 +108,65 @@ export async function generatePayrollDraft({ year, month }) {
   if (!year || !month) {
     throw new Error("Yıl ve ay zorunludur.");
   }
-  const state = await readHrState();
-  const activeEmployees = (state.employees || []).filter(e => e.status === "active");
-
-  const records = activeEmployees.map(emp => {
-    // Toplam onaylı mesai tutarı hesabı
-    const monthPrefix = `${year}-${String(month).padStart(2, "0")}`;
-    const approvedOvertimes = (state.overtimeRequests || []).filter(o =>
-      o.employeeId === emp.id && o.status === "approved" && o.date.startsWith(monthPrefix)
-    );
-
-    const hourlyRate = (emp.grossSalary || 40000) / 225; // 225 saat aylık yasal çalışma
-    let overtimePay = 0;
-    for (const ot of approvedOvertimes) {
-      overtimePay += ot.hours * hourlyRate * (ot.multiplier || 1.5);
-    }
-    overtimePay = Math.round(overtimePay * 100) / 100;
-
-    return calculateSingleEmployeePayroll({
-      employee: emp,
-      grossSalary: emp.grossSalary || 40000,
-      cumulativeTaxBase: (month - 1) * ((emp.grossSalary || 40000) * 0.85), // Tahmini kümülatif matrah
-      overtimePay
+  let draft;
+  await updateHrState((state) => {
+    const activeEmployees = (state.employees || []).filter(e => e.status === "active");
+    const records = activeEmployees.map(emp => {
+      const monthPrefix = `${year}-${String(month).padStart(2, "0")}`;
+      const approvedOvertimes = (state.overtimeRequests || []).filter(o =>
+        o.employeeId === emp.id && o.status === "approved" && o.date.startsWith(monthPrefix)
+      );
+      const hourlyRate = (emp.grossSalary || 40000) / 225;
+      const overtimePay = Math.round(approvedOvertimes.reduce((sum, ot) =>
+        sum + ot.hours * hourlyRate * (ot.multiplier || 1.5), 0) * 100) / 100;
+      return calculateSingleEmployeePayroll({
+        employee: emp,
+        grossSalary: emp.grossSalary || 40000,
+        cumulativeTaxBase: (month - 1) * ((emp.grossSalary || 40000) * 0.85),
+        overtimePay
+      });
     });
+    const totalGross = records.reduce((sum, r) => sum + r.totalGross, 0);
+    const totalNet = records.reduce((sum, r) => sum + r.netPay, 0);
+    const totalSgk = records.reduce((sum, r) => sum + r.sgkWorker + r.unemploymentWorker, 0);
+    const totalTax = records.reduce((sum, r) => sum + r.netIncomeTax, 0);
+    const existingIndex = (state.payrollDrafts || []).findIndex(p => p.year === Number(year) && p.month === Number(month));
+    draft = {
+      id: existingIndex !== -1 ? state.payrollDrafts[existingIndex].id : `pay-${year}-${month}-${Date.now()}`,
+      year: Number(year), month: Number(month), status: "draft",
+      totalGross: Math.round(totalGross * 100) / 100,
+      totalNet: Math.round(totalNet * 100) / 100,
+      totalSgk: Math.round(totalSgk * 100) / 100,
+      totalTax: Math.round(totalTax * 100) / 100,
+      recordsCount: records.length, records,
+      finalizedBy1: null, finalizedBy2: null, updatedAt: new Date().toISOString()
+    };
+    state.payrollDrafts = existingIndex !== -1
+      ? state.payrollDrafts.map((entry, index) => index === existingIndex ? draft : entry)
+      : [...(state.payrollDrafts || []), draft];
+    return state;
   });
-
-  const totalGross = records.reduce((sum, r) => sum + r.totalGross, 0);
-  const totalNet = records.reduce((sum, r) => sum + r.netPay, 0);
-  const totalSgk = records.reduce((sum, r) => sum + r.sgkWorker + r.unemploymentWorker, 0);
-  const totalTax = records.reduce((sum, r) => sum + r.netIncomeTax, 0);
-
-  const existingIndex = state.payrollDrafts.findIndex(p => p.year === Number(year) && p.month === Number(month));
-  const draft = {
-    id: existingIndex !== -1 ? state.payrollDrafts[existingIndex].id : `pay-${year}-${month}-${Date.now()}`,
-    year: Number(year),
-    month: Number(month),
-    status: "draft",
-    totalGross: Math.round(totalGross * 100) / 100,
-    totalNet: Math.round(totalNet * 100) / 100,
-    totalSgk: Math.round(totalSgk * 100) / 100,
-    totalTax: Math.round(totalTax * 100) / 100,
-    recordsCount: records.length,
-    records,
-    finalizedBy1: null,
-    finalizedBy2: null,
-    updatedAt: new Date().toISOString()
-  };
-
-  if (existingIndex !== -1) {
-    state.payrollDrafts[existingIndex] = draft;
-  } else {
-    state.payrollDrafts.push(draft);
-  }
-
-  await writeHrState(state);
   return draft;
 }
 
 export async function approvePayrollStep({ draftId, actorUsername }) {
   if (!actorUsername) throw new Error("Onaylayan kullanıcı adı zorunludur.");
-  const state = await readHrState();
-  const draft = state.payrollDrafts.find(p => p.id === draftId);
-  if (!draft) throw new Error("Bordro taslağı bulunamadı.");
-
-  if (!draft.finalizedBy1) {
-    draft.finalizedBy1 = actorUsername;
-    draft.status = "step1_approved";
-  } else if (!draft.finalizedBy2) {
-    if (draft.finalizedBy1 === actorUsername) {
-      throw new Error("Dört-göz ilkesi gereği 2. onayı birinci onaylayandan farklı bir yetkili vermelidir.");
+  let approved;
+  await updateHrState((state) => {
+    const draft = (state.payrollDrafts || []).find(p => p.id === draftId);
+    if (!draft) throw new Error("Bordro taslağı bulunamadı.");
+    if (!draft.finalizedBy1) {
+      approved = { ...draft, finalizedBy1: actorUsername, status: "step1_approved" };
+    } else if (!draft.finalizedBy2) {
+      if (draft.finalizedBy1 === actorUsername) {
+        throw new Error("Dört-göz ilkesi gereği 2. onayı birinci onaylayandan farklı bir yetkili vermelidir.");
+      }
+      approved = { ...draft, finalizedBy2: actorUsername, status: "finalized", finalizedAt: new Date().toISOString() };
+    } else {
+      throw new Error("Bordro taslağı zaten tamamlandı.");
     }
-    draft.finalizedBy2 = actorUsername;
-    draft.status = "finalized";
-    draft.finalizedAt = new Date().toISOString();
-  }
-
-  await writeHrState(state);
-  return draft;
+    state.payrollDrafts = state.payrollDrafts.map((entry) => entry.id === draftId ? approved : entry);
+    return state;
+  });
+  return approved;
 }

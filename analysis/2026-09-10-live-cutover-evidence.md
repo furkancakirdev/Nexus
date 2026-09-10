@@ -9,9 +9,11 @@ yazma yapılmamıştır.
 
 Teknik canlı cutover: **doğrulandı**.
 
-Son reconciliation düzeltmesi de canlıya alınmıştır: tutar karşılaştırması artık
+Son reconciliation düzeltmesi ve maliyet kanıtı fail-closed görünürlük düzeltmesi de canlıya alınmıştır: tutar karşılaştırması artık
 ham IEEE-754 kayan nokta farkı yerine TL kuruş (minor-unit) eşitliğiyle yapılır.
-Gerçek kuruş farkları yine görünür kalır.
+Gerçek kuruş farkları yine görünür kalır. Maliyet kanıtı `review` durumundayken
+TRY maliyet/kâr/marj değerleri artık sıfır veya geçici rakam gibi sunulmaz;
+arayüzde `—` ve kanıt engeli gösterilir.
 
 EUR kök neden düzeltmesi de uygulanmıştır: önceki canlı yapılandırmasında
 `DVZHAR.BANKA=3` satırları modül etiketiyle Halkbank kabul ediliyordu. CPM
@@ -27,11 +29,11 @@ iade satırı kapanmadan değiştirilmemiştir.
 
 Son canlı sürüm:
 
-- Git commit: `072dc83` (`fix: validate Halkbank source identity`)
-- Push: `origin/codex/UI` başarılı (`43c9d20..072dc83`)
-- Canlı build commit: `072dc83`
-- Canlı artifact SHA-256: `40f707d531c387470e6e4ec9cf85e84f4d0b30346af12f33c352722522cb71ea`
-- Canlı image digest: `sha256:2a2019c6e0aea7e51c7a96ff621452ffe06a927bc54bce8ac6110d1b7d7bcd6d`
+- Git commit: `fc76597` (`fix: hide profit without cost evidence`)
+- Push: `origin/codex/UI` başarılı (`072dc83..fc76597`)
+- Canlı build commit: `fc76597`
+- Canlı artifact SHA-256: `07e3193c104a9fbc8528deb62405b465b140df9dc6f4d723db13db551028bc3e`
+- Canlı image digest: `sha256:eb1996b904e0cfa935e7552a526facf6c717b38e5950f803f5d171d5ceca33ab`
 - Canlı kur kimliği: `CPM_RATE_BANK_CODE=6`, `CPM_RATE_SEMANTICS_VERIFIED=false`
 
 Bir önceki canlı sürüm:
@@ -59,13 +61,15 @@ Bir önceki canlı sürüm:
 Önceki aday ekranında görülen `€4.413.235` değeri, o ana ait rate payload’ı
 korunmadığı için aynı veri kesitiyle tekrar üretilemedi. `3790df4` sürümündeki
 aynı-commit aday/canlı parity `€8.586.030` olarak eşleşmişti; banka kimliği
-düzeltmesinden (`072dc83`) sonra canlı tekrar doğrulandı. Bu son düzeltme için
-ayrı aday koşusu değil, canlı UI ve CPM master/kur SELECT kanıtı kullanıldı:
+düzeltmesinden (`072dc83`) sonra canlı tekrar doğrulandı. Sonraki
+`fc76597` adayında maliyet kanıtı fail-closed davranışı izole olarak smoke edildi
+ve aynı sürüm canlıya alındı:
 
 | Kanıt | İzole aday | Canlı | Durum |
 | --- | ---: | ---: | --- |
-| KDV hariç net ciro, kaynak TRY | — | 236.207.629 TL | Canlı doğrulandı |
-| EUR net ciro | — | €4.410.271 | Canlı; TCMB fallback görünür |
+| KDV hariç net ciro, kaynak TRY | 236.207.629 TL | 236.207.629 TL | Aday/canlı eşleşti |
+| EUR net ciro | €4.410.271 | €4.410.271 | Aday/canlı eşleşti; TCMB fallback görünür |
+| Maliyet / kâr / marj | `—` | `—` | Kanıt yok; fail-closed |
 | İade soy zinciri incelemesi | — | 132 | Canlı review-required |
 | Placeholder taraması | — | Yok | Canlı geçti |
 | Browser console error/warning | — | 0 / 0 (son canlı smoke) | Canlı geçti |
@@ -73,6 +77,9 @@ ayrı aday koşusu değil, canlı UI ve CPM master/kur SELECT kanıtı kullanıl
 Canlı `/api/overview?year=2026` payload kanıtı:
 
 - `canonicalMetric.try.netSales = 236207629.04000163`
+- `fc76597` candidate/live build metadata: build `nexus-fc76597`, artifact SHA-256
+  `07e3193c104a9fbc8528deb62405b465b140df9dc6f4d723db13db551028bc3e`, image
+  digest `sha256:eb1996b904e0cfa935e7552a526facf6c717b38e5950f803f5d171d5ceca33ab`.
 - Önceki `3790df4` response’ta `canonicalMetric.eurRevenue.netSales =
   8586030.379638923` idi; bu alan yanlış banka kimliğiyle üretilmişti ve
   resmi EUR kanıtı olarak kapatıldı.
@@ -106,8 +113,10 @@ EUR yanlış banka kimliği kanıtı:
 
 Son canlı tarayıcı smoke kanıtı:
 
-- Genel Bakış/Satış: `236.207.629 TL`, `€4.410.271`, `132 iade bağlantısı
-  incelenmeli`
+- Genel Bakış/Satış: `236.207.629 TL`, `€4.410.271`, maliyet/kâr/marj `—`,
+  `132 iade bağlantısı incelenmeli`
+- Maliyet kanıtı: `Doğrulanabilir maliyet kanıtı bulunamadı`; maliyet olmadan kâr
+  veya marj hesaplanmadı.
 - Tema: `dark`, body arka planı `rgb(15, 23, 42)`
 - Loading: tamamlandı; placeholder (`undefined/null/NaN/lorem ipsum`): yok
 - Satış Analizi ve Ayarlar route smoke: açıldı, loading/placeholder yok
@@ -133,7 +142,7 @@ Kurtarma sırasında:
 - `commit-4aa608e` canlı imajı yeniden oluşturuldu ve canlı container başlatıldı.
 - Caddy ile uygulama ağı yeniden bağlandı; ilk 502 durumu bu ağ üyeliği
   düzeltmesiyle kapandı.
-- Son canlı container `release-072dc83` olarak çalışıyor; `3790df4` ve
+- Son canlı container `release-fc76597` olarak çalışıyor; `072dc83`, `3790df4` ve
   `4aa608e` sürümleri rollback imaj/container noktaları olarak korunuyor.
 - Uygulama verisi silinmedi veya CPM'ye yazılmadı.
 
@@ -143,7 +152,7 @@ Teknik parity geçmesine rağmen aşağıdaki bulgular resmî finansal onayı ka
 tutar:
 
 - 22.716 satırın WAC/maliyet kanıtı mevcut canlı akışta resmî kapsama alınmış
-  değildir; canlı görünür geçici TRY maliyet/kâr hesapları resmî sonuç değildir.
+  değildir; canlı UI maliyet/kâr/marjı `—` göstererek fail-closed kalmaktadır.
 - 132 satış iadesinin orijinal satış soy zinciri bağımsız olarak kanıtlanamadı;
   hepsi `review-required` kalır. Bulunamayanlar geçmiş dönem kaynaklı olabilir,
   ancak kanıt gelmeden otomatik bağlanmaz.

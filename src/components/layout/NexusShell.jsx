@@ -109,6 +109,7 @@ export function NexusShell({
 
   return (
     <div className={`nexus-shell app-shell density-${density}`}>
+      <a className="nexus-shell__skip-link" href="#nexus-main">İçeriğe geç</a>
       <aside className={mobileNavOpen ? "nexus-shell__sidebar nexus-shell__sidebar--open" : "nexus-shell__sidebar"}>
         <div className="nexus-shell__brand-wrap">
           <a className="nexus-shell__brand" href="#top" onClick={onMobileNavClose} aria-label="Marlin Nexus Yönetim Sistemi">
@@ -213,7 +214,7 @@ export function NexusShell({
           </div>
         </header>
 
-        <div className="nexus-shell__main">
+        <div className="nexus-shell__main" id="nexus-main" role="region" aria-label="Ana içerik">
           {children}
         </div>
       </div>

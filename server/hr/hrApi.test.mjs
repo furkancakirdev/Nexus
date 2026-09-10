@@ -9,7 +9,12 @@ test("HR Express Router handles all REST endpoints", async () => {
 
   const app = express();
   app.use(express.json());
-  app.use("/api/hr", createHrRouter());
+  app.use("/api/hr", createHrRouter({
+    requireCapability: () => (req, _res, next) => {
+      req.nexusUser = { username: "admin" };
+      next();
+    },
+  }));
 
   const server = app.listen(0);
   const port = server.address().port;
@@ -118,7 +123,7 @@ test("HR employee endpoints enforce capability and return single employee", asyn
     assert.equal(resById.status, 403);
     assert.ok(denied.includes("employees:read"));
 
-    // Capability'siz router: GET /employees/:id çalışır.
+    // Capability policy olmadan router fail-closed davranır; ID varlığı sızdırılmaz.
     const appOpen = express();
     appOpen.use(express.json());
     appOpen.use("/api/hr", createHrRouter());
@@ -127,14 +132,10 @@ test("HR employee endpoints enforce capability and return single employee", asyn
     const baseUrlOpen = `http://127.0.0.1:${portOpen}/api/hr`;
     try {
       const resFound = await fetch(`${baseUrlOpen}/employees/emp-001`);
-      assert.equal(resFound.status, 200);
-      const found = await resFound.json();
-      assert.equal(found.employee.id, "emp-001");
+      assert.equal(resFound.status, 403);
 
       const resMissing = await fetch(`${baseUrlOpen}/employees/emp-yok`);
-      assert.equal(resMissing.status, 404);
-      const missing = await resMissing.json();
-      assert.equal(missing.error.code, "NOT_FOUND");
+      assert.equal(resMissing.status, 403);
     } finally {
       serverOpen.close();
     }

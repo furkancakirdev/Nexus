@@ -1,6 +1,6 @@
 import { mkdir, open, readFile, rename } from "node:fs/promises";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 function plainRecord(value, fieldName) {
   const prototype = value !== null && typeof value === "object"
@@ -34,6 +34,15 @@ function normalizeState(value = {}) {
     costOverrides: Array.isArray(state.costOverrides)
       ? [...state.costOverrides]
       : [],
+    settingsRevision: Number.isInteger(state.settingsRevision) && state.settingsRevision >= 0
+      ? state.settingsRevision
+      : 0,
+    settingsFingerprint: typeof state.settingsFingerprint === "string"
+      ? state.settingsFingerprint
+      : null,
+    settingsHistory: Array.isArray(state.settingsHistory)
+      ? structuredClone(state.settingsHistory).slice(-50)
+      : [],
     approvals: state.approvals && typeof state.approvals === "object"
       && !Array.isArray(state.approvals)
       ? structuredClone(state.approvals)
@@ -43,6 +52,18 @@ function normalizeState(value = {}) {
       : [],
     savedAt: state.savedAt ?? null,
   };
+}
+
+function settingsFingerprint(settings, employees, costOverrides) {
+  return createHash("sha256")
+    .update(JSON.stringify({ settings, employees, costOverrides }))
+    .digest("hex");
+}
+
+function revisionConflict() {
+  const error = new Error("Ayarlar başka bir oturumda değiştirildi.");
+  error.code = "SETTINGS_REVISION_CONFLICT";
+  return error;
 }
 
 async function atomicWrite(filePath, state) {
@@ -99,6 +120,111 @@ export function createStateStore(filePath, { now = () => new Date() } = {}) {
       const changed = await mutator(structuredClone(current));
       const next = normalizeState(changed);
       next.savedAt = now().toISOString();
+      await atomicWrite(filePath, next);
+      return structuredClone(next);
+    });
+  }
+
+  async function saveSettings({
+    settings,
+    employees,
+    costOverrides,
+    actor = "Yönetim",
+    expectedRevision,
+  }) {
+    const nextSettings = structuredClone(plainRecord(settings, "Ayarlar"));
+    if (!Array.isArray(employees) || !Array.isArray(costOverrides)) {
+      throw new TypeError("Personel ve maliyet kararları dizi olmalı.");
+    }
+    return runExclusive(async () => {
+      const current = await readDisk();
+      if (expectedRevision !== undefined && expectedRevision !== current.settingsRevision) {
+        throw revisionConflict();
+      }
+      const revision = current.settingsRevision + 1;
+      const occurredAt = now().toISOString();
+      const fingerprint = settingsFingerprint(nextSettings, employees, costOverrides);
+      const historyEntry = {
+        revision,
+        action: "save",
+        actor: String(actor || "Yönetim").slice(0, 120),
+        occurredAt,
+        fingerprint,
+        settings: nextSettings,
+        employees: structuredClone(employees),
+        costOverrides: structuredClone(costOverrides),
+      };
+      const next = normalizeState({
+        ...current,
+        settings: nextSettings,
+        employees,
+        costOverrides,
+        settingsRevision: revision,
+        settingsFingerprint: fingerprint,
+        settingsHistory: [...current.settingsHistory, historyEntry].slice(-50),
+        auditEvents: [...current.auditEvents, {
+          id: randomUUID(),
+          action: "settings-saved",
+          actor: historyEntry.actor,
+          occurredAt,
+          revision,
+          fingerprint,
+        }],
+        savedAt: occurredAt,
+      });
+      await atomicWrite(filePath, next);
+      return structuredClone(next);
+    });
+  }
+
+  async function rollbackSettings({ revision, expectedRevision, actor = "Yönetim" }) {
+    if (!Number.isInteger(revision) || revision < 1) {
+      throw new RangeError("Geri alınacak ayar revisionı geçersiz.");
+    }
+    return runExclusive(async () => {
+      const current = await readDisk();
+      if (expectedRevision !== undefined && expectedRevision !== current.settingsRevision) {
+        throw revisionConflict();
+      }
+      const source = current.settingsHistory.find((entry) => entry.revision === revision);
+      if (!source) throw new RangeError("Ayar revisionı bulunamadı.");
+
+      const nextRevision = current.settingsRevision + 1;
+      const occurredAt = now().toISOString();
+      const settings = structuredClone(source.settings);
+      const employees = structuredClone(source.employees || []);
+      const costOverrides = structuredClone(source.costOverrides || []);
+      const fingerprint = settingsFingerprint(settings, employees, costOverrides);
+      const historyEntry = {
+        revision: nextRevision,
+        action: "rollback",
+        sourceRevision: revision,
+        actor: String(actor || "Yönetim").slice(0, 120),
+        occurredAt,
+        fingerprint,
+        settings,
+        employees,
+        costOverrides,
+      };
+      const next = normalizeState({
+        ...current,
+        settings,
+        employees,
+        costOverrides,
+        settingsRevision: nextRevision,
+        settingsFingerprint: fingerprint,
+        settingsHistory: [...current.settingsHistory, historyEntry].slice(-50),
+        auditEvents: [...current.auditEvents, {
+          id: randomUUID(),
+          action: "settings-rolled-back",
+          actor: historyEntry.actor,
+          occurredAt,
+          revision: nextRevision,
+          sourceRevision: revision,
+          fingerprint,
+        }],
+        savedAt: occurredAt,
+      });
       await atomicWrite(filePath, next);
       return structuredClone(next);
     });
@@ -164,5 +290,5 @@ export function createStateStore(filePath, { now = () => new Date() } = {}) {
     });
   }
 
-  return { read, update, approve, reopen };
+  return { read, update, saveSettings, rollbackSettings, approve, reopen };
 }

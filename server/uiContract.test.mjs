@@ -11,14 +11,14 @@ async function source(relativePath) {
   return readFile(new URL(`../${relativePath}`, import.meta.url), "utf8");
 }
 
-test("aktif ürün modülleri ilk plandaki yedi ekranla sınırlıdır", () => {
+test("aktif ürün modülleri yalnız analiz ve ayarlar ekranlarıyla sınırlıdır", () => {
   assert.deepEqual(
     MODULE_REGISTRY.filter((module) => module.active).map((module) => module.page),
-    ["summary", "sales", "departments", "audit", "inventory", "ledger", "settings"],
+    ["summary", "sales", "departments", "settings"],
   );
   assert.deepEqual(
     MODULE_REGISTRY.filter((module) => module.active).map((module) => module.label),
-    ["Genel Bakış", "Satış Analizi", "Departman Analizi", "Denetim", "Stok", "Havuz", "Ayarlar"],
+    ["Genel Bakış", "Satış Analizi", "Departman Analizi", "Ayarlar"],
   );
 });
 
@@ -33,6 +33,7 @@ test("settings page renders toggles from the shared registry", async () => {
 test("navigation exposes only active registry modules", async () => {
   const gateSource = await source("src/sessionGate.js");
   assert.match(gateSource, /NAV_ITEMS = Object\.freeze\(MODULE_REGISTRY\.filter\(\(item\) => item\.active\)\)/);
+  assert.match(gateSource, /resolveRequestedPage/);
 });
 
 test("Katkı ve Performans sayfası menüden yönlendirmeden ve görünüm ayarından kaldırılır", async () => {
@@ -44,13 +45,35 @@ test("Katkı ve Performans sayfası menüden yönlendirmeden ve görünüm ayar�
   assert.doesNotMatch(appSource, /Katkı\s*&amp;\s*Performans/);
 });
 
-test("Inventory research is reachable from the main navigation", async () => {
+test("Inventory research remains implemented but is not reachable from product navigation", async () => {
   const appSource = await source("src/App.jsx");
   const gateSource = await source("src/sessionGate.js");
 
-  assert.match(appSource, /import \{ InventoryResearchPage \} from "\.\/InventoryResearchPage"/);
-  assert.match(gateSource, /page: "inventory", label: "Stok(?: Araştırması)?"/);
-  assert.match(appSource, /effectivePage === "inventory"/);
+  assert.match(appSource, /InventoryResearchPage/);
+  assert.match(gateSource, /MODULE_REGISTRY/);
+  assert.doesNotMatch(gateSource, /NAV_ITEMS.*inventory/);
+  assert.doesNotMatch(appSource, /value=["']inventory["']/);
+});
+
+test("disabled product pages fail closed for initial and browser-history navigation", async (t) => {
+  const vite = await createServer({ configFile: resolve(process.cwd(), "vite.config.mjs") });
+  t.after(() => vite.close());
+  const gate = await vite.ssrLoadModule("/src/sessionGate.js");
+
+  assert.equal(gate.resolveRequestedPage("inventory", "summary"), "summary");
+  assert.equal(gate.resolveRequestedPage("audit", "sales"), "sales");
+  assert.equal(gate.resolveRequestedPage("ledger", "departments"), "departments");
+  assert.equal(gate.resolveRequestedPage("reports", "summary"), "summary");
+  assert.equal(gate.resolveRequestedPage("sales", "summary"), "sales");
+});
+
+test("summary shortcuts expose only active product surfaces", async () => {
+  const summarySource = await source("src/SummaryPage.jsx");
+  assert.match(summarySource, /onNavigate\?\.\("sales"\)/);
+  assert.match(summarySource, /onNavigate\?\.\("departments"\)/);
+  assert.doesNotMatch(summarySource, /onNavigate\?\.\("audit"\)/);
+  assert.doesNotMatch(summarySource, /onNavigate\?\.\("inventory"\)/);
+  assert.doesNotMatch(summarySource, /onNavigate\?\.\("ledger"\)/);
 });
 
 test("departman satırı tam evrak ve aktör kanıtını görünür kılar", async () => {
@@ -579,8 +602,7 @@ test("Department semantic legend follows the visible chart series and chart pres
 
   assert.deepEqual(department.getDepartmentChartSeries("service").map((item) => item.name), ["Servis net satış", "Servis kâr"]);
   assert.deepEqual(department.getDepartmentChartSeries("parts").map((item) => item.name), ["Yedek Parça net satış", "Yedek Parça kâr"]);
-  assert.deepEqual(department.getDepartmentChartSeries("review").map((item) => item.name), ["İnceleme gerekli", "Toplam kâr"]);
-  assert.deepEqual(department.getDepartmentChartSeries("all").map((item) => item.name), ["Servis net satış", "Yedek Parça net satış", "İnceleme gerekli", "Toplam kâr"]);
+  assert.deepEqual(department.getDepartmentChartSeries("all").map((item) => item.name), ["Servis net satış", "Yedek Parça net satış", "Toplam kâr"]);
 
   const legendMarkup = renderToStaticMarkup(React.createElement(department.AccessibleChartLegend, {
     label: "Departman satış ve kâr serileri",
@@ -603,16 +625,16 @@ test("authenticated navigation follows capability boundaries and guards direct r
   const reporting = { role: "reporting", capabilities: ["reporting:read"] };
   const admin = { role: "admin", capabilities: ["reporting:read", "operations:read", "approvals:manage", "settings:manage"] };
 
-  assert.deepEqual(gate.navItemsFor(operational).map((item) => item.page), ["inventory"]);
+  assert.deepEqual(gate.navItemsFor(operational).map((item) => item.page), []);
   assert.equal(gate.canAccessPage(operational, "summary"), false);
-  assert.equal(gate.canAccessPage(operational, "inventory"), true);
+  assert.equal(gate.canAccessPage(operational, "inventory"), false);
   assert.equal(gate.canAccessPage(reporting, "summary"), true);
   assert.equal(gate.canAccessPage(reporting, "settings"), false);
   assert.equal(gate.canAccessPage(admin, "settings"), true);
   for (const inactivePage of ["reports", "goals", "approval", "performance"]) {
     assert.equal(gate.canAccessPage(admin, inactivePage), false, `${inactivePage} aktif route olmamalı`);
   }
-  assert.equal(gate.firstAccessiblePage(operational, "summary"), "inventory");
+  assert.equal(gate.firstAccessiblePage(operational, "summary"), null);
 });
 
 test("authenticated sessions without an accessible module fail closed before shell rendering", async () => {

@@ -211,7 +211,7 @@ test("role isolation authenticates sessions and restricts reporting, operations,
   const readiness = await fetch(`${baseUrl}/api/readiness?year=2026`, { headers: { cookie: reporting.cookie } });
   assert.equal(readiness.status, 200);
   assert.equal((await readiness.json()).ready, false);
-  for (const route of ["/api/sales-cases", "/api/inventory-research"]) {
+  for (const route of ["/api/sales-cases", "/api/inventory-research", "/api/audit-ledger", "/api/audit-samples"]) {
     assert.equal((await fetch(`${baseUrl}${route}`, { headers: { cookie: reporting.cookie } })).status, 403);
   }
   assert.equal((await fetch(`${baseUrl}/api/approvals?year=2026`, { headers: { cookie: reporting.cookie } })).status, 403);
@@ -219,14 +219,15 @@ test("role isolation authenticates sessions and restricts reporting, operations,
 
   const operational = await login(baseUrl, "operational");
   assert.equal((await fetch(`${baseUrl}/api/overview`, { headers: { cookie: operational.cookie } })).status, 403);
-  for (const route of ["/api/sales-cases", "/api/inventory-research"]) {
-    assert.notEqual((await fetch(`${baseUrl}${route}`, { headers: { cookie: operational.cookie } })).status, 403);
-  }
+  assert.notEqual((await fetch(`${baseUrl}/api/sales-cases`, { headers: { cookie: operational.cookie } })).status, 401);
+  assert.equal((await fetch(`${baseUrl}/api/inventory-research`, { headers: { cookie: operational.cookie } })).status, 403);
+  assert.equal((await fetch(`${baseUrl}/api/audit-ledger`, { headers: { cookie: operational.cookie } })).status, 403);
 
   const admin = await login(baseUrl, "admin");
   assert.equal((await fetch(`${baseUrl}/api/overview`, { headers: { cookie: admin.cookie } })).status, 200);
-  for (const route of ["/api/sales-cases", "/api/inventory-research"]) {
-    assert.notEqual((await fetch(`${baseUrl}${route}`, { headers: { cookie: admin.cookie } })).status, 403);
+  for (const route of ["/api/sales-cases", "/api/inventory-research", "/api/audit-ledger", "/api/audit-samples"]) {
+    const status = (await fetch(`${baseUrl}${route}`, { headers: { cookie: admin.cookie } })).status;
+    assert.ok([403, 503].includes(status), `${route} fail-closed dönmeli`);
   }
   assert.equal((await fetch(`${baseUrl}/api/app-state`, { headers: { cookie: admin.cookie } })).status, 200);
   const write = await fetch(`${baseUrl}/api/app-state`, {
@@ -275,14 +276,8 @@ test("inventory source contract reaches readiness and inventory research API bou
   assert.ok(readiness.blockers.includes("official-cost-coverage-insufficient"));
 
   const inventoryResponse = await fetch(`${baseUrl}/api/inventory-research?year=2026`, { headers });
-  assert.equal(inventoryResponse.status, 200);
-  const inventory = await inventoryResponse.json();
-  assert.equal(inventory.readOnly, true);
-  assert.equal(inventory.mode, "unavailable");
-  assert.equal(inventory.inventorySource.status, "missing");
-  assert.equal(inventory.inventorySource.evidence.status, "not-collected");
-  assert.equal(inventory.openingEvidenceDiagnostics.status, "not-available");
-  assert.equal(inventory.currentStock.reason, "current-stock-source-not-verified");
+  assert.equal(inventoryResponse.status, 403);
+  assert.deepEqual(await inventoryResponse.json(), { error: "Bu ürün yüzeyi geçici olarak devre dışıdır." });
 });
 
 test("overview and department API projections preserve multi-currency annual EUR parity", async (t) => {

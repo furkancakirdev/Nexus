@@ -136,6 +136,8 @@ function marginReview(input, reviewReason, extra = {}) {
       : null,
     unitCostTryExVat: null,
     unitCostCurrencyExVat: null,
+    unitGrossProfitCurrencyExVat: null,
+    // Geriye dönük API uyumluluğu; yeni tüketiciler brüt kâr alanını kullanır.
     unitDiscountCurrencyExVat: null,
     productListGrossMarginPct: null,
     observationKey: null,
@@ -202,9 +204,9 @@ export function calculateProductMarginObservation(input = {}) {
   }
 
   const unitCostCurrencyExVat = conversion.amountCurrency;
-  const unitDiscountCurrencyExVat = retailUnitPriceCurrencyExVat - unitCostCurrencyExVat;
+  const unitGrossProfitCurrencyExVat = retailUnitPriceCurrencyExVat - unitCostCurrencyExVat;
   const productListGrossMarginPct = 100
-    * unitDiscountCurrencyExVat
+    * unitGrossProfitCurrencyExVat
     / retailUnitPriceCurrencyExVat;
   const sourceId = conversion.exchangeEvidence.sourceId;
 
@@ -217,7 +219,9 @@ export function calculateProductMarginObservation(input = {}) {
     purchaseNetAmountTryExVat,
     unitCostTryExVat,
     unitCostCurrencyExVat,
-    unitDiscountCurrencyExVat,
+    unitGrossProfitCurrencyExVat,
+    // Geçici uyumluluk alias'ı; bu tutar fatura iskontosu değildir.
+    unitDiscountCurrencyExVat: unitGrossProfitCurrencyExVat,
     productListGrossMarginPct,
     observationKey: `${productCode}|${purchaseDate}|${sourceId}`,
     exchangeEvidence: conversion.exchangeEvidence,
@@ -773,7 +777,15 @@ export function attachOfficialMovementCosts({ source = {}, economicRows = [], mo
         productCurrency: cost.productCurrency || observation?.productCurrency || row.financeV2?.productCurrency || null,
         retailUnitPriceCurrencyExVat: observation?.retailUnitPriceCurrencyExVat ?? row.financeV2?.retailUnitPriceCurrencyExVat ?? null,
         unitCostCurrencyExVat: observation?.unitCostCurrencyExVat ?? cost.appliedUnitCostCurrencyExVat ?? row.financeV2?.unitCostCurrencyExVat ?? null,
-        unitDiscountCurrencyExVat: observation?.unitDiscountCurrencyExVat ?? row.financeV2?.unitDiscountCurrencyExVat ?? null,
+        unitGrossProfitCurrencyExVat: observation?.unitGrossProfitCurrencyExVat
+          ?? observation?.unitDiscountCurrencyExVat
+          ?? row.financeV2?.unitGrossProfitCurrencyExVat
+          ?? row.financeV2?.unitDiscountCurrencyExVat
+          ?? null,
+        // Geriye dönük alias; gerçek fatura iskontosu değildir.
+        unitDiscountCurrencyExVat: observation?.unitDiscountCurrencyExVat
+          ?? row.financeV2?.unitDiscountCurrencyExVat
+          ?? null,
         productListGrossMarginPct: observation?.productListGrossMarginPct ?? row.financeV2?.productListGrossMarginPct ?? null,
         observationKey: observation?.observationKey ?? row.financeV2?.observationKey ?? null,
         exchangeEvidence: observation?.exchangeEvidence ?? row.financeV2?.exchangeEvidence ?? null,

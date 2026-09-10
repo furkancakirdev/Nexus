@@ -2,8 +2,15 @@ node_modules/
 dist/
 .npm-cache/
 .env
+.env.*
+!.env.example
 *.log
 .worktrees/
+
+# Runtime state and secret mounts must never enter source control.
+data/
+secrets/
+.temp_files/
 
 .wrongstack/
 !/.wrongstack/

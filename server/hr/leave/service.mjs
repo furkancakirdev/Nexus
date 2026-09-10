@@ -1,4 +1,4 @@
-import { readHrState, writeHrState } from "../hrStore.mjs";
+import { readHrState, updateHrState } from "../hrStore.mjs";
 
 /**
  * İş Kanunu Madde 53'e göre yıllık izin gün hesabı
@@ -70,96 +70,69 @@ export async function createLeaveRequest({ employeeId, leaveTypeId, startDate, e
   if (!employeeId || !startDate || !endDate || !workDaysCount) {
     throw new Error("Çalışan, başlangıç/bitiş tarihi ve gün sayısı zorunludur.");
   }
-  const state = await readHrState();
-  const emp = state.employees.find(e => e.id === employeeId);
-  if (!emp) throw new Error("Çalışan bulunamadı.");
-
   const daysNeeded = Number(workDaysCount);
-  if (daysNeeded <= 0) throw new Error("İzin gün sayısı 0'dan büyük olmalıdır.");
+  if (!Number.isFinite(daysNeeded) || daysNeeded <= 0) throw new Error("İzin gün sayısı 0'dan büyük olmalıdır.");
 
-  // Yıllık izin bakiye kontrolü
-  if (leaveTypeId === "lt-annual") {
-    const balance = await getLeaveBalance(employeeId);
-    if (balance.remainingDays < daysNeeded) {
-      throw new Error(`Yetersiz yıllık izin bakiyesi! Kalan: ${balance.remainingDays} gün, İstenen: ${daysNeeded} gün.`);
+  return updateHrState((state) => {
+    const emp = (state.employees || []).find((employee) => employee.id === employeeId);
+    if (!emp) throw new Error("Çalışan bulunamadı.");
+    const selectedLeaveType = leaveTypeId || "lt-annual";
+    if (selectedLeaveType === "lt-annual") {
+      const ledger = (state.leaveLedger || []).filter((entry) => entry.employeeId === employeeId);
+      const entitled = ledger.reduce((sum, entry) => (
+        ["entitlement", "rollover", "adjustment_plus"].includes(entry.type) ? sum + Number(entry.days || 0)
+          : entry.type === "adjustment_minus" ? sum - Number(entry.days || 0) : sum
+      ), 0);
+      const consumed = ledger.reduce((sum, entry) => entry.type === "consumption" ? sum + Number(entry.days || 0) : sum, 0);
+      if (entitled - consumed < daysNeeded) {
+        throw new Error(`Yetersiz yıllık izin bakiyesi! Kalan: ${entitled - consumed} gün, İstenen: ${daysNeeded} gün.`);
+      }
     }
-  }
-
-  // Çakışan talep kontrolü
-  const hasOverlap = state.leaveRequests.some(r =>
-    r.employeeId === employeeId &&
-    r.status !== "rejected" &&
-    r.status !== "cancelled" &&
-    ((startDate >= r.startDate && startDate <= r.endDate) ||
-     (endDate >= r.startDate && endDate <= r.endDate))
-  );
-
-  if (hasOverlap) {
-    throw new Error("Belirtilen tarihlerde zaten onaylı veya bekleyen bir izin talebi bulunmaktadır.");
-  }
-
-  const newRequest = {
-    id: `lreq-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-    employeeId,
-    leaveTypeId: leaveTypeId || "lt-annual",
-    startDate,
-    endDate,
-    workDaysCount: daysNeeded,
-    reason: reason || "",
-    status: "pending",
-    approverId: null,
-    documentId: documentId || null,
-    documentName: documentName || null,
-    createdAt: new Date().toISOString()
-  };
-
-  state.leaveRequests.push(newRequest);
-  await writeHrState(state);
-  return newRequest;
+    const hasOverlap = (state.leaveRequests || []).some((request) => request.employeeId === employeeId
+      && !["rejected", "cancelled"].includes(request.status)
+      && startDate <= request.endDate && endDate >= request.startDate);
+    if (hasOverlap) throw new Error("Belirtilen tarihlerde zaten onaylı veya bekleyen bir izin talebi bulunmaktadır.");
+    const newRequest = {
+      id: `lreq-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      employeeId, leaveTypeId: selectedLeaveType, startDate, endDate, workDaysCount: daysNeeded,
+      reason: reason || "", status: "pending", approverId: null,
+      documentId: documentId || null, documentName: documentName || null, createdAt: new Date().toISOString(),
+    };
+    state.leaveRequests = [...(state.leaveRequests || []), newRequest];
+    return state;
+  }).then((state) => state.leaveRequests.at(-1));
 }
 
 export async function approveLeaveRequest({ requestId, approverId }) {
-  const state = await readHrState();
-  const req = state.leaveRequests.find(r => r.id === requestId);
-  if (!req) throw new Error("İzin talebi bulunamadı.");
-  if (req.status !== "pending") throw new Error("Yalnızca bekleyen talepler onaylanabilir.");
-
-  // Kendi talebini onaylama yasağı
-  if (approverId && req.employeeId === approverId) {
-    throw new Error("Kendi izin talebinizi onaylayamazsınız.");
-  }
-
-  req.status = "approved";
-  req.approverId = approverId || "system-hr";
-  req.approvedAt = new Date().toISOString();
-
-  // Bakiye defterine tüketim hareketi yaz
-  state.leaveLedger.push({
-    id: `lleg-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-    employeeId: req.employeeId,
-    leaveTypeId: req.leaveTypeId,
-    type: "consumption",
-    days: req.workDaysCount,
-    effectiveDate: req.startDate,
-    description: `İzin Kullanımı (${req.startDate} - ${req.endDate})`,
-    createdAt: new Date().toISOString()
+  let approvedRequest;
+  await updateHrState((state) => {
+    const request = (state.leaveRequests || []).find((entry) => entry.id === requestId);
+    if (!request) throw new Error("İzin talebi bulunamadı.");
+    if (request.status !== "pending") throw new Error("Yalnızca bekleyen talepler onaylanabilir.");
+    if (approverId && request.employeeId === approverId) throw new Error("Kendi izin talebinizi onaylayamazsınız.");
+    const updated = { ...request, status: "approved", approverId: approverId || "system-hr", approvedAt: new Date().toISOString() };
+    state.leaveRequests = state.leaveRequests.map((entry) => entry.id === requestId ? updated : entry);
+    state.leaveLedger = [...(state.leaveLedger || []), {
+      id: `lleg-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      employeeId: request.employeeId, leaveTypeId: request.leaveTypeId, type: "consumption", days: request.workDaysCount,
+      effectiveDate: request.startDate, description: `İzin Kullanımı (${request.startDate} - ${request.endDate})`, createdAt: new Date().toISOString(),
+    }];
+    approvedRequest = updated;
+    return state;
   });
-
-  await writeHrState(state);
-  return req;
+  return approvedRequest;
 }
 
 export async function rejectLeaveRequest({ requestId, approverId, reason }) {
-  const state = await readHrState();
-  const req = state.leaveRequests.find(r => r.id === requestId);
-  if (!req) throw new Error("İzin talebi bulunamadı.");
-  if (req.status !== "pending") throw new Error("Yalnızca bekleyen talepler reddedilebilir.");
-
-  req.status = "rejected";
-  req.approverId = approverId || "system-hr";
-  req.rejectionReason = reason || "";
-  req.rejectedAt = new Date().toISOString();
-
-  await writeHrState(state);
-  return req;
+  let rejectedRequest;
+  await updateHrState((state) => {
+    const request = (state.leaveRequests || []).find((entry) => entry.id === requestId);
+    if (!request) throw new Error("İzin talebi bulunamadı.");
+    if (request.status !== "pending") throw new Error("Yalnızca bekleyen talepler reddedilebilir.");
+    const updated = { ...request, status: "rejected", approverId: approverId || "system-hr", rejectionReason: reason || "", rejectedAt: new Date().toISOString() };
+    state.leaveRequests = state.leaveRequests.map((entry) => entry.id === requestId ? updated : entry);
+    rejectedRequest = updated;
+    return state;
+  });
+  return rejectedRequest;
 }

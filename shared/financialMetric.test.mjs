@@ -61,6 +61,55 @@ test("identical ledger aggregation has one stable overview and department shape"
   assert.equal(overview.eurMargin, 60);
 });
 
+test("canonical contract separates gross sales, invoice discount, returns, net sales, cost, and real gross profit", () => {
+  const result = aggregateFinancialMetric([
+    coveredRow({
+      id: "sale",
+      grossSalesTry: 600,
+      discountsTry: 100,
+      returnsTry: 0,
+      signedNetSalesTry: 500,
+    }),
+    coveredRow({
+      id: "return",
+      grossSalesTry: 0,
+      discountsTry: 0,
+      returnsTry: 100,
+      signedNetSalesTry: -100,
+      financeV2: { reviewReason: null, lineCostTryExVat: -40, lineCostCurrencyExVat: -1.6 },
+    }),
+  ], { rateSets: RATE_SETS });
+
+  assert.deepEqual(result.try.breakdown, {
+    grossSales: 600,
+    invoiceDiscounts: 100,
+    returns: 100,
+    netSales: 400,
+    movingAverageCost: 160,
+    realGrossProfit: 240,
+    realGrossMarginPct: 60,
+  });
+  assert.equal(result.try.breakdown.grossSales
+    - result.try.breakdown.invoiceDiscounts
+    - result.try.breakdown.returns, result.try.netSales);
+  assert.equal(result.try.breakdown.realGrossProfit,
+    result.try.netSales - result.try.cost);
+});
+
+test("missing breakdown evidence never invents gross sales or invoice discount", () => {
+  const result = aggregateFinancialMetric([coveredRow()], { rateSets: RATE_SETS });
+
+  assert.deepEqual(result.try.breakdown, {
+    grossSales: null,
+    invoiceDiscounts: null,
+    returns: null,
+    netSales: 500,
+    movingAverageCost: 200,
+    realGrossProfit: 300,
+    realGrossMarginPct: 60,
+  });
+});
+
 test("existing overview and department boundaries reconcile with the canonical contract", () => {
   const ledger = {
     rows: [
@@ -84,9 +133,10 @@ test("existing overview and department boundaries reconcile with the canonical c
     productCurrency: row.financeV2.productCurrency,
     documentSellingRate: row.documentSellingRate,
     financeV2: row.financeV2,
-    excluded: row.productCode === "KOMISYON",
   })), { rateSets: { "2026-02": rateSet }, basisId: "cross-path-1" });
-  const canonicalCovered = aggregateFinancialMetric(ledger.rows.slice(0, 2).map((row) => ({
+  const canonicalCovered = aggregateFinancialMetric(ledger.rows
+    .filter((row) => row.financeV2?.reviewReason == null)
+    .map((row) => ({
     period: "2026-02",
     signedNetSalesTry: row.signedNetSales,
     productCurrency: row.financeV2.productCurrency,
@@ -101,7 +151,7 @@ test("existing overview and department boundaries reconcile with the canonical c
       : canonical.try[field]);
     assert.ok(Math.abs(departmentEur[field] - canonical.eur[field]) < 1e-12);
     if (field === "netSales") {
-      assert.ok(Math.abs(overview.eurEquivalent[field] - (450 / 25 * 35 / 50)) < 1e-12);
+      assert.ok(Math.abs(overview.eurEquivalent[field] - (1_350 / 25 * 35 / 50)) < 1e-12);
     } else {
       assert.equal(overview.eurEquivalent[field], null);
     }
@@ -109,8 +159,8 @@ test("existing overview and department boundaries reconcile with the canonical c
   assert.equal(overview.margin, canonicalCovered.try.profit / canonicalCovered.try.netSales * 100);
   assert.equal(department.margin, department.profit / department.netSales * 100);
   assert.equal(overview.reviewNetSales, canonical.scope.review.netSales);
-  assert.equal(canonical.scope.excluded.lines, 1);
-  assert.equal(canonical.scope.excluded.netSales, 900);
+  assert.equal(canonical.scope.excluded.lines, 0);
+  assert.equal(canonical.scope.excluded.netSales, 0);
   assert.equal(overview.byCurrency.USD.lineCount, canonicalCovered.byCurrency.USD.lineCount);
   assert.equal(department.byCurrency.USD.lineCount, canonical.byCurrency.USD.lineCount);
   assert.deepEqual(reconcileFinancialMetrics(

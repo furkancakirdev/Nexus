@@ -20,7 +20,6 @@ import {
   IconReceipt2,
   IconShieldCheck,
   IconTrendingUp,
-  IconWallet,
 } from "@tabler/icons-react";
 import { calculateDepartmentDistribution } from "./distribution";
 import { MetricCard } from "./components/ui/MetricCard.jsx";
@@ -171,8 +170,10 @@ export function SummaryPage({
   const isLoading = mode === "loading";
   const isError = mode === "error" || mode === "blocked";
   const effectiveRows = isLoading || isError ? [] : rows;
-  const effectiveTargetRows = isLoading || isError ? [] : targetRows;
 
+  // Keep the canonical distribution contract available for downstream evidence
+  // consumers; the disabled pool UI must not expose its projection as a KPI.
+  const effectiveTargetRows = isLoading || isError ? [] : targetRows;
   const distributionResult = useMemo(
     () => calculateDepartmentDistribution({
       employees,
@@ -181,7 +182,7 @@ export function SummaryPage({
     }),
     [employees, settings, effectiveTargetRows],
   );
-  const distribution = distributionResult.employees;
+  void distributionResult;
 
   // Official figures remain projections of the backend canonicalMetric only.
   const canonicalReady = canonicalMetric?.status === "TAMAM";
@@ -195,8 +196,6 @@ export function SummaryPage({
   const eurCostComplete = canonicalReady && canonicalMetric?.eur?.complete === true;
   const totalProfitEur = eurCostComplete ? canonicalMetric.eur.profit : null;
   const eurActive = eurRevenueComplete && Number.isFinite(totalSalesEur);
-  // There is no canonical EUR pool contract; never convert annualPool in the UI.
-  const annualPoolEur = null;
   const rawCostReviewLines = canonicalMetric?.scope?.costReview?.lines;
   const costReviewLines = typeof rawCostReviewLines === "number" && Number.isFinite(rawCostReviewLines)
     ? rawCostReviewLines
@@ -221,13 +220,9 @@ export function SummaryPage({
     (total, row) => total + Number(row.unlinkedReturnLines || 0),
     0,
   );
-  const reviewQueueCount = reviewLines === null ? null : reviewLines + unlinkedReturnLines;
   const reviewNetSales = canonicalMetric?.scope?.costReview?.netSales ?? null;
   const canonicalCoverage = finiteNumber(canonicalMetric?.costCoveragePct);
-  const eligible = distribution.filter((employee) => employee.eligible).length;
-  const poolTry = effectiveTargetRows.length > 0 && Number.isFinite(Number(annualPool))
-    ? annualPool
-    : null;
+  void annualPool;
 
   const sourceTimestamp = canonicalMetric?.generatedAt
     || effectiveRows.find((row) => row.generatedAt)?.generatedAt
@@ -258,12 +253,12 @@ export function SummaryPage({
     actionQueue.push({
       icon: IconFileCheck,
       tone: "warning",
-      title: reviewLines > 0 ? `${formatInteger(reviewLines)} maliyet satırı incelenmeli` : "Maliyet kanıtı tamamlanmadı",
+      title: "Maliyet kanıtı tamamlanmadı",
       detail: reviewNetSales != null
-        ? `${formatMoney(reviewNetSales)} kaynak TRY kâr/havuza alınmadı.`
+        ? `${formatMoney(reviewNetSales)} kaynak TRY kâr hesabına dahil edilmedi.`
         : "WAC kanıtı tamamlanmadan resmî kâr yayınlanmaz.",
-      actionLabel: "Denetim ekranında maliyet kanıtını aç",
-      page: "audit",
+      actionLabel: "Satış analizinde maliyet durumunu aç",
+      page: "sales",
     });
   }
   if (!eurRevenueComplete) {
@@ -280,10 +275,10 @@ export function SummaryPage({
     actionQueue.push({
       icon: IconLayersLinked,
       tone: "warning",
-      title: `${formatInteger(unlinkedReturnLines)} iade bağlantısı incelenmeli`,
-      detail: "İade, bağlı ekonomik vaka bulunmadan kâr veya maliyet kararına taşınmaz.",
-      actionLabel: "Stok ve iade kanıtını aç",
-      page: "inventory",
+      title: "İade maliyet bağlantısı tamamlanmadı",
+      detail: "Bağlı ekonomik vaka bulunmayan iadeler kâr veya maliyet kararına taşınmaz.",
+      actionLabel: "Satış analizinde iade durumunu aç",
+      page: "sales",
     });
   }
 
@@ -351,7 +346,7 @@ export function SummaryPage({
               title="Net Ciro"
               value={<div className="label-value"><strong>{formatEur(totalSalesEur)}</strong></div>}
               secondaryValue={eurActive && totalSalesTry != null ? `${formatMoney(totalSalesTry)} kaynak TRY` : "EUR dönüşüm kanıtı bekleniyor"}
-              subtitle={`${effectiveRows.length} aylık kaynak dönem`}
+              subtitle={eurActive ? "EUR kanıtlı net satış" : "EUR dönüşüm kanıtı bekleniyor"}
               icon={IconChartBar}
               badge={eurActive ? "EUR kanıtlı" : "EUR inceleme"}
               badgeVariant={eurActive ? "info" : "warning"}
@@ -377,26 +372,7 @@ export function SummaryPage({
               badgeVariant={isCostReviewPending ? "warning" : "info"}
               onClick={() => onNavigate?.("sales")}
             />
-            <MetricCard
-              title="İnceleme Kuyruğu"
-              value={<div className="label-value"><strong>{formatInteger(reviewQueueCount, "—")}</strong></div>}
-              secondaryValue={`${formatInteger(actionQueue.length)} karar başlığı`}
-              subtitle="Maliyet, kur veya iade kanıtı"
-              icon={IconAlertTriangle}
-              badge={actionQueue.length > 0 ? "Aksiyon gerekli" : "Temiz"}
-              badgeVariant={actionQueue.length > 0 ? "warning" : "success"}
-              onClick={() => onNavigate?.("audit")}
-            />
-            <MetricCard
-              title="Net Dağıtım Havuzu"
-              value={<div className="label-value"><strong>{formatEur(annualPoolEur)}</strong></div>}
-              secondaryValue={poolTry == null ? "EUR havuz kanıtı yok" : `${formatMoney(poolTry)} kaynak TRY · EUR dönüşümü yok`}
-              subtitle={`${eligible} personel uygun · yönetim onayı gerekir`}
-              icon={IconWallet}
-              badge="EUR kapalı"
-              badgeVariant="warning"
-              onClick={() => onNavigate?.("ledger")}
-            />
+
           </section>
 
           <section className="summary-grid" aria-label="Karar özeti">
@@ -522,21 +498,6 @@ export function SummaryPage({
             <button type="button" onClick={() => onNavigate?.("departments")}>
               <IconBuildingStore aria-hidden="true" />
               <span><strong>Departman analizi</strong><small>Servis ve Yedek Parça merceği</small></span>
-              <IconArrowRight aria-hidden="true" />
-            </button>
-            <button type="button" onClick={() => onNavigate?.("audit")}>
-              <IconFileCheck aria-hidden="true" />
-              <span><strong>Veri denetimi</strong><small>WAC, kur ve iade incelemesi</small></span>
-              <IconArrowRight aria-hidden="true" />
-            </button>
-            <button type="button" onClick={() => onNavigate?.("inventory")}>
-              <IconLayersLinked aria-hidden="true" />
-              <span><strong>Stok defteri</strong><small>Hareket ve kaynak belge soy zinciri</small></span>
-              <IconArrowRight aria-hidden="true" />
-            </button>
-            <button type="button" onClick={() => onNavigate?.("ledger")}>
-              <IconWallet aria-hidden="true" />
-              <span><strong>Havuz ve dağıtım</strong><small>TRY hedefi · yönetim onayı</small></span>
               <IconArrowRight aria-hidden="true" />
             </button>
           </section>

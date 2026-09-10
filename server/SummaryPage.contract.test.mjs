@@ -50,12 +50,11 @@ test("Summary reads the canonical TRY margin instead of recomputing profit divid
   assert.doesNotMatch(card, />%40\.0<\/strong>/);
 });
 
-test("Summary does not synthesize an EUR pool from annualPool and an EUR/TRY revenue ratio", async () => {
+test("Summary omits the distribution pool from the financial KPI surface", async () => {
   const markup = await renderSummary(completeCanonicalMetric, 50);
-  const card = metricCardMarkup(markup, "Net Dağıtım Havuzu");
 
-  assert.match(card, />—<\/strong>/);
-  assert.doesNotMatch(card, /5\s*€/);
+  assert.doesNotMatch(markup, /Net Dağıtım Havuzu/);
+  assert.doesNotMatch(markup, /5\s*€/);
 });
 
 test("Summary suppresses row-level EUR financial values when the canonical EUR metric is missing", async () => {
@@ -71,7 +70,7 @@ test("Summary suppresses row-level EUR financial values when the canonical EUR m
   assert.doesNotMatch(markup, /€60/);
 });
 
-test("Summary keeps missing cost-review evidence in review instead of coercing null to zero", async () => {
+test("Summary keeps missing cost evidence visible without a review-line KPI", async () => {
   const markup = await renderSummary({
     ...completeCanonicalMetric,
     scope: { costReview: { lines: null } },
@@ -81,8 +80,7 @@ test("Summary keeps missing cost-review evidence in review instead of coercing n
     uncoveredCostLines: 4,
     unlinkedReturnLines: 0,
   }]);
-  const card = metricCardMarkup(markup, "İnceleme Kuyruğu");
 
-  assert.match(card, />4<\/strong>/);
-  assert.match(markup, /4 maliyet satırı incelenmeli/);
+  assert.doesNotMatch(markup, /İnceleme Kuyruğu/);
+  assert.match(markup, /maliyet kapsamı|maliyet kanıtı|inceleme gerekli/i);
 });

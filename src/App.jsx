@@ -32,6 +32,7 @@ import {
   firstAccessiblePage,
   navItemsFor,
   overviewStateForResponse,
+  resolveRequestedPage,
   sessionViewFor,
 } from "./sessionGate.js";
 import { SummaryPage } from "./SummaryPage";
@@ -199,12 +200,7 @@ export function App() {
   const [appearanceOpen,setAppearanceOpen]=useState(false);
   const [activePage, setActivePage] = useState(() => {
     const requestedPage = new URLSearchParams(window.location.search).get("page");
-    const availablePages = new Set(NAV_ITEMS.map((item) => item.page));
-    return availablePages.has(requestedPage)
-      ? requestedPage
-      : availablePages.has(appearance.defaultPage)
-        ? appearance.defaultPage
-        : DEFAULT_APPEARANCE.defaultPage;
+    return resolveRequestedPage(requestedPage, appearance.defaultPage);
   });
   const [employees, setEmployees] = useState(() => {
     try {
@@ -226,6 +222,11 @@ export function App() {
   const [costOverrides, setCostOverrides] = useState(() => {
     try { return JSON.parse(localStorage.getItem("marlin-cost-overrides") || "[]"); }
     catch { return []; }
+  });
+  const [settingsMeta, setSettingsMeta] = useState({
+    revision: 0,
+    fingerprint: null,
+    history: [],
   });
   const [year, setYear] = useState(readReportYear);
   const [rows, setRows] = useState([]);
@@ -279,8 +280,7 @@ export function App() {
   useEffect(() => {
     const onPopState = () => {
       const requestedPage = new URLSearchParams(window.location.search).get("page");
-      const availablePages = new Set(NAV_ITEMS.map((item) => item.page));
-      if (availablePages.has(requestedPage)) setActivePage(requestedPage);
+      setActivePage((currentPage) => resolveRequestedPage(requestedPage, currentPage));
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
@@ -357,6 +357,13 @@ export function App() {
       }
       if (Array.isArray(savedState?.costOverrides)) {
         setCostOverrides(savedState.costOverrides);
+      }
+      if (savedState) {
+        setSettingsMeta({
+          revision: Number(savedState.settingsRevision || 0),
+          fingerprint: savedState.settingsFingerprint || null,
+          history: Array.isArray(savedState.settingsHistory) ? savedState.settingsHistory : [],
+        });
       }
     }).catch(() => {
       if (!cancelled) setConnection({ connected: false, readOnly: true });
@@ -573,23 +580,31 @@ export function App() {
     );
   }
 
-  const persistState = (nextSettings, nextEmployees, nextCostOverrides = costOverrides) => {
-    return apiFetch("/api/app-state", {
+  const persistState = async (nextSettings, nextEmployees, nextCostOverrides = costOverrides) => {
+    const response = await apiFetch("/api/app-state", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         settings: serializeSettings(nextSettings),
         employees: nextEmployees,
         costOverrides: nextCostOverrides,
+        expectedRevision: settingsMeta.revision,
       }),
     });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "Ayarlar kaydedilemedi.");
+    setSettingsMeta((current) => ({
+      ...current,
+      revision: payload.settingsRevision,
+      fingerprint: payload.settingsFingerprint,
+    }));
+    return payload;
   };
 
   const saveSettings = async (nextSettings) => {
     const normalized = normalizeSettings(nextSettings);
     const serialized = serializeSettings(normalized);
-    const saved = await persistState(serialized, employees);
-    if (!saved.ok) throw new Error("Ayarlar kaydedilemedi.");
+    await persistState(serialized, employees);
     setAppSettings(normalized);
     localStorage.setItem("marlin-profit-settings", JSON.stringify(serialized));
     localStorage.setItem("marlin-settings-saved-at", new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium", timeStyle: "short" }).format(new Date()));
@@ -605,25 +620,49 @@ export function App() {
     }
   };
 
-  const saveEmployees = (nextEmployees) => {
+  const saveEmployees = async (nextEmployees) => {
     const normalizedEmployees = normalizePilotEmployees(nextEmployees);
+    await persistState(appSettings, normalizedEmployees);
     setEmployees(normalizedEmployees);
     localStorage.setItem(
       "marlin-pilot-employees",
       JSON.stringify(normalizedEmployees),
     );
-    persistState(appSettings, normalizedEmployees).catch(() => {});
   };
 
-  const saveCostOverrides = (nextCostOverrides) => {
+  const saveCostOverrides = async (nextCostOverrides) => {
+    await persistState(appSettings, employees, nextCostOverrides);
     setCostOverrides(nextCostOverrides);
     localStorage.setItem("marlin-cost-overrides", JSON.stringify(nextCostOverrides));
-    persistState(appSettings, employees, nextCostOverrides)
-      .then((response) => {
-        if (!response.ok) throw new Error("Maliyet kararı kaydedilemedi.");
-        return refreshDepartmentTargets();
-      })
-      .catch(() => {});
+    await refreshDepartmentTargets();
+  };
+
+  const rollbackSettings = async (revision) => {
+    const response = await apiFetch("/api/app-state/settings/rollback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ revision, expectedRevision: settingsMeta.revision }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "Ayar revisionı geri alınamadı.");
+
+    const normalizedSettings = normalizeSettings(payload.settings);
+    const normalizedEmployees = normalizePilotEmployees(payload.employees || []);
+    setAppSettings(normalizedSettings);
+    setEmployees(normalizedEmployees);
+    setCostOverrides(payload.costOverrides || []);
+    localStorage.setItem("marlin-profit-settings", JSON.stringify(serializeSettings(normalizedSettings)));
+    localStorage.setItem("marlin-pilot-employees", JSON.stringify(normalizedEmployees));
+    localStorage.setItem("marlin-cost-overrides", JSON.stringify(payload.costOverrides || []));
+
+    const refreshed = await apiFetch("/api/app-state");
+    const state = await refreshed.json().catch(() => ({}));
+    setSettingsMeta({
+      revision: Number(state.settingsRevision || payload.settingsRevision || 0),
+      fingerprint: state.settingsFingerprint || payload.settingsFingerprint || null,
+      history: Array.isArray(state.settingsHistory) ? state.settingsHistory : [],
+    });
+    await refreshDepartmentTargets();
   };
 
   return (
@@ -643,7 +682,7 @@ export function App() {
       onMobileNavToggle={() => setMobileNavOpen((value) => !value)}
       onMobileNavClose={() => setMobileNavOpen(false)}
     >
-      {appearanceOpen&&<div className="appearance-backdrop" onMouseDown={(event)=>event.target===event.currentTarget&&setAppearanceOpen(false)}><aside className="appearance-drawer" role="dialog" aria-modal="true" aria-labelledby="appearance-title"><div className="appearance-drawer__head"><div><p className="eyebrow">Arayüz tercihleri</p><h2 id="appearance-title">Görünüm Ayarları</h2></div><button className="modal-close" onClick={()=>setAppearanceOpen(false)} aria-label="Kapat"><IconX size={20}/></button></div><div className="appearance-fields"><label><span>Tema</span><select value={appearance.theme} onChange={(event)=>setAppearance({...appearance,theme:event.target.value})}><option value="light">Açık</option><option value="dark">Koyu</option></select></label><label><span>Ekran yoğunluğu</span><select value={appearance.density} onChange={(event)=>setAppearance({...appearance,density:event.target.value})}><option value="comfortable">Rahat</option><option value="compact">Kompakt</option></select></label><label><span>Başlangıç sayfası</span><select value={appearance.defaultPage} onChange={(event)=>setAppearance({...appearance,defaultPage:event.target.value})}><option value="summary">Genel Bakış</option><option value="sales">Satış Analizi</option><option value="departments">Departman Analizi</option><option value="audit">Denetim</option><option value="inventory">Stok</option><option value="ledger">Havuz</option><option value="settings">Ayarlar</option></select></label><label className="appearance-check"><span><strong>Yüksek kontrast</strong><small>Metin ve sınır ayrımını güçlendirir.</small></span><input type="checkbox" checked={appearance.highContrast} onChange={(event)=>setAppearance((current) => ({ ...current, highContrast: event.target.checked }))}/></label><label className="appearance-check"><span><strong>Hareketi azalt</strong><small>Grafik ve geçiş animasyonlarını kapatır.</small></span><input type="checkbox" checked={appearance.reducedMotion} onChange={(event)=>setAppearance((current) => ({ ...current, reducedMotion: event.target.checked }))}/></label></div><div className="employee-modal__actions"><button className="secondary-button" onClick={()=>setAppearance(DEFAULT_APPEARANCE)}>Varsayılana dön</button><button className="primary-action" onClick={()=>setAppearanceOpen(false)}><IconCheck size={17}/> Tamam</button></div></aside></div>}
+      {appearanceOpen&&<div className="appearance-backdrop" onMouseDown={(event)=>event.target===event.currentTarget&&setAppearanceOpen(false)}><aside className="appearance-drawer" role="dialog" aria-modal="true" aria-labelledby="appearance-title"><div className="appearance-drawer__head"><div><p className="eyebrow">Arayüz tercihleri</p><h2 id="appearance-title">Görünüm Ayarları</h2></div><button className="modal-close" onClick={()=>setAppearanceOpen(false)} aria-label="Kapat"><IconX size={20}/></button></div><div className="appearance-fields"><label><span>Tema</span><select value={appearance.theme} onChange={(event)=>setAppearance({...appearance,theme:event.target.value})}><option value="light">Açık</option><option value="dark">Koyu</option></select></label><label><span>Ekran yoğunluğu</span><select value={appearance.density} onChange={(event)=>setAppearance({...appearance,density:event.target.value})}><option value="comfortable">Rahat</option><option value="compact">Kompakt</option></select></label><label><span>Başlangıç sayfası</span><select value={appearance.defaultPage} onChange={(event)=>setAppearance({...appearance,defaultPage:event.target.value})}><option value="summary">Genel Bakış</option><option value="sales">Satış Analizi</option><option value="departments">Departman Analizi</option><option value="settings">Ayarlar</option></select></label><label className="appearance-check"><span><strong>Yüksek kontrast</strong><small>Metin ve sınır ayrımını güçlendirir.</small></span><input type="checkbox" checked={appearance.highContrast} onChange={(event)=>setAppearance((current) => ({ ...current, highContrast: event.target.checked }))}/></label><label className="appearance-check"><span><strong>Hareketi azalt</strong><small>Grafik ve geçiş animasyonlarını kapatır.</small></span><input type="checkbox" checked={appearance.reducedMotion} onChange={(event)=>setAppearance((current) => ({ ...current, reducedMotion: event.target.checked }))}/></label></div><div className="employee-modal__actions"><button className="secondary-button" onClick={()=>setAppearance(DEFAULT_APPEARANCE)}>Varsayılana dön</button><button className="primary-action" onClick={()=>setAppearanceOpen(false)}><IconCheck size={17}/> Tamam</button></div></aside></div>}
 
       {effectivePage === "summary" ? (
         <SummaryPage
@@ -682,7 +721,9 @@ export function App() {
           annualPoolEur={null}
           employees={employees}
           onSaveEmployees={saveEmployees}
-          onBack={() => navigate("ledger")}
+          settingsMeta={settingsMeta}
+          onRollback={rollbackSettings}
+          onBack={() => navigate("summary")}
         />
       ) : (
       <main className="page" id="top">

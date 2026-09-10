@@ -103,6 +103,7 @@ const DEFAULT_HR_STATE = {
 };
 
 let memoryState = null;
+let updateQueue = Promise.resolve();
 
 async function ensureDir(filePath) {
   const dir = path.dirname(filePath);
@@ -137,6 +138,21 @@ export async function writeHrState(newState) {
   await fs.rename(tempFile, HR_STATE_FILE);
   memoryState = updatedState;
   return updatedState;
+}
+
+export async function updateHrState(mutator) {
+  if (typeof mutator !== "function") throw new TypeError("HR durum güncelleme fonksiyonu zorunludur.");
+  const pending = updateQueue.then(async () => {
+    const current = await readHrState();
+    const next = await mutator(structuredClone(current));
+    return writeHrState(next);
+  }, async () => {
+    const current = await readHrState();
+    const next = await mutator(structuredClone(current));
+    return writeHrState(next);
+  });
+  updateQueue = pending.catch(() => {});
+  return pending;
 }
 
 export async function resetHrMemoryStateForTest() {
