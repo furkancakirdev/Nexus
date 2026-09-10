@@ -34,14 +34,20 @@ Analizi, Departman Analizi ve Ayarlar görünürdür.
 
 Son canlı sürüm:
 
-- Git commit: `001a595` (`chore: harden nexus release surfaces`)
-- Push: `origin/codex/UI` başarılı (`fc76597..001a595`)
-- Canlı build commit: `001a595`
-- Canlı artifact SHA-256: `2d13f9de95fab5176bd070c417fe17479f0da1b6a0e69fd600a508823dc82432`
-- Canlı image digest: `sha256:9b52747add3d6ecacbce0716d434bec297830b8cfe0d362d1818b04527d43f0e`
+- Git commit: `a9d4b6f` (`fix: preserve missing sales currency evidence`)
+- Push: `origin/codex/UI` başarılı (`91640b4..a9d4b6f`)
+- Canlı build commit: `a9d4b6f`
+- Canlı artifact SHA-256: `4e4fd5bef69ca142a258ef3c87f0bfa2a5e1524fddd6cfdd530c5b6fcb09a7ec`
+- Canlı image digest: `sha256:5569a62bafd7819dab3e88214200acb0771c34d958c9bf57aedf463d56d4f676`
 - Canlı kur kimliği: `CPM_RATE_BANK_CODE=6`, `CPM_RATE_SEMANTICS_VERIFIED=false`
 
 Bir önceki canlı sürüm:
+
+- Git commit: `001a595` (`chore: harden nexus release surfaces`)
+- Canlı artifact SHA-256: `2d13f9de95fab5176bd070c417fe17479f0da1b6a0e69fd600a508823dc82432`
+- Canlı image digest: `sha256:9b52747add3d6ecacbce0716d434bec297830b8cfe0d362d1818b04527d43f0e`
+
+Daha önceki canlı sürüm:
 
 - Git commit: `fc76597` (`fix: hide profit without cost evidence`)
 - Canlı artifact SHA-256: `07e3193c104a9fbc8528deb62405b465b140df9dc6f4d723db13db551028bc3e`
@@ -76,12 +82,18 @@ ve aynı sürüm canlıya alındı:
 
 | Kanıt | İzole aday | Canlı | Durum |
 | --- | ---: | ---: | --- |
-| KDV hariç net ciro, kaynak TRY | 236.266.796 TL | 236.266.796 TL | Aday/canlı smoke eşleşti |
-| EUR net ciro | €4.411.663 | €4.411.663 | Aday/canlı smoke eşleşti; TCMB fallback görünür |
+| KDV hariç net ciro, kaynak TRY | 236.251.940 TL | 236.266.796 TL | CPM canlı veri akışı zamanla değişti; aynı-commit kimlik/kontrat geçti |
+| EUR net ciro | €4.412.159 | €4.411.663 | CPM canlı veri akışı zamanla değişti; TCMB fallback görünür |
 | Maliyet / kâr / marj | `—` | `—` | Kanıt yok; fail-closed |
 | İade soy zinciri incelemesi | — | 132 | Canlı review-required |
 | Placeholder taraması | — | Yok | Canlı geçti |
 | Browser console error/warning | — | 0 / 0 (son canlı smoke) | Canlı geçti |
+
+`a9d4b6f` aday ve canlısında Satış Analizi ekranındaki Döviz Sepeti, maliyet
+ve brüt kâr kanıtı olmayan satırları `—`/İnceleme olarak göstermeye devam etti;
+nullable değerler `0` olarak görünmedi. Canlı ekran görsel smoke’unda Koyu
+Kontrol Odası teması, CPM salt-okunur rozeti, compact KPI düzeni ve taşma
+olmayan kartlar doğrulandı.
 
 Canlı `/api/overview?year=2026` payload kanıtı:
 
@@ -112,7 +124,7 @@ EUR yanlış banka kimliği kanıtı:
 - CPM salt-okunur `BNKKRT` sonucu: `3 / İLLER BANKASI`, `6 / HALK BANKASI`.
 - CPM salt-okunur `DVZHAR` sonucu: `14744/14745`, `54.8595/57.999`, banka ID 3;
   bu satırlar artık Halkbank kanıtı olarak kullanılmıyor.
-- Canlı son smoke: `236.207.629 TL` kaynak TRY, `€4.410.271` EUR net satış,
+- Önceki canlı smoke: `236.207.629 TL` kaynak TRY, `€4.410.271` EUR net satış,
   gross `€5.174.677`, iade `€43.449`, iskonto `€720.957`; EUR satırları
   `CPM öncelikli · TCMB fallback karşılığı` olarak etiketleniyor.
 - Önceki `€4.413.235` kesitinin rate payload’ı saklanmadığı için bu değere
@@ -151,8 +163,8 @@ Kurtarma sırasında:
 - `commit-4aa608e` canlı imajı yeniden oluşturuldu ve canlı container başlatıldı.
 - Caddy ile uygulama ağı yeniden bağlandı; ilk 502 durumu bu ağ üyeliği
   düzeltmesiyle kapandı.
-- Son canlı container `release-001a595` olarak çalışıyor; `fc76597`, `072dc83`, `3790df4` ve
-  `4aa608e` sürümleri rollback imaj/container noktaları olarak korunuyor.
+- Son canlı container `release-a9d4b6f` olarak çalışıyor; `001a595`, `fc76597`,
+  `072dc83`, `3790df4` ve `4aa608e` sürümleri rollback imaj/container noktaları olarak korunuyor.
 - Uygulama verisi silinmedi veya CPM'ye yazılmadı.
 
 ## Resmî finansal readiness sınırları
