@@ -25,18 +25,27 @@ Resmî WAC/kâr/havuz ve finansal canlıya hazır olma: **NO-GO / inceleme gerek
 Bu karar; stok hareket kaynağı, maliyet kapsamı ve 132 soy zinciri kanıtlanamayan
 iade satırı kapanmadan değiştirilmemiştir.
 
+001a595 yüzey kapatma diliminde Stok/Denetim/Havuz menü ve doğrudan sayfa
+erişimi pasif registry üzerinden fail-closed tutulmuş, kanıt backend’leri
+silinmemiştir. Aday ve canlı browser smoke’unda yalnız Genel Bakış, Satış
+Analizi, Departman Analizi ve Ayarlar görünürdür.
+
 ## Kod ve imaj kimliği
 
 Son canlı sürüm:
 
-- Git commit: `fc76597` (`fix: hide profit without cost evidence`)
-- Push: `origin/codex/UI` başarılı (`072dc83..fc76597`)
-- Canlı build commit: `fc76597`
-- Canlı artifact SHA-256: `07e3193c104a9fbc8528deb62405b465b140df9dc6f4d723db13db551028bc3e`
-- Canlı image digest: `sha256:eb1996b904e0cfa935e7552a526facf6c717b38e5950f803f5d171d5ceca33ab`
+- Git commit: `001a595` (`chore: harden nexus release surfaces`)
+- Push: `origin/codex/UI` başarılı (`fc76597..001a595`)
+- Canlı build commit: `001a595`
+- Canlı artifact SHA-256: `2d13f9de95fab5176bd070c417fe17479f0da1b6a0e69fd600a508823dc82432`
+- Canlı image digest: `sha256:9b52747add3d6ecacbce0716d434bec297830b8cfe0d362d1818b04527d43f0e`
 - Canlı kur kimliği: `CPM_RATE_BANK_CODE=6`, `CPM_RATE_SEMANTICS_VERIFIED=false`
 
 Bir önceki canlı sürüm:
+
+- Git commit: `fc76597` (`fix: hide profit without cost evidence`)
+- Canlı artifact SHA-256: `07e3193c104a9fbc8528deb62405b465b140df9dc6f4d723db13db551028bc3e`
+- Canlı image digest: `sha256:eb1996b904e0cfa935e7552a526facf6c717b38e5950f803f5d171d5ceca33ab`
 
 - Git commit: `3790df4` (`fix: compare reconciliation in minor units`)
 - Push: `origin/codex/UI` başarılı (`6bcac43..3790df4`)
@@ -67,8 +76,8 @@ ve aynı sürüm canlıya alındı:
 
 | Kanıt | İzole aday | Canlı | Durum |
 | --- | ---: | ---: | --- |
-| KDV hariç net ciro, kaynak TRY | 236.207.629 TL | 236.207.629 TL | Aday/canlı eşleşti |
-| EUR net ciro | €4.410.271 | €4.410.271 | Aday/canlı eşleşti; TCMB fallback görünür |
+| KDV hariç net ciro, kaynak TRY | 236.266.796 TL | 236.266.796 TL | Aday/canlı smoke eşleşti |
+| EUR net ciro | €4.411.663 | €4.411.663 | Aday/canlı smoke eşleşti; TCMB fallback görünür |
 | Maliyet / kâr / marj | `—` | `—` | Kanıt yok; fail-closed |
 | İade soy zinciri incelemesi | — | 132 | Canlı review-required |
 | Placeholder taraması | — | Yok | Canlı geçti |
@@ -113,7 +122,7 @@ EUR yanlış banka kimliği kanıtı:
 
 Son canlı tarayıcı smoke kanıtı:
 
-- Genel Bakış/Satış: `236.207.629 TL`, `€4.410.271`, maliyet/kâr/marj `—`,
+- Genel Bakış/Satış: `236.266.796 TL`, `€4.411.663`, maliyet/kâr/marj `—`,
   `132 iade bağlantısı incelenmeli`
 - Maliyet kanıtı: `Doğrulanabilir maliyet kanıtı bulunamadı`; maliyet olmadan kâr
   veya marj hesaplanmadı.
@@ -142,7 +151,7 @@ Kurtarma sırasında:
 - `commit-4aa608e` canlı imajı yeniden oluşturuldu ve canlı container başlatıldı.
 - Caddy ile uygulama ağı yeniden bağlandı; ilk 502 durumu bu ağ üyeliği
   düzeltmesiyle kapandı.
-- Son canlı container `release-fc76597` olarak çalışıyor; `072dc83`, `3790df4` ve
+- Son canlı container `release-001a595` olarak çalışıyor; `fc76597`, `072dc83`, `3790df4` ve
   `4aa608e` sürümleri rollback imaj/container noktaları olarak korunuyor.
 - Uygulama verisi silinmedi veya CPM'ye yazılmadı.
 
