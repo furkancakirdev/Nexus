@@ -21,6 +21,13 @@ const eurFormatter = new Intl.NumberFormat("tr-TR", {
   maximumFractionDigits: 0,
 });
 
+const currencyFormatters = Object.freeze({
+  EUR: eurFormatter,
+  USD: new Intl.NumberFormat("tr-TR", { style: "currency", currency: "USD", maximumFractionDigits: 0 }),
+  GBP: new Intl.NumberFormat("tr-TR", { style: "currency", currency: "GBP", maximumFractionDigits: 0 }),
+  TRY: new Intl.NumberFormat("tr-TR", { style: "currency", currency: "TRY", maximumFractionDigits: 0 }),
+});
+
 const compactFormatter = new Intl.NumberFormat("tr-TR", {
   notation: "compact",
   maximumFractionDigits: 1,
@@ -71,6 +78,20 @@ export function formatEur(value, { fallback = "—", showSign = false } = {}) {
   if (num < 0) return `−${formatted}`;
   if (showSign && num > 0) return `+${formatted}`;
   return formatted;
+}
+
+/**
+ * Döviz sepeti tutarı: EUR/USD/GBP/TRY ayrı tutulur; eksik kanıt sıfıra
+ * dönüştürülmez. Hesaplama veya kur dönüşümü yapmaz, yalnızca hazır tutarı
+ * gösterir.
+ */
+export function formatCurrencyAmount(value, currency = "TRY", { fallback = "—" } = {}) {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) {
+    return fallback;
+  }
+  const formatter = currencyFormatters[currency];
+  if (!formatter) return fallback;
+  return formatter.format(Math.round(Number(value)));
 }
 
 /**

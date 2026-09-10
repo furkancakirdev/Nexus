@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { projectCanonicalMetric, selectCanonicalTopPeriod } from "../shared/financialMetric.mjs";
 import { FinancialVisibilityPanel } from "./components/FinancialVisibilityPanel.jsx";
+import { formatCurrencyAmount } from "./utils/formatters.js";
 import {
   Bar,
   BarChart,
@@ -452,14 +453,12 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
               {["EUR", "USD", "GBP", "TRY"].map((currency) => {
                 const item = currencyBasket[currency];
                 if (!item.lineCount && !item.netSales) return null;
-                const currencyMoney = new Intl.NumberFormat("tr-TR", { style: "currency", currency: currency === "TRY" ? "TRY" : currency, maximumFractionDigits: 0 });
-                const fmt = (value) => currencyMoney.format(Math.round(value));
                 return (
                   <tr key={currency}>
                     <th><strong>{currency}</strong></th>
-                    <td>{fmt(item.netSales)}</td>
-                    <td>{fmt(item.cost)}</td>
-                    <td className={profitTone(item.profit)}><strong>{fmt(item.profit)}</strong></td>
+                    <td>{formatCurrencyAmount(item.netSales, currency)}</td>
+                    <td>{formatCurrencyAmount(item.cost, currency)}</td>
+                    <td className={profitTone(item.profit)}><strong>{formatCurrencyAmount(item.profit, currency)}</strong></td>
                     <td>{money.format(item.lineCount)}</td>
                   </tr>
                 );

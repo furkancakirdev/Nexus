@@ -513,6 +513,18 @@ test("sales report does not render an unverified EUR zero", async (t) => {
   assert.equal(sales.formatReportMoney({ eurAvailable: true, eurEquivalent: { netSales: 12 } }, "netSales", 1234), "€12");
 });
 
+test("sales currency basket preserves missing cost and profit as review values", async (t) => {
+  const vite = await createServer({ configFile: resolve(process.cwd(), "vite.config.mjs") });
+  t.after(() => vite.close());
+  const formatters = await vite.ssrLoadModule("/src/utils/formatters.js");
+  assert.equal(formatters.formatCurrencyAmount(null, "EUR"), "—");
+  assert.equal(formatters.formatCurrencyAmount(undefined, "USD"), "—");
+  assert.equal(formatters.formatCurrencyAmount(Number.NaN, "GBP"), "—");
+  assert.notEqual(formatters.formatCurrencyAmount(0, "TRY"), "—");
+  assert.match(formatters.formatCurrencyAmount(-12, "USD"), /12/);
+  assert.match(await source("src/SalesPage.jsx"), /formatCurrencyAmount\(item\.cost, currency\)/);
+});
+
 test("dark audit surfaces keep KPI and expanded detail text readable", async () => {
   const styles = await source("src/styles.css");
   assert.match(styles, /:root\[data-theme="dark"\] \.audit-kpis article strong[^}]*color:\s*var\(--ink\)/);
