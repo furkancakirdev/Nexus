@@ -43,6 +43,21 @@ test("tüm satırlar maliyet incelemesindeyse sıfır maliyetten yüzde yüz kâ
   assert.equal(result.hasKnownCostEvidence, false);
 });
 
+test("teyitli satır yoksa sıfır teyitli kâr ve marj görünmez", () => {
+  const result = buildFinancialVisibility({
+    status: "INCELEME",
+    try: { netSales: 1000, cost: 0, profit: 1000, margin: 100 },
+    scope: {
+      confirmed: { lines: 0, netSales: 0, cost: 0, profit: 0, margin: 0 },
+      costReview: { lines: 10, netSales: 1000, cost: 0, profit: 1000, margin: 100 },
+    },
+  });
+
+  assert.equal(result.confirmedNetSales, null);
+  assert.equal(result.confirmedProfit, null);
+  assert.equal(result.confirmedMargin, null);
+});
+
 test("review-only satırlardaki sayısal maliyet doğrulanmış kanıt yerine geçmez", () => {
   const result = buildFinancialVisibility({
     status: "INCELEME",
