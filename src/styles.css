@@ -1185,6 +1185,10 @@ tfoot { font-weight: 700; background: #f7f9fc; }
 .ranking-value { text-align: right; }
 .ranking-value strong { white-space: nowrap; }
 .ranking-name strong[title] { cursor: help; }
+.ranking-row--review { background: color-mix(in srgb, var(--chart-review) 7%, transparent); }
+.ranking-row--review .rank { color: var(--chart-review); background: color-mix(in srgb, var(--chart-review) 14%, transparent); }
+.ranking-row--review .ranking-value small { color: var(--chart-review); }
+.ranking-row--review:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .empty-copy { margin: 18px 0 6px; color: var(--muted); font-size: 12px; }
 
 .department-ledger { padding: 0; overflow: hidden; }

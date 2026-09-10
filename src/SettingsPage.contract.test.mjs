@@ -8,7 +8,7 @@ test("SettingsPage manuel marjı yalnız eksik alım/devir maliyeti için taslak
   assert.match(source, /requireManagementApprovalForManualMargin/);
   assert.match(source, /missing-purchase-or-opening-cost/);
   assert.match(source, /Alım\/devir maliyeti bulunamadı/);
-  assert.match(source, /status:\s*draft\.requireManagementApprovalForManualMargin === false \? "approved" : "pending"/);
+  assert.match(source, /status:\s*draft\.requireManagementApprovalForManualMargin\s*===\s*false\s*\?\s*"approved"\s*:\s*"pending"/);
   assert.match(source, /Bu turda hesaplamaya bağlanmaz/);
   assert.doesNotMatch(source, /financialMetric|ledgerApi|calculateManualMargin/);
 });
