@@ -26,8 +26,64 @@ test("settings page renders toggles from the shared registry", async () => {
   const settingsSource = await source("src/SettingsPage.jsx");
   const policySource = await source("shared/settingsPolicy.mjs");
   assert.match(settingsSource, /SETTINGS_REGISTRY/);
+  assert.match(settingsSource, /SETTINGS_METADATA/);
+  assert.match(settingsSource, /data-setting-category/);
+  assert.match(settingsSource, /data-setting-permission/);
   assert.match(settingsSource, /RegistryToggles/);
   assert.match(policySource, /export const SETTINGS_REGISTRY/);
+  assert.match(policySource, /export const SETTINGS_METADATA/);
+});
+
+test("settings navigation exposes every implemented settings section and rollback has no stale setter", async () => {
+  const settingsSource = await source("src/SettingsPage.jsx");
+  assert.match(settingsSource, /id: "people"/);
+  assert.match(settingsSource, /id: "policy"/);
+  assert.match(settingsSource, /activeTab === "people"/);
+  assert.match(settingsSource, /activeTab === "policy"/);
+  assert.doesNotMatch(settingsSource, /setValid\(/);
+});
+
+test("shared MetricCard renders its value contract and keyboard interaction semantics", async (t) => {
+  const vite = await createServer({ configFile: resolve(process.cwd(), "vite.config.mjs") });
+  t.after(() => vite.close());
+  const { MetricCard } = await vite.ssrLoadModule("/src/components/ui/MetricCard.jsx");
+  const markup = renderToStaticMarkup(React.createElement(MetricCard, {
+    title: "Net satış",
+    value: "€12.345",
+    detail: "EUR kanıtı",
+    onClick: () => {},
+  }));
+  assert.match(markup, /nexus-metric-card__value/);
+  assert.match(markup, />€12\.345<\/div>/);
+  assert.match(markup, /role="button"/);
+  assert.match(markup, /tabindex="0"/);
+});
+
+test("sales financial surface omits operational line-count KPI/table columns", async () => {
+  const salesSource = await source("src/SalesPage.jsx");
+  assert.doesNotMatch(salesSource, /Maliyet \/ Kur Kapsamı/);
+  assert.doesNotMatch(salesSource, /<th>Satır<\/th>/);
+  assert.doesNotMatch(salesSource, /costCoveredLines\).*satır/);
+  assert.match(salesSource, /<th>Net Satış<\/th>/);
+  assert.match(salesSource, /<th>Brüt Kâr<\/th>/);
+});
+
+test("summary financial surface omits operational coverage counters", async () => {
+  const summarySource = await source("src/SummaryPage.jsx");
+  assert.doesNotMatch(summarySource, /Maliyet kapsamı:/);
+  assert.match(summarySource, /Net Ciro/);
+  assert.match(summarySource, /Brüt Kâr/);
+  assert.match(summarySource, /Ortalama Brüt Marj/);
+});
+
+test("reports financial tables omit operational line and row counters", async () => {
+  const reportsSource = await source("src/ReportsPage.jsx");
+  assert.doesNotMatch(reportsSource, /<th>Satır<\/th>/);
+  assert.doesNotMatch(reportsSource, /analiz satırı/);
+  assert.doesNotMatch(reportsSource, /satır maliyet incelemesi/);
+  assert.match(reportsSource, /Net satış · EUR/);
+  assert.match(reportsSource, /Kâr · EUR/);
+  assert.match(reportsSource, /Marj/);
 });
 
 test("navigation exposes only active registry modules", async () => {

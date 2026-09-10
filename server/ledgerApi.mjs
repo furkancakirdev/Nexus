@@ -492,7 +492,12 @@ export function lastDayOfMonthKey(year, month) {
  * çözümleyicisi en son önceki iş gününe düşer.
  */
 export function resolveMonthRateSet({ index, year, month, approval = null, reportDate }) {
-  const locked = Boolean(approval) && approval.locked !== false;
+  const periodEnd = lastDayOfMonthKey(year, month);
+  const hasExplicitApproval = approval !== null && approval !== undefined;
+  const autoLockHistoricalPeriod = !hasExplicitApproval
+    && typeof reportDate === "string"
+    && reportDate >= periodEnd;
+  const locked = autoLockHistoricalPeriod || (Boolean(approval) && approval.locked !== false);
   const hasStoredRateSet = locked && Object.hasOwn(approval || {}, "exchangeRateSet");
   if (hasStoredRateSet && approval.exchangeRateSet && typeof approval.exchangeRateSet === "object") {
     try {
@@ -500,7 +505,7 @@ export function resolveMonthRateSet({ index, year, month, approval = null, repor
         expectedReportDate: lastDayOfMonthKey(year, month),
       });
       return {
-        rateSet: approval.snapshotSchemaVersion === 2
+        rateSet: approval?.snapshotSchemaVersion === 2
           ? normalized
           : approval.exchangeRateSet,
         frozen: true,
@@ -509,7 +514,7 @@ export function resolveMonthRateSet({ index, year, month, approval = null, repor
       return { rateSet: null, frozen: true };
     }
   }
-  if (locked && (approval.snapshotSchemaVersion === 2 || hasStoredRateSet)) {
+  if (locked && (approval?.snapshotSchemaVersion === 2 || hasStoredRateSet)) {
     return { rateSet: null, frozen: true };
   }
   if (locked) {

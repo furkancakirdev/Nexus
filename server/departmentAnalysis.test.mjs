@@ -129,6 +129,23 @@ test("gross sales and net sales remain separate reconciliation metrics", () => {
   assert.equal(result.totals.netSales, 900);
 });
 
+test("department product rankings are partitioned by the two canonical departments", () => {
+  const result = buildDepartmentAnalysis({
+    year: 2026,
+    ledger: {
+      rows: [
+        economic({ productCode: "SERV-1", productName: "Servis İşçiliği", department: "service" }),
+        economic({ productCode: "PART-1", productName: "Pompa", rootId: 2, documentNo: "SF-2", department: "parts" }),
+      ],
+      pilotOrders: [],
+      quality: {},
+    },
+  });
+  assert.deepEqual(Object.keys(result.topProductsByDepartment).sort(), ["parts", "service"]);
+  assert.equal(result.topProductsByDepartment.service[0].code, "SERV-1");
+  assert.equal(result.topProductsByDepartment.parts[0].code, "PART-1");
+});
+
 test("performance owner totals rank only confirmed ownership evidence", () => {
   const inferredSource = evidence({
     rootId: 1, documentType: 13, documentNo: "TKL-INFERRED", depth: 1,

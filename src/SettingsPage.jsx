@@ -20,6 +20,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import {
 	DEFAULT_SETTINGS,
+	SETTINGS_METADATA,
 	SETTINGS_REGISTRY,
 } from "../shared/settingsPolicy.mjs";
 
@@ -35,6 +36,18 @@ const tabs = [
 		label: "Departman Hedefleri",
 		description: "Servis ve yedek parça",
 		icon: IconTargetArrow,
+	},
+	{
+		id: "people",
+		label: "Personel ve Paylar",
+		description: "Katılım, katsayı ve sabit pay",
+		icon: IconUsers,
+	},
+	{
+		id: "policy",
+		label: "Politika ve Havuz",
+		description: "Oranlar, rezerv ve dönem",
+		icon: IconBuildingBank,
 	},
 	{
 		id: "approval",
@@ -60,9 +73,15 @@ function Field({ label, help, children }) {
 	);
 }
 
-function Toggle({ checked, onChange, label, help }) {
+function Toggle({ checked, onChange, label, help, metadata }) {
 	return (
-		<label className="toggle-row">
+		<label
+			className="toggle-row"
+			data-setting-key={metadata?.key}
+			data-setting-category={metadata?.category}
+			data-setting-permission={metadata?.permission}
+			data-setting-sensitive={metadata?.sensitive ? "true" : "false"}
+		>
 			<span>
 				<strong>{label}</strong>
 				{help && <small>{help}</small>}
@@ -104,6 +123,7 @@ function RegistryToggles({ section, draft, onChange }) {
 				onChange={(value) => onChange(toggle.key, value)}
 				label={toggle.label}
 				help={toggle.help}
+				metadata={{ key: toggle.key, ...SETTINGS_METADATA[toggle.key] }}
 			/>
 		));
 }
@@ -1233,10 +1253,8 @@ export function SettingsPage({
 																		setMessage(
 																			`Ayarlar #${entry.revision} revisionından geri alındı.`,
 																		);
-																		setValid(true);
 																	} catch (error) {
 																		setMessage(error.message);
-																		setValid(false);
 																	}
 																}}
 															>

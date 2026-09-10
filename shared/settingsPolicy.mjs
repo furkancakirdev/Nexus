@@ -49,6 +49,20 @@ export const SETTINGS_REGISTRY = Object.freeze({
   ]),
 });
 
+/** Registry alanlarının UI ve yönetim API'si için ortak sözleşme metadata'sı. */
+export const SETTINGS_METADATA = Object.freeze(Object.fromEntries(
+  SETTINGS_REGISTRY.toggles.map((toggle) => [
+    toggle.key,
+    Object.freeze({
+      type: "boolean",
+      category: toggle.section === "approval" ? "period-close-and-approval" : "cost-and-margin",
+      defaultValue: Boolean(DEFAULT_SETTINGS[toggle.key]),
+      permission: "settings:manage",
+      sensitive: false,
+    }),
+  ]),
+));
+
 function optionalRecord(value, fieldName) {
   if (value === undefined) return {};
   const prototype = value !== null && typeof value === "object"

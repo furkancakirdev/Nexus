@@ -605,6 +605,14 @@ export function buildDepartmentAnalysis({
     ownerTotals,
     ownerEvidenceTotals,
     topProducts: topGroups(normalized, (row) => ({ id: row.productCode, name: row.productName, code: row.productCode, brand: row.brandName }), 10),
+    topProductsByDepartment: Object.fromEntries(["service", "parts"].map((department) => [
+      department,
+      topGroups(
+        normalized.filter((row) => row.department === department),
+        (row) => ({ id: row.productCode, name: row.productName, code: row.productCode, brand: row.brandName }),
+        10,
+      ),
+    ])),
     topCustomers: topGroups(normalized, (row) => ({ id: row.customerCode, name: row.customerName, code: row.customerCode }), 10),
     depotMatrix: ["service", "parts", "review"].flatMap((department) => ["MRK", "YTM", "—"].map((depot) => {
       const metric = depotMetrics.get(`${department}|${depot}`);

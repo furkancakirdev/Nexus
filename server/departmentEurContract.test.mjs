@@ -19,6 +19,9 @@ test("departman analizi ortak EUR sepeti ve kanıtlı kur sözleşmesine bağlan
   assert.doesNotMatch(departmentSource, /selectedMetric\?\.byCurrency\s*&&\s*selectedMetric\?\.eurEquivalent/);
   assert.match(departmentSource, /projectDepartmentEurMetric/);
   assert.match(departmentSource, /isOfficialOwnerRankingCandidate/);
+  assert.match(departmentSource, /topProductsByDepartment/);
+  assert.match(departmentSource, /Parça Ürün Yoğunlaşması/);
+  assert.match(departmentSource, /Servis Gelir Kalemleri/);
   assert.doesNotMatch(departmentSource, /formatEur\([^)]*item\.eurEquivalent\?\./);
   assert.doesNotMatch(departmentSource, /formatEur\([^)]*row\.eurEquivalent\?\./);
 });

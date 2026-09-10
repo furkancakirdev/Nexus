@@ -221,7 +221,6 @@ export function SummaryPage({
     0,
   );
   const reviewNetSales = canonicalMetric?.scope?.costReview?.netSales ?? null;
-  const canonicalCoverage = finiteNumber(canonicalMetric?.costCoveragePct);
   void annualPool;
 
   const sourceTimestamp = canonicalMetric?.generatedAt
@@ -336,7 +335,6 @@ export function SummaryPage({
             <span>Kaynak: {getSourceLabel(mode)}</span>
             <span>Son güncelleme: {formatTimestamp(sourceTimestamp)}</span>
             <span>Kur: {getRateLabel(eurRateSets)}</span>
-            {canonicalCoverage != null && <span>Maliyet kapsamı: {formatPercent(canonicalCoverage)}</span>}
           </section>
 
           <FinancialVisibilityPanel metric={canonicalMetric} title="Kârlılık ve marj görünürlüğü" />

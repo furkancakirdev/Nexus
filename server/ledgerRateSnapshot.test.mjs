@@ -130,6 +130,34 @@ test("open approval uses report-date rate dynamically", () => {
   assert.equal(resolved.rateSet.eurTryBuyingRate, 45);
 });
 
+test("historical month without explicit approval auto-freezes at month end", () => {
+  const resolved = resolveMonthRateSet({
+    index,
+    year: 2026,
+    month: 1,
+    approval: null,
+    reportDate: "2026-07-28",
+  });
+
+  assert.equal(resolved.frozen, true);
+  assert.equal(resolved.rateSet.reportDate, "2026-01-31");
+  assert.equal(resolved.rateSet.eurTryBuyingRate, 40);
+});
+
+test("current month without explicit approval remains dynamically valued", () => {
+  const resolved = resolveMonthRateSet({
+    index,
+    year: 2026,
+    month: 7,
+    approval: null,
+    reportDate: "2026-07-28",
+  });
+
+  assert.equal(resolved.frozen, false);
+  assert.equal(resolved.rateSet.reportDate, "2026-07-28");
+  assert.equal(resolved.rateSet.eurTryBuyingRate, 45);
+});
+
 test("overview direct flow uses report-date rates for an open period", async () => {
   const today = new Date().toISOString().slice(0, 10);
   const router = createUnifiedLedgerRouter(routeFixture({

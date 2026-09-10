@@ -1824,7 +1824,7 @@ tfoot { font-weight: 700; background: #f7f9fc; }
   gap: 4px;
 }
 
-.nexus-metric-card__value strong {
+.nexus-metric-card__value {
   font-size: 26px;
   font-weight: 700;
   color: var(--ink);

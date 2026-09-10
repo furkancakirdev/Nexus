@@ -5,12 +5,29 @@ import {
   DEFAULT_SETTINGS,
   normalizeSettings,
   serializeSettings,
+  SETTINGS_METADATA,
 } from "../shared/settingsPolicy.mjs";
 import { buildDepartmentTargets } from "../shared/targetPolicy.mjs";
 
 test("legacy exchangeRateRule is ignored by the active settings contract", () => {
   const result = normalizeSettings({ exchangeRateRule: "monthEnd" });
   assert.equal("exchangeRateRule" in result, false);
+});
+
+test("settings registry exposes typed, permissioned, non-sensitive metadata for every toggle", () => {
+  const keys = Object.keys(SETTINGS_METADATA);
+  assert.ok(keys.length > 0);
+  for (const key of keys) {
+    assert.deepEqual(SETTINGS_METADATA[key], {
+      type: "boolean",
+      category: ["cost-and-margin", "period-close-and-approval"].find((category) => (
+        SETTINGS_METADATA[key].category === category
+      )),
+      defaultValue: typeof DEFAULT_SETTINGS[key] === "boolean" ? DEFAULT_SETTINGS[key] : false,
+      permission: "settings:manage",
+      sensitive: false,
+    });
+  }
 });
 
 test("eski kişi hedef ayarlarını kaldırırken canlı oranları korur", () => {

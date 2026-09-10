@@ -26,7 +26,6 @@ import {
   IconFilter,
   IconLayersSubtract,
   IconReceiptRefund,
-  IconShieldCheck,
   IconTrendingUp,
 } from "@tabler/icons-react";
 
@@ -343,14 +342,6 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
             </div>
           </article>
 
-          <article>
-            <span className="blue"><IconShieldCheck size={22} /></span>
-            <div>
-              <small>Maliyet / Kur Kapsamı</small>
-              <strong>{percent(totals.overallCoverage)}</strong>
-              <p>{money.format(totals.costCoveredLines)} / {money.format(totals.lineCount)} satır</p>
-            </div>
-          </article>
         </div>
       </section>
       <button className="sales-kpis__toggle" type="button" aria-expanded={showSecondaryMetrics} onClick={() => setShowSecondaryMetrics((value) => !value)}>
@@ -446,7 +437,6 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
                 <th>Net Satış</th>
                 <th>Maliyet</th>
                 <th>Brüt Kâr</th>
-                <th>Satır</th>
               </tr>
             </thead>
             <tbody>
@@ -459,15 +449,13 @@ export function SalesPage({ rows = [], year, mode = "live", minimumCoverage = 80
                     <td>{formatCurrencyAmount(item.netSales, currency)}</td>
                     <td>{formatCurrencyAmount(item.cost, currency)}</td>
                     <td className={profitTone(item.profit)}><strong>{formatCurrencyAmount(item.profit, currency)}</strong></td>
-                    <td>{money.format(item.lineCount)}</td>
                   </tr>
                 );
               })}
               {currencyBasket.INCELEME.lineCount > 0 && (
                 <tr>
                   <th><strong>İNCELEME</strong></th>
-                  <td colSpan={3}>Kur veya maliyet kanıtı eksik satırlar EUR toplamına dahil edilmez</td>
-                  <td>{money.format(currencyBasket.INCELEME.lineCount)}</td>
+                  <td colSpan={3}>Kur veya maliyet kanıtı eksik; finansal toplamlar dışında tutuldu</td>
                 </tr>
               )}
             </tbody>

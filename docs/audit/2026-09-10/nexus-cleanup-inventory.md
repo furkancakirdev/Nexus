@@ -60,3 +60,9 @@ Archive must preserve relative paths, timestamps, and a manifest/hash. Archive d
 **None approved.** No permanent deletion is authorized by this inventory.
 
 Until an archive destination/retention period and ownership for excluded artifacts are confirmed, keep all artifacts and only keep Nexus product surfaces disabled through the module registry/API fail-closed gates.
+
+## 2026-09-10 Q1/C1 checkpoint
+
+- Local release gate after the latest financial/UI changes: `npm test` **705/705**, `npm run build` successful, affected-file `node --check` successful, and `git diff --check` has no whitespace errors (only existing CRLF warnings).
+- The reversible QA archive and manifest/hash evidence listed above remain the only approved cleanup action. Source files remain in place; no permanent deletion, deploy mutation, volume removal, CPM write, or production cutover was performed.
+- Current working-tree outputs (`work/`, `premium-*.json`, `test-output.txt`, `patch.py`, generated archives and cache directories) remain unowned/unclassified for cleanup purposes and are not deletion candidates. User ownership, retention, rollback, and reproducibility evidence are still required before any additional cleanup.
